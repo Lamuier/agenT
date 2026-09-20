@@ -489,6 +489,7 @@
     <string name="error_load_status">Failed to load Cursor status</string>
     <string name="error_read_accounts">Could not read account state</string>
     <string name="error_load_usage">Failed to load Cursor usage</string>
+    <string name="error_load_history">Failed to load usage history</string>
     <string name="error_alias_token_required">Enter both an alias and an Access Token</string>
     <string name="error_add_account">Failed to add account</string>
     <string name="error_alias_or_token">Enter an alias or Access Token</string>

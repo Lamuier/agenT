@@ -69,12 +69,19 @@ private enum class WidgetKind(
     val hasIncident: Boolean = false,
     val componentSlots: Int = 0,
     val badgeSizeDp: Int = 28,
+    val hasDonut: Boolean = false,
+    val donutSizeDp: Int = 28,
+    val donutStrokeDp: Float = 12f,
+    val hasUsageDetails: Boolean = false,
 ) {
     Mini(
         layoutId = R.layout.widget_cursor_mini,
         requestBase = 15_000,
         fallbackWidthDp = 110,
         fallbackHeightDp = 40,
+        hasDonut = true,
+        donutSizeDp = 28,
+        donutStrokeDp = 4f,
     ),
     Tall(
         layoutId = R.layout.widget_cursor_tall,
@@ -82,6 +89,9 @@ private enum class WidgetKind(
         fallbackWidthDp = 250,
         fallbackHeightDp = 180,
         hasRefresh = true,
+        hasDonut = true,
+        donutSizeDp = 72,
+        hasUsageDetails = true,
     ),
     StatusMini(
         layoutId = R.layout.widget_cursor_status_mini,
@@ -484,7 +494,7 @@ object CursorTWidgetUpdater {
         )
         applyWidgetTheme(context, views, effectiveKind, widgetId, colors, totalPercent)
 
-        if (effectiveKind == WidgetKind.Tall) {
+        if (effectiveKind.hasRefresh) {
             views.setOnClickPendingIntent(
                 R.id.widget_refresh,
                 if (account == null || account.tokenExpired) {
@@ -495,7 +505,7 @@ object CursorTWidgetUpdater {
             )
         }
 
-        if (effectiveKind == WidgetKind.Tall) {
+        if (effectiveKind.hasUsageDetails) {
             val progress = WidgetCalculations.progress(totalPercent)
             views.setProgressBar(R.id.widget_progress, 100, progress, false)
             views.setContentDescription(
@@ -679,57 +689,46 @@ object CursorTWidgetUpdater {
         views.setTextColor(R.id.widget_status, colors.onSurfaceVariant)
         views.setTextColor(R.id.widget_value, colors.onSurface)
 
-        when (kind) {
-            WidgetKind.Mini -> {
-                views.setImageViewBitmap(
-                    R.id.widget_donut,
-                    WidgetVisuals.donutBitmap(
-                        context = context,
-                        sizeDp = 28,
-                        progress = WidgetCalculations.progress(totalPercent),
-                        progressColor = colors.primary,
-                        trackColor = colors.progressTrack,
-                        strokeDp = 4f,
-                    ),
-                )
-            }
-            WidgetKind.Tall -> {
-                tintRefreshButton(views, colors)
-                views.setImageViewBitmap(
-                    R.id.widget_refresh,
-                    WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant),
-                )
-                views.setImageViewBitmap(
-                    R.id.widget_donut,
-                    WidgetVisuals.donutBitmap(
-                        context = context,
-                        sizeDp = 72,
-                        progress = WidgetCalculations.progress(totalPercent),
-                        progressColor = colors.primary,
-                        trackColor = colors.progressTrack,
-                    ),
-                )
-                views.setImageViewBitmap(
-                    R.id.widget_auto_dot,
-                    WidgetVisuals.chipBitmap(context, colors.primary, 8, 8),
-                )
-                views.setImageViewBitmap(
-                    R.id.widget_api_dot,
-                    WidgetVisuals.chipBitmap(context, colors.tertiary, 8, 8),
-                )
-                tintChipBackground(views, R.id.widget_plan, colors.surfaceContainer)
-                tintChipBackground(views, R.id.widget_credits, colors.surfaceContainer)
-                tintChipBackground(views, R.id.widget_billing, colors.surfaceContainer)
-                views.setTextColor(R.id.widget_plan, colors.onSurfaceVariant)
-                views.setTextColor(R.id.widget_auto_value, colors.onSurface)
-                views.setTextColor(R.id.widget_api_value, colors.onSurface)
-                views.setTextColor(R.id.widget_credits, colors.onSurface)
-                views.setTextColor(R.id.widget_billing, colors.onSurfaceVariant)
-                tintProgress(views, R.id.widget_progress, colors)
-                tintProgress(views, R.id.widget_auto_progress, colors)
-                tintProgress(views, R.id.widget_api_progress, colors, secondary = true)
-            }
-            else -> Unit
+        if (kind.hasDonut) {
+            views.setImageViewBitmap(
+                R.id.widget_donut,
+                WidgetVisuals.donutBitmap(
+                    context = context,
+                    sizeDp = kind.donutSizeDp,
+                    progress = WidgetCalculations.progress(totalPercent),
+                    progressColor = colors.primary,
+                    trackColor = colors.progressTrack,
+                    strokeDp = kind.donutStrokeDp,
+                ),
+            )
+        }
+        if (kind.hasRefresh) {
+            tintRefreshButton(views, colors)
+            views.setImageViewBitmap(
+                R.id.widget_refresh,
+                WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant),
+            )
+        }
+        if (kind.hasUsageDetails) {
+            views.setImageViewBitmap(
+                R.id.widget_auto_dot,
+                WidgetVisuals.chipBitmap(context, colors.primary, 8, 8),
+            )
+            views.setImageViewBitmap(
+                R.id.widget_api_dot,
+                WidgetVisuals.chipBitmap(context, colors.tertiary, 8, 8),
+            )
+            tintChipBackground(views, R.id.widget_plan, colors.surfaceContainer)
+            tintChipBackground(views, R.id.widget_credits, colors.surfaceContainer)
+            tintChipBackground(views, R.id.widget_billing, colors.surfaceContainer)
+            views.setTextColor(R.id.widget_plan, colors.onSurfaceVariant)
+            views.setTextColor(R.id.widget_auto_value, colors.onSurface)
+            views.setTextColor(R.id.widget_api_value, colors.onSurface)
+            views.setTextColor(R.id.widget_credits, colors.onSurface)
+            views.setTextColor(R.id.widget_billing, colors.onSurfaceVariant)
+            tintProgress(views, R.id.widget_progress, colors)
+            tintProgress(views, R.id.widget_auto_progress, colors)
+            tintProgress(views, R.id.widget_api_progress, colors, secondary = true)
         }
     }
 

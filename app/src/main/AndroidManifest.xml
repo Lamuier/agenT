@@ -50,8 +50,7 @@
         <receiver
             android:name=".widget.MiniCursorWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_mini_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_mini_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -63,8 +62,7 @@
         <receiver
             android:name=".widget.TallCursorWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_tall_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_tall_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -76,8 +74,7 @@
         <receiver
             android:name=".widget.MiniCursorStatusWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_status_mini_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_status_mini_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -89,8 +86,7 @@
         <receiver
             android:name=".widget.SquareCursorStatusWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_status_square_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_status_square_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -102,8 +98,7 @@
         <receiver
             android:name=".widget.WideCursorStatusWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_status_wide_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_status_wide_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -115,8 +110,7 @@
         <receiver
             android:name=".widget.MediumCursorStatusWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_status_medium_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_status_medium_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -128,8 +122,7 @@
         <receiver
             android:name=".widget.TallCursorStatusWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_status_tall_name"
-            android:process=":widgetProvider">
+            android:label="@string/widget_status_tall_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -141,8 +134,7 @@
         <service
             android:name=".widget.CursorTWidgetJobService"
             android:exported="true"
-            android:permission="android.permission.BIND_JOB_SERVICE"
-            android:process=":widgetProvider" />
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <receiver
             android:name=".notification.UsageNotificationReceiver"

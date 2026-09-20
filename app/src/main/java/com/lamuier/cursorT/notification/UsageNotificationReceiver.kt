@@ -3,10 +3,8 @@ package com.lamuier.cursorT.notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.lamuier.cursorT.CursorTApplication
 import com.lamuier.cursorT.widget.CursorTWidgetUpdater
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
@@ -19,12 +17,13 @@ class UsageNotificationReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             -> {
                 val pendingResult = goAsync()
-                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                val app = context.applicationContext as CursorTApplication
+                app.applicationScope.launch {
                     try {
                         CursorTNotificationCoordinator
-                            .get(context.applicationContext)
+                            .get(app)
                             .refreshFromCache()
-                        CursorTWidgetUpdater.requestUpdate(context.applicationContext)
+                        CursorTWidgetUpdater.requestUpdate(app)
                     } finally {
                         pendingResult.finish()
                     }

@@ -395,6 +395,8 @@ internal fun DashboardScreen(
                                             usage = it,
                                             extraHistory = state.extraHistory,
                                             loadingHistoryKey = state.loadingHistoryKey,
+                                            historyError = state.historyError,
+                                            historyErrorKey = state.historyErrorKey,
                                             onLoadHistoryWindow = onLoadHistoryWindow,
                                         )
                                     }
@@ -1113,6 +1115,8 @@ private fun UsageTab(
     usage: CursorTOverview,
     extraHistory: Map<String, UsageWindow>,
     loadingHistoryKey: String?,
+    historyError: String?,
+    historyErrorKey: String?,
     onLoadHistoryWindow: (String, Long, Long, String?) -> Unit,
 ) {
     AdaptiveTabContent { compact ->
@@ -1284,6 +1288,8 @@ private fun UsageTab(
             usage = usage,
             extraHistory = extraHistory,
             loadingHistoryKey = loadingHistoryKey,
+            historyError = historyError,
+            historyErrorKey = historyErrorKey,
             onLoadHistoryWindow = onLoadHistoryWindow,
             compact = compact,
         )
@@ -1344,6 +1350,8 @@ private fun HistoryUsageSection(
     usage: CursorTOverview,
     extraHistory: Map<String, UsageWindow>,
     loadingHistoryKey: String?,
+    historyError: String?,
+    historyErrorKey: String?,
     onLoadHistoryWindow: (String, Long, Long, String?) -> Unit,
     compact: Boolean,
 ) {
@@ -1368,8 +1376,9 @@ private fun HistoryUsageSection(
         }
     }
     val selectedCycleKey = selectedCycleRange?.let { UsageHistoryWindows.cycleKey(it.startMs) }
-    LaunchedEffect(selectedMonthKey, mode, usage.accountId, zone) {
+    LaunchedEffect(selectedMonthKey, mode, usage.accountId, zone, historyErrorKey) {
         if (mode != HistoryQueryMode.CalendarMonth) return@LaunchedEffect
+        if (historyErrorKey == selectedMonthKey) return@LaunchedEffect
         val monthRange = UsageHistoryWindows.calendarMonth(selectedMonth, zone = zone)
         if (usage.history?.calendarMonth?.yearMonth != selectedMonthKey &&
             extraHistory[selectedMonthKey] == null
@@ -1377,10 +1386,11 @@ private fun HistoryUsageSection(
             onLoadHistoryWindow(selectedMonthKey, monthRange.startMs, monthRange.endMs, selectedMonthKey)
         }
     }
-    LaunchedEffect(selectedCycleKey, mode, usage.accountId) {
+    LaunchedEffect(selectedCycleKey, mode, usage.accountId, historyErrorKey) {
         if (mode != HistoryQueryMode.BillingCycle) return@LaunchedEffect
         val range = selectedCycleRange ?: return@LaunchedEffect
         val key = selectedCycleKey ?: return@LaunchedEffect
+        if (historyErrorKey == key) return@LaunchedEffect
         if (cycleOffset == -1 && usage.history?.previousCycle != null) return@LaunchedEffect
         if (extraHistory[key] == null) {
             onLoadHistoryWindow(key, range.startMs, range.endMs, null)
@@ -1404,6 +1414,10 @@ private fun HistoryUsageSection(
         HistoryQueryMode.BillingCycle -> selectedCycleKey
     }
     val loading = loadingHistoryKey == loadingKey && window == null
+    val failed = historyErrorKey != null &&
+        historyErrorKey == loadingKey &&
+        window == null &&
+        !loading
     val earliestMonth = nowMonth.minusMonths(12)
     val pools = remember(window?.tokenUsage) { UsageCalculations.poolPercents(window?.tokenUsage) }
     SectionHeading(
@@ -1499,6 +1513,35 @@ private fun HistoryUsageSection(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                failed -> {
+                    Text(
+                        historyError ?: stringResource(R.string.error_load_history),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(
+                        onClick = {
+                            when (mode) {
+                                HistoryQueryMode.CalendarMonth -> {
+                                    val monthRange = UsageHistoryWindows.calendarMonth(selectedMonth, zone = zone)
+                                    onLoadHistoryWindow(
+                                        selectedMonthKey,
+                                        monthRange.startMs,
+                                        monthRange.endMs,
+                                        selectedMonthKey,
+                                    )
+                                }
+                                HistoryQueryMode.BillingCycle -> {
+                                    val range = selectedCycleRange ?: return@TextButton
+                                    val key = selectedCycleKey ?: return@TextButton
+                                    onLoadHistoryWindow(key, range.startMs, range.endMs, null)
+                                }
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.action_reload))
+                    }
                 }
                 window?.tokenUsage == null -> {
                     Text(

@@ -4,6 +4,17 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 2.8.1
+
+> Version: 2.8.0 → 2.8.1. This release fixes widgets overwriting local account storage from a separate process, failed usage-history looking empty, boot coroutines, and fail-fast secure writes. No new capability and no breaking change, so a patch bump under SemVer.
+
+- Widgets share the app process so a stale widget-process SharedPreferences copy cannot overwrite account ciphertext or usage cache
+- Failed usage-history loads show an error and Reload on the Usage tab instead of looking like an empty window
+- Boot / app-update notification restore uses the application coroutine scope
+- Usage widgets bind donut, refresh, and details from kind flags instead of an `else` that swallows new sizes
+- Account-migration cleanup writes now fail fast, matching other secure preference commits
+- `versionCode=27`, `versionName=2.8.1`
+
 ## 2.8.0
 
 > Version: 2.7.0 → 2.8.0. This release adds 4×1 / 4×2 / 2×2 status widget sizes. Backward-compatible new capability, so a minor bump under SemVer.

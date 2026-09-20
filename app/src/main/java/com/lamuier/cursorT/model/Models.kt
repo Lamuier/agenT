@@ -269,6 +269,8 @@ data class AppUiState(
     val statusError: String? = null,
     val extraHistory: Map<String, UsageWindow> = emptyMap(),
     val loadingHistoryKey: String? = null,
+    val historyError: String? = null,
+    val historyErrorKey: String? = null,
 )
 
 /** Cursor 官方状态页（Statuspage）的整体指示灯。 */

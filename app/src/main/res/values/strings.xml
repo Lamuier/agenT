@@ -492,6 +492,7 @@
     <string name="error_load_status">加载 Cursor 状态失败</string>
     <string name="error_read_accounts">无法读取账号状态</string>
     <string name="error_load_usage">加载 Cursor 用量失败</string>
+    <string name="error_load_history">加载历史用量失败</string>
     <string name="error_alias_token_required">请填写别名和 Access Token</string>
     <string name="error_add_account">添加账号失败</string>
     <string name="error_alias_or_token">别名或 Access Token 至少填写一项</string>

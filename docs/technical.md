@@ -14,7 +14,7 @@
 | 构建 | Android Gradle Plugin 9.2.1 · Gradle 9.5.1 |
 | 平台 | `compileSdk` / `targetSdk` = 37 · `minSdk` = 26（Android 8.0） |
 | 包名 | `com.lamuier.cursorT` |
-| 版本 | `versionCode` = 26 · `versionName` = 2.8.0 |
+| 版本 | `versionCode` = 27 · `versionName` = 2.8.1 |
 | 体积 | Release 开启 R8 混淆与资源压缩，仅引入 AndroidX（含 Browser Custom Tabs）与 Biometric，无第三方网络 / 依赖注入框架 |
 
 ## 构建与发布
@@ -57,7 +57,7 @@ Debug 默认先跑单元测试与 Lint，再产出 `app\build\outputs\apk\debug\
 .\build.ps1 -Release
 ```
 
-默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\CursorT-v2.8.0-release.apk`。
+默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\CursorT-v2.8.1-release.apk`。
 
 ### 数据安全实现要点
 
@@ -86,4 +86,4 @@ Android App（本机）
 - 界面语言默认跟随系统：英文系统用 `values-en`，其余回退默认中文资源；设置可强制简体中文或 English。默认 `values/strings.xml` 为中文。
 - Custom Tabs 目标 URL 必须通过白名单：`cursor.com/agents`（无查询串或仅 `id=<bcId>`），或无 query/fragment 的 `github.com` HTTPS 链接。
 - 服务状态使用 Statuspage 公开 JSON（`/api/v2/summary.json` 与 `/api/v2/incidents.json`），不解析 HTML、不订阅 RSS。`summary.json` 含总览、组件与未恢复事件；`incidents.json` 提供近期历史。二者均为官方、结构化、无需鉴权的接口。
-- 桌面小组件运行在独立进程 `:widgetProvider`。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口；状态请求不携带 Token。
+- 桌面小组件与主进程共用同一进程，避免跨进程 SharedPreferences 把账号密文或用量缓存写回旧副本。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口；状态请求不携带 Token。

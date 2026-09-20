@@ -73,6 +73,8 @@ class CursorTViewModel(
                 tasksError = null,
                 extraHistory = emptyMap(),
                 loadingHistoryKey = null,
+                historyError = null,
+                historyErrorKey = null,
             )
         }
         refreshSelected(force = false, silent = cached != null)
@@ -92,7 +94,13 @@ class CursorTViewModel(
         if (snapshot.extraHistory.containsKey(key)) return
         if (yearMonth != null && snapshot.usage?.history?.calendarMonth?.yearMonth == yearMonth) return
         if (snapshot.loadingHistoryKey == key) return
-        _state.update { it.copy(loadingHistoryKey = key) }
+        _state.update {
+            it.copy(
+                loadingHistoryKey = key,
+                historyError = if (it.historyErrorKey == key) null else it.historyError,
+                historyErrorKey = if (it.historyErrorKey == key) null else it.historyErrorKey,
+            )
+        }
         viewModelScope.launch {
             try {
                 val window = withContext(Dispatchers.IO) {
@@ -103,16 +111,20 @@ class CursorTViewModel(
                         it.copy(
                             extraHistory = it.extraHistory + (key to window),
                             loadingHistoryKey = if (it.loadingHistoryKey == key) null else it.loadingHistoryKey,
+                            historyError = if (it.historyErrorKey == key) null else it.historyError,
+                            historyErrorKey = if (it.historyErrorKey == key) null else it.historyErrorKey,
                         )
                     }
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 if (_state.value.selectedAccountId == accountId) {
                     _state.update {
                         it.copy(
                             loadingHistoryKey = if (it.loadingHistoryKey == key) null else it.loadingHistoryKey,
+                            historyError = messageFor(error, R.string.error_load_history),
+                            historyErrorKey = key,
                         )
                     }
                 }

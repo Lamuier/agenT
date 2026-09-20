@@ -149,7 +149,8 @@ class EncryptedAccountStore(context: Context) {
         } else {
             editor.putString(KEY_PENDING_USAGE_CACHE_CLEANUP, serializeAccountIds(remainingIds).toString())
         }
-        editor.commit()
+        check(editor.commit()) { msg(R.string.error_save_account_secure) }
+        true
     }
 
     internal fun markTokenInvalid(accountId: Int, revision: Long, invalid: Boolean): Boolean = synchronized(lock) {
