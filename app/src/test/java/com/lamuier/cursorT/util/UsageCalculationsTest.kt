@@ -117,20 +117,41 @@ class UsageCalculationsTest {
     }
 
     @Test
-    fun shouldCollapseSplitOverviewRing_ownExhaustedThirdHasRemaining() {
-        assertTrue(UsageCalculations.shouldCollapseSplitOverviewRing(100.0, 0.0))
-        assertTrue(UsageCalculations.shouldCollapseSplitOverviewRing(100.0, 40.0))
-        assertTrue(UsageCalculations.shouldCollapseSplitOverviewRing(120.0, 99.9))
+    fun splitOverviewRingFocus_keepsOnlyThePoolThatStillHasQuota() {
+        assertEquals(
+            SplitOverviewRingFocus.ThirdPartyOnly,
+            UsageCalculations.splitOverviewRingFocus(100.0, 0.0),
+        )
+        assertEquals(
+            SplitOverviewRingFocus.ThirdPartyOnly,
+            UsageCalculations.splitOverviewRingFocus(100.0, 40.0),
+        )
+        assertEquals(
+            SplitOverviewRingFocus.ThirdPartyOnly,
+            UsageCalculations.splitOverviewRingFocus(120.0, 99.9),
+        )
+        assertEquals(
+            SplitOverviewRingFocus.OwnOnly,
+            UsageCalculations.splitOverviewRingFocus(40.0, 100.0),
+        )
+        assertEquals(
+            SplitOverviewRingFocus.OwnOnly,
+            UsageCalculations.splitOverviewRingFocus(0.0, 150.0),
+        )
     }
 
     @Test
-    fun shouldCollapseSplitOverviewRing_skipsWhenThirdAlsoExhaustedOrUnknown() {
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(100.0, 100.0))
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(99.9, 40.0))
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(null, 40.0))
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(100.0, null))
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(Double.NaN, 40.0))
-        assertFalse(UsageCalculations.shouldCollapseSplitOverviewRing(100.0, Double.NaN))
+    fun splitOverviewRingFocus_keepsBothWhenNeitherSideIsTheOnlyRemainingPool() {
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(80.0, 20.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(100.0, 100.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(99.9, 40.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(40.0, 99.9))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(null, 40.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(100.0, null))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(null, 100.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(Double.NaN, 40.0))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(100.0, Double.NaN))
+        assertEquals(SplitOverviewRingFocus.Both, UsageCalculations.splitOverviewRingFocus(40.0, Double.NaN))
     }
 
     @Test

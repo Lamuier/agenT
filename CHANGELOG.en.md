@@ -4,6 +4,13 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 2.8.3
+
+> Version: 2.8.2 → 2.8.3. This release changes how the split Overview ring looks when one pool is used up. No new capability and no breaking change, so a patch bump under SemVer.
+
+- Overview split ring: when one pool is used up and the other still has quota, only the remaining pool is shown, with a note naming the exhausted pool. This cycle no longer switches to the combined total
+- `versionCode=29`, `versionName=2.8.3`
+
 ## 2.8.2
 
 > Version: 2.8.1 → 2.8.2. This release fixes status links opening in an external browser; they now open in an in-app Chrome Custom Tab, matching Tasks. No new capability and no breaking change, so a patch bump under SemVer.

@@ -132,7 +132,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lamuier.cursorT.R
 import com.lamuier.cursorT.data.DashboardPreferences
-import com.lamuier.cursorT.data.OverviewRingCollapse
 import com.lamuier.cursorT.data.OverviewUsageRingMode
 import com.lamuier.cursorT.model.AppUiState
 import com.lamuier.cursorT.model.CursorAccount
@@ -146,6 +145,7 @@ import com.lamuier.cursorT.ui.theme.LocalPulseChartColors
 import com.lamuier.cursorT.ui.theme.PulseChartColors
 import com.lamuier.cursorT.util.BillingProgress
 import com.lamuier.cursorT.util.DisplayTime
+import com.lamuier.cursorT.util.SplitOverviewRingFocus
 import com.lamuier.cursorT.util.UsageCalculations
 import com.lamuier.cursorT.util.UsageHistoryWindows
 import com.lamuier.cursorT.util.UsageLevel
@@ -754,29 +754,6 @@ private fun OverviewTab(usage: CursorTOverview) {
         val context = LocalContext.current
         val preferences = remember { DashboardPreferences.get(context) }
         val ringMode by preferences.overviewUsageRingMode.collectAsStateWithLifecycle()
-        val collapseKeys by preferences.overviewRingCollapseKeys.collectAsStateWithLifecycle()
-        val ownPercent = usage.usage.autoPercentUsed
-        val thirdPartyPercent = usage.usage.apiPercentUsed
-        val markCollapse = UsageCalculations.shouldCollapseSplitOverviewRing(ownPercent, thirdPartyPercent)
-        LaunchedEffect(ringMode, usage.accountId, usage.billingCycle.start, markCollapse) {
-            if (ringMode != OverviewUsageRingMode.Split) return@LaunchedEffect
-            preferences.syncOverviewRingCollapse(
-                accountId = usage.accountId,
-                cycleStart = usage.billingCycle.start,
-                markNow = markCollapse,
-            )
-        }
-        val collapsedThisCycle = OverviewRingCollapse.collapsedThisCycle(
-            collapseKeys,
-            usage.accountId,
-            usage.billingCycle.start,
-        )
-        val effectiveRingMode = OverviewRingCollapse.effectiveMode(
-            preferred = ringMode,
-            ownPercent = ownPercent,
-            thirdPartyPercent = thirdPartyPercent,
-            collapsedThisCycle = collapsedThisCycle,
-        )
         val chartColors = LocalPulseChartColors.current
         val chartSize = if (compact) 156.dp else 184.dp
         val nowMillis = rememberNowMillis()
@@ -899,9 +876,7 @@ private fun OverviewTab(usage: CursorTOverview) {
                     billing = billing,
                     chartSize = chartSize,
                     chartColors = chartColors,
-                    mode = effectiveRingMode,
-                    autoCollapsed = ringMode == OverviewUsageRingMode.Split &&
-                        effectiveRingMode == OverviewUsageRingMode.Combined,
+                    mode = ringMode,
                 )
                 OverviewCycleRow(billing = billing, planCycleEnd = usage.plan.billingCycleEnd)
             }
@@ -1886,7 +1861,6 @@ private fun OverviewHeroUsageRing(
     chartSize: Dp,
     chartColors: PulseChartColors,
     mode: OverviewUsageRingMode,
-    autoCollapsed: Boolean = false,
 ) {
     val cyclePercent = billing?.percent?.toDouble()
     val cycleColor = MaterialTheme.colorScheme.primary
@@ -1911,7 +1885,6 @@ private fun OverviewHeroUsageRing(
                 cycleColor = cycleColor,
                 chartSize = chartSize,
                 chartColors = chartColors,
-                autoCollapsed = autoCollapsed,
             )
         }
     }
@@ -1929,65 +1902,99 @@ private fun OverviewSplitUsageRing(
 ) {
     val ownPercent = usage.usage.autoPercentUsed
     val thirdPartyPercent = usage.usage.apiPercentUsed
+    val focus = UsageCalculations.splitOverviewRingFocus(ownPercent, thirdPartyPercent)
+    val showOwn = focus != SplitOverviewRingFocus.ThirdPartyOnly
+    val showThird = focus != SplitOverviewRingFocus.OwnOnly
+    val soloThird = focus == SplitOverviewRingFocus.ThirdPartyOnly
     val ownLevel = ownPercent?.let { UsageCalculations.level(it, cyclePercent) }
     val thirdPartyLevel = thirdPartyPercent?.let { UsageCalculations.level(it, cyclePercent) }
     val unknownColor = MaterialTheme.colorScheme.onSurfaceVariant
     val ownColor = ownLevel.ringColor(chartColors, unknownColor)
     val thirdPartyHealth = thirdPartyLevel.ringColor(chartColors, unknownColor)
-    val thirdPartyColor = if (thirdPartyHealth == ownColor) chartColors.chart3 else thirdPartyHealth
+    val thirdPartyColor = if (showOwn && thirdPartyHealth == ownColor) chartColors.chart3 else thirdPartyHealth
     val ownLabel = stringResource(R.string.label_own_pool)
     val thirdPartyLabelShort = stringResource(R.string.label_third_party_pool)
+    val exhaustedCaption = when (focus) {
+        SplitOverviewRingFocus.ThirdPartyOnly -> stringResource(R.string.overview_ring_own_exhausted_caption)
+        SplitOverviewRingFocus.OwnOnly -> stringResource(R.string.overview_ring_third_party_exhausted_caption)
+        SplitOverviewRingFocus.Both -> null
+    }
     val cycleDescription = billing?.let {
         stringResource(R.string.label_cycle_percent, formatPercent(it.percent.toDouble())) +
             stringResource(R.string.label_cycle_remaining_clause, formatRemainingLabel(it.remainingMillis))
     } ?: stringResource(R.string.label_cycle_placeholder)
-    val ringDescription = listOf(
-        poolRingDescription(
-            poolLabel = ownLabel,
-            percent = ownPercent,
-            level = ownLevel,
-        ),
-        poolRingDescription(
-            poolLabel = thirdPartyLabelShort,
-            percent = thirdPartyPercent,
-            level = thirdPartyLevel,
-        ),
-        cycleDescription,
-    ).joinToString("。")
+    val ringDescription = buildList {
+        if (showOwn) {
+            add(
+                poolRingDescription(
+                    poolLabel = ownLabel,
+                    percent = ownPercent,
+                    level = ownLevel,
+                ),
+            )
+        }
+        if (showThird) {
+            add(
+                poolRingDescription(
+                    poolLabel = thirdPartyLabelShort,
+                    percent = thirdPartyPercent,
+                    level = thirdPartyLevel,
+                ),
+            )
+        }
+        exhaustedCaption?.let(::add)
+        add(cycleDescription)
+    }.joinToString("。")
     val teamSpendLine = if (usage.isTeam) {
         stringResource(R.string.label_team_spend, money(usage.usage.totalUsed))
     } else {
         null
     }
+    val centerPercent = if (soloThird) thirdPartyPercent else ownPercent
+    val centerLabel = if (soloThird) thirdPartyLabelShort else ownLabel
+    val centerColor = if (soloThird) thirdPartyColor else ownColor
     UsageRing(
-        ownPercent = ownPercent?.toFloat(),
+        ownPercent = ownPercent?.takeIf { showOwn }?.toFloat(),
         ownColor = ownColor,
-        thirdPartyPercent = thirdPartyPercent?.toFloat(),
+        thirdPartyPercent = thirdPartyPercent?.takeIf { showThird }?.toFloat(),
         thirdPartyColor = thirdPartyColor,
         cyclePercent = billing?.percent,
         cycleColor = cycleColor,
-        centerValue = ownPercent?.let(::formatPercent) ?: "—",
-        caption = ownLabel,
-        captionColor = ownColor,
+        centerValue = centerPercent?.let(::formatPercent) ?: "—",
+        caption = centerLabel,
+        captionColor = centerColor,
         description = ringDescription,
         size = chartSize,
     )
+    exhaustedCaption?.let { caption ->
+        Text(
+            caption,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        DotLabel(
-            color = ownColor,
-            text = ownPercent?.let { stringResource(R.string.label_own_pool_usage, formatPercent(it)) }
-                ?: stringResource(R.string.label_own_pool_usage_placeholder),
-        )
-        DotLabel(
-            color = thirdPartyColor,
-            text = thirdPartyPercent?.let {
-                stringResource(R.string.label_third_party_usage, formatPercent(it))
-            } ?: stringResource(R.string.label_third_party_usage_placeholder),
-        )
+        if (showOwn) {
+            DotLabel(
+                color = ownColor,
+                text = ownPercent?.let { stringResource(R.string.label_own_pool_usage, formatPercent(it)) }
+                    ?: stringResource(R.string.label_own_pool_usage_placeholder),
+            )
+        }
+        if (showThird) {
+            DotLabel(
+                color = thirdPartyColor,
+                text = thirdPartyPercent?.let {
+                    stringResource(R.string.label_third_party_usage, formatPercent(it))
+                } ?: stringResource(R.string.label_third_party_usage_placeholder),
+            )
+        }
         CyclePercentDotLabel(billing = billing, color = cycleColor)
     }
     teamSpendLine?.let { spend ->
@@ -2008,7 +2015,6 @@ private fun OverviewCombinedUsageRing(
     cycleColor: Color,
     chartSize: Dp,
     chartColors: PulseChartColors,
-    autoCollapsed: Boolean = false,
 ) {
     val total = remember(usage) { UsageCalculations.overviewTotalUsage(usage) }
     val level = remember(total, cyclePercent) {
@@ -2030,7 +2036,6 @@ private fun OverviewCombinedUsageRing(
     val cycleRemaining = billing?.let {
         stringResource(R.string.label_cycle_remaining_clause, formatRemainingLabel(it.remainingMillis))
     }.orEmpty()
-    val autoCollapsedCaption = stringResource(R.string.overview_ring_auto_combined_caption)
     val usageDescription = buildString {
         if (usage.isTeam) {
             append(teamSpendPrefix)
@@ -2039,10 +2044,6 @@ private fun OverviewCombinedUsageRing(
             append(totalUsageLevel)
         }
         append(cycleRemaining)
-        if (autoCollapsed) {
-            if (isNotEmpty()) append("。")
-            append(autoCollapsedCaption)
-        }
     }
     UsageRing(
         ownPercent = total.percent.takeIf { total.known }?.toFloat(),
@@ -2061,15 +2062,6 @@ private fun OverviewCombinedUsageRing(
         description = usageDescription,
         size = chartSize,
     )
-    if (autoCollapsed) {
-        Text(
-            autoCollapsedCaption,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),

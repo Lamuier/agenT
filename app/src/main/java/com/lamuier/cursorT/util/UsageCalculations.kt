@@ -21,6 +21,13 @@ enum class UsageLevel {
     Exhausted,
 }
 
+/** 分列圆环外环要画哪些池。恰好一个池用尽时只保留仍有额度的那一池。 */
+enum class SplitOverviewRingFocus {
+    Both,
+    OwnOnly,
+    ThirdPartyOnly,
+}
+
 /** 本周期按用量池拆分的 Token 费用（自有 Cursor 模型 / 第三方模型）。 */
 data class PoolSpend(
     val ownPoolDollars: Double,
@@ -158,16 +165,24 @@ object UsageCalculations {
     }
 
     /**
-     * 分列圆环在自有池已用尽、三方池仍有额度时没有可读性：外环几乎被自有段占满。
-     * 百分比缺失或非有限值时不折叠，避免把未知额度当成「还有余量」。
+     * 分列圆环在恰好一个池已用尽、另一个仍有额度时，只显示仍有额度的池。
+     * 两池都用尽、都还有余量，或百分比缺失 / 非有限值时仍分列两池，避免把未知额度当成用尽或余量。
      */
-    fun shouldCollapseSplitOverviewRing(
+    fun splitOverviewRingFocus(
         ownPercent: Double?,
         thirdPartyPercent: Double?,
-    ): Boolean {
-        val own = ownPercent?.takeIf { it.isFinite() } ?: return false
-        val thirdParty = thirdPartyPercent?.takeIf { it.isFinite() } ?: return false
-        return own >= 100.0 && thirdParty < 100.0
+    ): SplitOverviewRingFocus {
+        val own = ownPercent?.takeIf { it.isFinite() }
+        val thirdParty = thirdPartyPercent?.takeIf { it.isFinite() }
+        val ownExhausted = own != null && own >= 100.0
+        val thirdPartyExhausted = thirdParty != null && thirdParty >= 100.0
+        return when {
+            ownExhausted && thirdParty != null && !thirdPartyExhausted ->
+                SplitOverviewRingFocus.ThirdPartyOnly
+            thirdPartyExhausted && own != null && !ownExhausted ->
+                SplitOverviewRingFocus.OwnOnly
+            else -> SplitOverviewRingFocus.Both
+        }
     }
 
     /**

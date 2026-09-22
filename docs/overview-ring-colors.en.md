@@ -14,9 +14,9 @@ Related code:
 | Ring drawing and color lookup | `DashboardScreen.kt` (`OverviewHeroUsageRing` / `ringColor` / `UsageRing`) |
 | Semantic colors and palettes | `ui/theme/Color.kt` (`PulseSemantic`, `chartColorsFor()`) |
 | Split / combined preference | `OverviewUsageRingMode`, stored in on-device SharedPreferences |
-| Auto-collapse from split | `OverviewRingCollapse` |
+| Split down to one pool | `UsageCalculations.splitOverviewRingFocus()` |
 
-Ring style is switched in Settings. Split is the default. If the own pool is exhausted this cycle while the third-party pool still has quota, the ring temporarily switches to combined and reverts next cycle.
+Ring style is switched in Settings. Split is the default. In split mode, if exactly one pool is exhausted and the other still has quota, the outer ring draws only the remaining pool and a caption under the ring names the exhausted pool. Both pools stay visible when both are exhausted or a percent is unknown. Combined total is unaffected.
 
 ## Structure
 
@@ -68,9 +68,10 @@ Inner-ring cycle color follows theme primary, not health:
 **Split (default)**
 
 - Outer own-pool arc uses own-pool health color.
-- Outer third-party arc uses third-party health color; **if that would match the own-pool color, it falls back to `chart3` (theme secondary)** so the two arcs stay distinguishable.
-- The “own pool” caption under the center value uses the own-pool color.
+- Outer third-party arc uses third-party health color; **if that would match the own-pool color, it falls back to `chart3` (theme secondary)** so the two arcs stay distinguishable. When only the third-party pool remains, it uses the third-party health color directly.
+- The center value defaults to the own-pool percent, and the caption under it uses the own-pool color. When only the third-party pool remains, the center switches to that pool’s percent and caption.
 - When both arcs have progress, they reverse-breathe over 3 seconds between alpha `0.08` and `1`. The shorter arc is always drawn on top.
+- If exactly one pool is ≥ 100% and the other is < 100%, and both percents are finite, the exhausted arc and its legend dot are omitted. The caption reads “Own pool is used up; only the third-party pool is shown” or “Third-party pool is used up; only the own pool is shown”. Both arcs stay when both pools are ≥ 100%, or when either percent is missing or non-finite.
 
 **Combined**
 
