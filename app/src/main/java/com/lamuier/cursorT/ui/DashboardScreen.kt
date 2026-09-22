@@ -430,6 +430,11 @@ internal fun DashboardScreen(
                                         refreshing = state.refreshingStatus,
                                         error = state.statusError,
                                         onRetry = { startRefresh(DashboardRefreshSource.Button) },
+                                        onOpenFailed = { message ->
+                                            uiScope.launch {
+                                                snackbarHostState.showSnackbar(message)
+                                            }
+                                        },
                                     )
                                 }
                             }

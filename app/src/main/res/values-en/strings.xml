@@ -415,7 +415,7 @@
     <string name="status_recent_empty">No recent incidents</string>
     <string name="status_open_official">Open official status page</string>
     <string name="status_all_components_ok">All %d components operational</string>
-    <string name="status_open_incident">Open incident in browser</string>
+    <string name="status_open_incident">Open incident</string>
     <string name="status_availability">Cursor availability</string>
     <string name="status_current_a11y">Cursor status: %1$s</string>
     <string name="status_active_count">%d in progress</string>

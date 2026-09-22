@@ -10,12 +10,12 @@ import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
 
 /**
- * 用 Chrome Custom Tabs 打开已校验的 Cursor / GitHub 页面。
+ * 用 Chrome Custom Tabs 打开已校验的 Cursor、GitHub 或官方状态页。
  * Custom Tabs 走系统浏览器 Cookie，因此完整对话依赖用户已在 Chrome 登录 Cursor。
  */
 object CursorCustomTabs {
     fun open(context: Context, url: String, toolbarColor: Int? = null): Boolean {
-        if (!AgentTaskPresentation.isAllowedCustomTabUrl(url)) return false
+        if (!isAllowed(url)) return false
         val uri = Uri.parse(url)
         return try {
             launchCustomTab(context, uri, toolbarColor)
@@ -48,6 +48,9 @@ object CursorCustomTabs {
         }
         customTabs.launchUrl(context, uri)
     }
+
+    private fun isAllowed(url: String): Boolean =
+        AgentTaskPresentation.isAllowedCustomTabUrl(url) || StatusPresentation.isSafeStatusUrl(url)
 
     private fun openExternal(context: Context, uri: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, uri)

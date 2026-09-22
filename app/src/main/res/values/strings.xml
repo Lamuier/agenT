@@ -418,7 +418,7 @@
     <string name="status_recent_empty">暂无近期事件</string>
     <string name="status_open_official">打开官方状态页</string>
     <string name="status_all_components_ok">全部 %d 个组件运行正常</string>
-    <string name="status_open_incident">在浏览器中打开事件</string>
+    <string name="status_open_incident">打开事件详情</string>
     <string name="status_availability">Cursor 可用状态</string>
     <string name="status_current_a11y">Cursor 当前状态：%1$s</string>
     <string name="status_active_count">%d 项进行中</string>

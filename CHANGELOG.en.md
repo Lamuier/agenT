@@ -4,6 +4,13 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 2.8.2
+
+> Version: 2.8.1 → 2.8.2. This release fixes status links opening in an external browser; they now open in an in-app Chrome Custom Tab, matching Tasks. No new capability and no breaking change, so a patch bump under SemVer.
+
+- Official status and incident links open in an in-app Chrome Custom Tab, matching the Tasks tab
+- `versionCode=28`, `versionName=2.8.2`
+
 ## 2.8.1
 
 > Version: 2.8.0 → 2.8.1. This release fixes widgets overwriting local account storage from a separate process, failed usage-history looking empty, boot coroutines, and fail-fast secure writes. No new capability and no breaking change, so a patch bump under SemVer.

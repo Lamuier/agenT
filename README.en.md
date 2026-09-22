@@ -21,7 +21,7 @@ Chinese is the primary language of this repository and the default app locale. E
 - The Usage tab also shows billing-cycle token totals: input / output / cache tokens and cost by model. You can look back by calendar month or past billing cycles, with pool share estimated from token cost. Grok Bot weekly quota is a separate section and is not mixed into monthly pools.
 - Five tabs—Overview, Usage, Billing, Tasks, Status—with animated switching. Tab order is customizable in Settings. Overview defaults to own-pool and third-party usage on the same outer ring, breathing between the two; Settings can restore the original combined total-usage ring. Billing-cycle progress stays on the inner ring.
 - The Tasks tab lists Cursor cloud tasks (background agents), grouped by repository / status / time / source. Merged branches are hidden. Sources that the website hides by default (Grok Bot, API, SDK, and others) are included. Tapping a task opens the official Agents page in Chrome Custom Tabs for the full conversation.
-- The Status tab shows official Cursor availability: overview, components, active incidents, and recent history. No token required.
+- The Status tab shows official Cursor availability: overview, components, active incidents, and recent history. No token required. Incidents and the official status page open in Chrome Custom Tabs.
 - Rings, progress bars, and key numbers use light motion without clutter.
 
 ### Live usage notifications

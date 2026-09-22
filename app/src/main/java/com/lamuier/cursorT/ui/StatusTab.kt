@@ -31,14 +31,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -54,6 +54,7 @@ import com.lamuier.cursorT.model.StatusIncident
 import com.lamuier.cursorT.model.StatusIndicator
 import com.lamuier.cursorT.ui.theme.LocalDisplayZone
 import com.lamuier.cursorT.ui.theme.LocalPulseChartColors
+import com.lamuier.cursorT.util.CursorCustomTabs
 import com.lamuier.cursorT.util.DisplayTime
 import com.lamuier.cursorT.util.StatusPresentation
 
@@ -64,7 +65,9 @@ internal fun StatusTab(
     refreshing: Boolean,
     error: String?,
     onRetry: () -> Unit,
+    onOpenFailed: (String) -> Unit,
 ) {
+    val openUrl = rememberOpenStatusUrl(onOpenFailed)
     when {
         status == null && loading -> DashboardState(
             icon = null,
@@ -82,6 +85,7 @@ internal fun StatusTab(
         else -> StatusContent(
             status = status,
             error = error?.takeIf { !refreshing },
+            openUrl = openUrl,
         )
     }
 }
@@ -90,8 +94,8 @@ internal fun StatusTab(
 private fun StatusContent(
     status: CursorServiceStatus,
     error: String?,
+    openUrl: (String) -> Unit,
 ) {
-    val uriHandler = LocalUriHandler.current
     val accent = indicatorColor(status.indicator)
     AdaptiveTabContent { compact ->
         OverallStatusHero(
@@ -137,7 +141,7 @@ private fun StatusContent(
                 supporting = stringResource(R.string.status_active_count, status.activeIncidents.size),
             )
             status.activeIncidents.forEach { incident ->
-                IncidentCard(incident, compact, uriHandler)
+                IncidentCard(incident, compact, openUrl)
             }
         }
 
@@ -148,7 +152,7 @@ private fun StatusContent(
                 supporting = stringResource(R.string.status_item_count, status.scheduledMaintenances.size),
             )
             status.scheduledMaintenances.forEach { incident ->
-                IncidentCard(incident, compact, uriHandler)
+                IncidentCard(incident, compact, openUrl)
             }
         }
 
@@ -175,12 +179,12 @@ private fun StatusContent(
             }
         } else {
             status.recentIncidents.forEach { incident ->
-                IncidentCard(incident, compact, uriHandler)
+                IncidentCard(incident, compact, openUrl)
             }
         }
 
         TextButton(
-            onClick = { openSafeUrl(uriHandler, status.pageUrl) },
+            onClick = { openSafeUrl(openUrl, status.pageUrl) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(
@@ -323,7 +327,7 @@ private fun ComponentRow(name: String, status: ComponentStatus) {
 private fun IncidentCard(
     incident: StatusIncident,
     compact: Boolean,
-    uriHandler: UriHandler,
+    openUrl: (String) -> Unit,
 ) {
     val url = StatusPresentation.incidentUrl(incident.shortlink, incident.id)
     val latest = incident.updates.firstOrNull()
@@ -334,7 +338,7 @@ private fun IncidentCard(
                 if (url != null) {
                     Modifier
                         .semantics { role = Role.Button }
-                        .clickable { openSafeUrl(uriHandler, url) }
+                        .clickable { openSafeUrl(openUrl, url) }
                 } else {
                     Modifier
                 },
@@ -451,8 +455,21 @@ private fun componentColor(status: ComponentStatus): Color {
     }
 }
 
-private fun openSafeUrl(uriHandler: UriHandler, url: String) {
+private fun openSafeUrl(openUrl: (String) -> Unit, url: String) {
     if (StatusPresentation.isSafeStatusUrl(url)) {
-        runCatching { uriHandler.openUri(url) }
+        openUrl(url)
+    }
+}
+
+@Composable
+private fun rememberOpenStatusUrl(onOpenFailed: (String) -> Unit): (String) -> Unit {
+    val context = LocalContext.current
+    val toolbarColor = MaterialTheme.colorScheme.surface.toArgb()
+    return remember(context, toolbarColor, onOpenFailed) {
+        { url ->
+            if (!CursorCustomTabs.open(context, url, toolbarColor)) {
+                onOpenFailed(context.getString(R.string.tasks_open_page_failed))
+            }
+        }
     }
 }
