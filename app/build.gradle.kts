@@ -3,10 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val releaseStoreFile = providers.environmentVariable("CURSOR_PULSE_RELEASE_STORE_FILE").orNull
-val releaseStorePassword = providers.environmentVariable("CURSOR_PULSE_RELEASE_STORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("CURSOR_PULSE_RELEASE_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("CURSOR_PULSE_RELEASE_KEY_PASSWORD").orNull
+val releaseStoreFile = providers.environmentVariable("AGENTT_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("AGENTT_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("AGENTT_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("AGENTT_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningConfigured = listOf(
     releaseStoreFile,
     releaseStorePassword,
@@ -15,16 +15,16 @@ val releaseSigningConfigured = listOf(
 ).all { !it.isNullOrBlank() }
 
 android {
-    namespace = "com.lamuier.cursorT"
+    namespace = "com.lamuier.agenT"
     compileSdk = 37
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "com.lamuier.cursorT"
+        applicationId = "com.lamuier.agenT"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
-        versionName = "2.8.3"
+        versionCode = 1
+        versionName = "1.0.0"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }

@@ -1,4 +1,4 @@
-# Cursor Assistant technical notes
+# agenT technical notes
 
 For developers and contributors. This document covers the stack, build and release flow, and data-security implementation. The README is for end users and keeps only product and usage notes.
 
@@ -15,11 +15,18 @@ The Chinese [technical.md](technical.md) is canonical.
 | Architecture | AndroidX Lifecycle (StateFlow / ViewModel), Activity Compose, Biometric, Browser Custom Tabs |
 | Build | Android Gradle Plugin 9.2.1 · Gradle 9.5.1 |
 | Platform | `compileSdk` / `targetSdk` = 37 · `minSdk` = 26 (Android 8.0) |
-| Package | `com.lamuier.cursorT` |
-| Version | `versionCode` = 29 · `versionName` = 2.8.3 |
+| Application ID | `com.lamuier.agenT` |
+| Source namespace | `com.lamuier.agenT` (matches the application ID) |
+| Version | `versionCode` = 1 · `versionName` = 1.0.0 |
 | Size | Release uses R8 shrinking and resource shrinking. Dependencies are AndroidX (including Browser Custom Tabs) and Biometric only—no third-party networking or DI |
 
 ## Build and release
+
+### Shared assistant UI and status
+
+Service connections in Settings is the shared account / token entry. Overview uses matching Cursor / Codex cards, Usage supports provider filtering, and Status shows both summaries with selectable details. Both widget families bind both providers, refresh independently, and use cached results. Status-only widgets do not request quota APIs.
+
+Public status shares `ServiceStatusRepository`, `ServiceStatus`, and `StatusJsonParser`, with separate caches and in-flight requests per provider. Cursor uses summary / incidents on `status.cursor.com`; Codex uses summary / components / incidents on `status.openai.com`. OpenAI summary may omit Codex components, so the complete list is fetched separately, then scoped to Codex Web / API / CLI / desktop / extension and related incidents. Incomplete components produce unknown status; unrelated OpenAI outages do not become Codex outages. Public status requests carry no credentials.
 
 The project uses a single entry `build.ps1` (Android SDK 37 must be configured first):
 
@@ -45,6 +52,8 @@ Debug runs unit tests and Lint first, then produces `app\build\outputs\apk\debug
 
 ### Release signing and packaging
 
+The current local configuration uses `agent-release.p12`, `release-password.txt`, and the public certificate in the sibling `Android-signing/` directory. Relative paths allow the same key to be used on Windows after copying both sibling directories. The password is read only during the build and is not written to source or logs.
+
 The keystore is not in the repo. Signing metadata defaults to `.signing\` at the project root (override with `-SigningRoot`). The first package run binds the local `debug.keystore` if nothing is configured yet. You can also configure explicitly:
 
 ```powershell
@@ -59,7 +68,7 @@ Day-to-day release:
 .\build.ps1 -Release
 ```
 
-Clean is off by default (Windows often fails when `app\build` is locked). Add `-Clean` for a clean build, `-Online` to fetch dependencies, `-SkipChecks` to skip tests / Lint. The script checks the signing cert, zipalign, package name, version, permissions, and Manifest, and writes `dist\CursorT-v2.8.3-release.apk`.
+Clean is off by default (Windows often fails when `app\build` is locked). Add `-Clean` for a clean build, `-Online` to fetch dependencies, `-SkipChecks` to skip tests / Lint. The script checks the signing cert, zipalign, package name, version, permissions, and Manifest, and writes `dist\agenT-v1.0.0-release.apk`.
 
 ### Data-security notes
 
@@ -84,7 +93,7 @@ Android App (on device)
 - The token is not written to `savedInstanceState`, logs, or usage / task caches. Release disables app backup, device transfer, and cleartext HTTP.
 - Only parsed usage and task fields are cached (task cache is also encrypted per account + credential revision). Cursor raw responses are not stored. Conversations are not fetched in-app; the official website is opened instead. Task list requests include `include_sources` (including `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`). After parsing `source`, tasks are grouped by repository / status / time / source. Tasks with a merged PR are omitted from the Tasks tab.
 - Absolute times are formatted in the Settings display time zone with a GMT offset (default: follow system; other zones are searchable). Cache timestamps without a zone are read in the system zone at write time, then converted.
-- Overview ring style (separate pools / combined total) is stored in on-device SharedPreferences; separate pools is the default. In separate-pools mode, if exactly one pool is exhausted, only the remaining pool is drawn, with a note. Color rules: [overview-ring-colors.en.md](overview-ring-colors.en.md).
+- Cursor Overview quota display (separate pools / combined total) keeps the existing SharedPreferences storage key. The UI uses shared metric cards and thin progress bars; the old ring-color notes remain as historical design documentation.
 - UI language follows the system by default: English systems use `values-en`; everything else falls back to the default Chinese resources. Settings can force Simplified Chinese or English. Default `values/strings.xml` is Chinese.
 - Custom Tabs URLs must pass an allowlist: `cursor.com/agents` (no query, or only `id=<bcId>`), or `github.com` HTTPS links with no query/fragment.
 - Service status uses Statuspage public JSON (`/api/v2/summary.json` and `/api/v2/incidents.json`). HTML is not parsed and RSS is not subscribed. `summary.json` has overview, components, and unresolved incidents; `incidents.json` has recent history. Both are official, structured, unauthenticated APIs.

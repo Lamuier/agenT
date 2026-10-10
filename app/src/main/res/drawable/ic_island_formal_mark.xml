@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Flat branded cat for formal island copy; launcher artwork is not changed. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp" android:height="32dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="1.2" android:scaleY="1.2" android:pivotX="54" android:pivotY="54">
+        <path android:fillColor="#FF386287" android:fillType="evenOdd" android:pathData="M27,49 L28,30 Q28,27 31,29 L44,37 Q54,33 64,37 L77,29 Q80,27 80,30 L81,49 Q85,51 85,56 L85,60 Q85,65 80,65 L76,65 Q78,58 75,51 Q71,42 54,42 Q37,42 33,51 Q30,58 32,65 L28,65 Q23,65 23,60 L23,56 Q23,51 27,49 Z M37,56 Q39,48 45,52 Q49,54 49,58 Q49,61 46,58 Q42,54 39,59 Q36,61 37,56 Z M59,58 Q59,54 63,52 Q69,48 71,56 Q72,61 69,59 Q66,54 62,58 Q59,61 59,58 Z" />
+        <path android:fillColor="#FF386287" android:fillType="evenOdd" android:pathData="M54,62 A13,13 0,1 1,54,88 A13,13 0,1 1,54,62 Z M54,68 A7,7 0,1 0,54,82 A7,7 0,1 0,54,68 Z M36,67 Q32,63 28,67 Q26,71 30,75 L36,80 Q39,81 40,77 Q37,73 36,67 Z M72,67 Q76,63 80,67 Q82,71 78,75 L72,80 Q69,81 68,77 Q71,73 72,67 Z" />
+    </group>
+</vector>

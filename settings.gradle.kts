@@ -38,6 +38,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Cursor助手"
+rootProject.name = "agenT"
 include(":app")
 

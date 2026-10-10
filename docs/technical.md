@@ -1,4 +1,4 @@
-# Cursor助手 技术说明
+# agenT 技术说明
 
 面向开发者与贡献者。本文档覆盖技术栈、构建与发布流程，以及数据安全实现的要点。README 面向终端用户，仅保留功能与使用说明。
 
@@ -13,11 +13,18 @@
 | 架构构件 | AndroidX Lifecycle（StateFlow / ViewModel）、Activity Compose、Biometric、Browser Custom Tabs |
 | 构建 | Android Gradle Plugin 9.2.1 · Gradle 9.5.1 |
 | 平台 | `compileSdk` / `targetSdk` = 37 · `minSdk` = 26（Android 8.0） |
-| 包名 | `com.lamuier.cursorT` |
-| 版本 | `versionCode` = 29 · `versionName` = 2.8.3 |
+| 安装包 ID | `com.lamuier.agenT` |
+| 源码 namespace | `com.lamuier.agenT`（与安装包 ID 一致） |
+| 版本 | `versionCode` = 1 · `versionName` = 1.0.0 |
 | 体积 | Release 开启 R8 混淆与资源压缩，仅引入 AndroidX（含 Browser Custom Tabs）与 Biometric，无第三方网络 / 依赖注入框架 |
 
 ## 构建与发布
+
+### 双服务界面与状态
+
+设置中的「服务连接」是账号 / Token 的统一入口；概览使用同样式的 Cursor / Codex 摘要卡，用量支持服务筛选，状态同时显示两边总览并切换详情。两套小组件均同时绑定两边数据，独立刷新与回显缓存；只放状态小组件时不会请求账号用量接口。
+
+公开状态共用 `ServiceStatusRepository`、`ServiceStatus` 与 `StatusJsonParser`，缓存及并发请求按服务隔离。Cursor 使用 `status.cursor.com` 的 summary / incidents；Codex 使用 `status.openai.com` 的 summary / components / incidents。OpenAI summary 可能省略部分 Codex 组件，因此完整组件单独请求；再按 Codex Web / API / CLI / 桌面 / 扩展范围判断状态并筛选事件。组件获取不完整时显示未知，不把 OpenAI 其他产品的故障当成 Codex 故障。状态请求不携带任何凭据。
 
 工程使用统一入口 `build.ps1`（需先配置 Android SDK 37）：
 
@@ -43,6 +50,8 @@ Debug 默认先跑单元测试与 Lint，再产出 `app\build\outputs\apk\debug\
 
 ### Release 签名与打包
 
+当前本地配置使用工程同级 `Android-signing/` 中的 `agent-release.p12`、`release-password.txt` 与公钥证书。签名配置采用相对路径，Windows 复制这两个同级文件夹后也可使用同一份密钥；密码仅在构建时读取，不写入源码或日志。
+
 密钥库不进仓库，签名元数据默认位于工程根目录的 `.signing\`（可用 `-SigningRoot` 指定其他位置）。首次打包若尚未配置，会自动绑定本机 `debug.keystore`；也可显式配置：
 
 ```powershell
@@ -57,7 +66,7 @@ Debug 默认先跑单元测试与 Lint，再产出 `app\build\outputs\apk\debug\
 .\build.ps1 -Release
 ```
 
-默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\CursorT-v2.8.3-release.apk`。
+默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\agenT-v1.0.0-release.apk`。
 
 ### 数据安全实现要点
 
@@ -82,7 +91,7 @@ Android App（本机）
 - Token 不进入 `savedInstanceState`、日志或用量 / 任务缓存；Release 禁止应用数据备份、设备迁移及明文 HTTP。
 - 仅缓存解析后的用量与任务字段（任务缓存同样按 账号+凭据修订号 加密存储），不保存 Cursor 原始响应。任务对话不在应用内请求，改为打开官方网页。任务列表请求会带上 `include_sources`（含 `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`），解析 `source` 后按仓库 / 状态 / 时间 / 来源分组展示；已合并 PR 的任务不进入任务页列表。
 - 绝对时间按设置中的展示时区格式化并附带 GMT 偏移（默认跟随系统，其他时区可搜索）；本机无时区的缓存时间戳按写入时的系统时区解读后再换算。
-- 概览圆环样式（分列两池 / 合并总用量）保存在本机 SharedPreferences，默认分列。分列时若恰好一个池用尽，只画仍有额度的池并提示。配色规则见 [overview-ring-colors.md](overview-ring-colors.md)。
+- Cursor 概览额度显示（分列两池 / 合并总用量）保存在本机 SharedPreferences，沿用旧 storage key。主界面改为统一指标卡和细进度条，旧圆环配色说明作为历史设计资料保留。
 - 界面语言默认跟随系统：英文系统用 `values-en`，其余回退默认中文资源；设置可强制简体中文或 English。默认 `values/strings.xml` 为中文。
 - Custom Tabs 目标 URL 必须通过白名单：`cursor.com/agents`（无查询串或仅 `id=<bcId>`），或无 query/fragment 的 `github.com` HTTPS 链接。
 - 服务状态使用 Statuspage 公开 JSON（`/api/v2/summary.json` 与 `/api/v2/incidents.json`），不解析 HTML、不订阅 RSS。`summary.json` 含总览、组件与未恢复事件；`incidents.json` 提供近期历史。二者均为官方、结构化、无需鉴权的接口。

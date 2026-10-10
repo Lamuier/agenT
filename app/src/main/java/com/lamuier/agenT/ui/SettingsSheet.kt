@@ -1,0 +1,1004 @@
+package com.lamuier.agenT.ui
+
+import android.os.Build
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import com.lamuier.agenT.R
+import com.lamuier.agenT.codex.CodexQuotaUiState
+import com.lamuier.agenT.model.CursorAccount
+import com.lamuier.agenT.data.NotificationSettings
+import com.lamuier.agenT.notification.IslandMonitorState
+import com.lamuier.agenT.notification.NotificationCopy
+import com.lamuier.agenT.data.OverviewUsageRingMode
+import com.lamuier.agenT.data.PercentDisplayMode
+import com.lamuier.agenT.data.ThemeSettings
+import com.lamuier.agenT.model.DashboardTab
+import com.lamuier.agenT.ui.theme.ColorPalette
+import com.lamuier.agenT.ui.theme.ThemeMode
+import com.lamuier.agenT.util.AppLanguage
+import com.lamuier.agenT.util.DisplayTime
+import com.lamuier.agenT.util.DisplayTimeZones
+import java.time.Instant
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SettingsSheet(
+    settings: ThemeSettings,
+    notificationSettings: NotificationSettings,
+    onDismiss: () -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onPaletteChange: (ColorPalette) -> Unit,
+    timeZoneId: String,
+    onTimeZoneChange: (String) -> Unit,
+    language: AppLanguage,
+    onLanguageChange: (AppLanguage) -> Unit,
+    onLiveUpdatesToggle: (Boolean) -> Unit,
+    onThresholdRemindersToggle: (Boolean) -> Unit,
+    percentDisplayMode: PercentDisplayMode,
+    onPercentDisplayModeChange: (PercentDisplayMode) -> Unit,
+    tabOrder: List<DashboardTab>,
+    onTabOrderChange: (List<DashboardTab>) -> Unit,
+    onTabOrderReset: () -> Unit,
+    overviewUsageRingMode: OverviewUsageRingMode,
+    onOverviewUsageRingModeChange: (OverviewUsageRingMode) -> Unit,
+    onManageTokens: () -> Unit,
+    cursorAccount: CursorAccount?,
+    codexState: CodexQuotaUiState,
+    onCodexResetRemindersToggle: (Boolean) -> Unit = {},
+    onCatLanguageToggle: (Boolean) -> Unit = {},
+) {
+    val systemPaletteAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        stringResource(R.string.settings_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        stringResource(R.string.settings_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_settings))
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.settings_connections_title))
+                Text(
+                    stringResource(R.string.settings_connections_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SettingNavRow(
+                    label = stringResource(R.string.token_management_title),
+                    description = stringResource(R.string.token_management_connection_summary,
+                        stringResource(when {
+                            cursorAccount == null -> R.string.connection_not_configured
+                            cursorAccount.tokenExpired -> R.string.connection_token_expired
+                            else -> R.string.token_management_saved
+                        }),
+                        stringResource(when {
+                            codexState.credential == null -> R.string.connection_not_configured
+                            codexState.credential.expired || codexState.credential.invalid -> R.string.connection_token_expired
+                            else -> R.string.token_management_saved
+                        })),
+                    icon = Icons.Outlined.Key,
+                    onClick = onManageTokens,
+                )
+            }
+            HorizontalDivider()
+
+            // ---- 外观 ----
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.appearance_title))
+                Text(
+                    stringResource(R.string.appearance_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ThemeModeOption(
+                        modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.theme_mode_system),
+                        icon = Icons.Outlined.PhoneAndroid,
+                        selected = settings.themeMode == ThemeMode.System,
+                        description = stringResource(R.string.theme_mode_system_description),
+                        onClick = { onThemeModeChange(ThemeMode.System) },
+                    )
+                    ThemeModeOption(
+                        modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.theme_mode_light),
+                        icon = Icons.Outlined.LightMode,
+                        selected = settings.themeMode == ThemeMode.Light,
+                        description = stringResource(R.string.theme_mode_light_description),
+                        onClick = { onThemeModeChange(ThemeMode.Light) },
+                    )
+                    ThemeModeOption(
+                        modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.theme_mode_dark),
+                        icon = Icons.Outlined.DarkMode,
+                        selected = settings.themeMode == ThemeMode.Dark,
+                        description = stringResource(R.string.theme_mode_dark_description),
+                        onClick = { onThemeModeChange(ThemeMode.Dark) },
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ColorPalette.entries.forEach { palette ->
+                        val enabled = palette != ColorPalette.System || systemPaletteAvailable
+                        PaletteOption(
+                            palette = palette,
+                            selected = settings.colorPalette == palette,
+                            enabled = enabled,
+                            supporting = when {
+                                palette == ColorPalette.System && !systemPaletteAvailable ->
+                                    stringResource(R.string.palette_dynamic_need_android12)
+                                palette == ColorPalette.System ->
+                                    stringResource(R.string.palette_dynamic_follow_wallpaper)
+                                else -> null
+                            },
+                            onClick = {
+                                if (enabled) onPaletteChange(palette)
+                            },
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.language_section_title))
+                Text(
+                    stringResource(R.string.language_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AppLanguage.entries.forEach { option ->
+                    LanguageOption(
+                        option = option,
+                        selected = language == option,
+                        onClick = { onLanguageChange(option) },
+                    )
+                }
+            }
+
+            HorizontalDivider()
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.timezone_section_title))
+                Text(
+                    stringResource(R.string.timezone_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val previewZone = DisplayTimeZones.resolve(timeZoneId)
+                Text(
+                    stringResource(
+                        R.string.timezone_preview,
+                        DisplayTime.formatDateTime(Instant.now(), previewZone, withYear = true),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                )
+                TimeZonePicker(
+                    timeZoneId = timeZoneId,
+                    onTimeZoneChange = onTimeZoneChange,
+                )
+            }
+
+            HorizontalDivider()
+
+            // ---- 页签顺序 ----
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.tab_order_section_title))
+                Text(
+                    stringResource(R.string.tab_order_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TabOrderEditor(
+                    order = tabOrder,
+                    onMove = { index, delta ->
+                        onTabOrderChange(DashboardTab.move(tabOrder, index, delta))
+                    },
+                )
+                val isDefault = tabOrder == DashboardTab.DEFAULT_ORDER
+                TextButton(
+                    onClick = onTabOrderReset,
+                    enabled = !isDefault,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(stringResource(R.string.tab_order_reset))
+                }
+            }
+
+            HorizontalDivider()
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.overview_ring_section_title))
+                Text(
+                    stringResource(R.string.overview_ring_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OverviewUsageRingModeSelector(
+                    selected = overviewUsageRingMode,
+                    onSelected = onOverviewUsageRingModeChange,
+                )
+            }
+
+            HorizontalDivider()
+
+            // ---- 通知 ----
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.notification_section_title))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingToggleRow(
+                        label = stringResource(R.string.notification_cat_language_label),
+                        description = stringResource(R.string.notification_cat_language_description),
+                        checked = notificationSettings.catLanguageEnabled,
+                        onCheckedChange = onCatLanguageToggle,
+                    )
+                    val copy = NotificationCopy(notificationSettings.catLanguageEnabled)
+                    val examples = IslandMonitorState.entries.map { stringResource(copy.resource(it.labelRes)) }
+                    Text(
+                        stringResource(R.string.notification_copy_preview, examples.joinToString(" / ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.notification_multi_preview,
+                            stringResource(copy.multiChip(IslandMonitorState.ServiceIssue)) + "+2"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SettingToggleRow(
+                        label = stringResource(R.string.notification_live_updates_label),
+                        description = stringResource(R.string.notification_live_updates_description),
+                        checked = notificationSettings.liveUpdatesEnabled,
+                        onCheckedChange = onLiveUpdatesToggle,
+                    )
+                    SettingToggleRow(
+                        label = stringResource(R.string.notification_threshold_reminders_label),
+                        description = stringResource(R.string.notification_threshold_reminders_description),
+                        checked = notificationSettings.thresholdRemindersEnabled,
+                        onCheckedChange = onThresholdRemindersToggle,
+                    )
+                    SettingToggleRow(
+                        label = stringResource(R.string.notification_reset_reminders_label),
+                        description = stringResource(R.string.notification_reset_reminders_description),
+                        checked = notificationSettings.codexResetRemindersEnabled,
+                        onCheckedChange = onCodexResetRemindersToggle,
+                    )
+                }
+            }
+
+        }
+    }
+}
+
+@Composable
+private fun TabOrderEditor(
+    order: List<DashboardTab>,
+    onMove: (index: Int, delta: Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        order.forEachIndexed { index, tab ->
+            TabOrderRow(
+                position = index + 1,
+                tab = tab,
+                canMoveUp = index > 0,
+                canMoveDown = index < order.lastIndex,
+                onMoveUp = { onMove(index, -1) },
+                onMoveDown = { onMove(index, 1) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabOrderRow(
+    position: Int,
+    tab: DashboardTab,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+) {
+    val tabLabel = stringResource(tab.labelRes)
+    val moveUpDescription = stringResource(R.string.tab_order_move_up, tabLabel)
+    val moveDownDescription = stringResource(R.string.tab_order_move_down, tabLabel)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "$position",
+                modifier = Modifier.width(20.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                tabLabel,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            DashboardTabScopeBadge(tab.scope)
+            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = moveUpDescription)
+            }
+            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = moveDownDescription)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun HorizontalDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    )
+}
+
+@Composable
+private fun SettingNavRow(
+    label: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "›",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PercentDisplayModeSelector(
+    selected: PercentDisplayMode,
+    onSelected: (PercentDisplayMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PercentDisplayMode.entries.forEach { mode ->
+            val label = when (mode) {
+                PercentDisplayMode.Used -> stringResource(R.string.notification_display_mode_used)
+                PercentDisplayMode.Remaining ->
+                    stringResource(R.string.notification_display_mode_remaining)
+            }
+            PercentModeOption(
+                modifier = Modifier.weight(1f),
+                label = label,
+                selected = selected == mode,
+                onClick = { onSelected(mode) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverviewUsageRingModeSelector(
+    selected: OverviewUsageRingMode,
+    onSelected: (OverviewUsageRingMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        OverviewUsageRingMode.entries.forEach { mode ->
+            val label = when (mode) {
+                OverviewUsageRingMode.Split -> stringResource(R.string.overview_ring_mode_split)
+                OverviewUsageRingMode.Combined -> stringResource(R.string.overview_ring_mode_combined)
+            }
+            PercentModeOption(
+                modifier = Modifier.weight(1f),
+                label = label,
+                selected = selected == mode,
+                onClick = { onSelected(mode) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PercentModeOption(
+    modifier: Modifier = Modifier,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val border = if (selected) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    Surface(
+        modifier = modifier
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                contentDescription = label
+            }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = border,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingToggleRow(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+    }
+}
+
+@Composable
+private fun TimeZonePicker(
+    timeZoneId: String,
+    onTimeZoneChange: (String) -> Unit,
+) {
+    val resources = LocalContext.current.resources
+    val focusManager = LocalFocusManager.current
+    var query by remember { mutableStateOf("") }
+    val selectedOption = DisplayTimeZones.option(timeZoneId)
+    val matches = remember(query, timeZoneId) {
+        DisplayTimeZones.search(query) { option ->
+            resources.getString(option.labelRes)
+        }.filter { it.id != timeZoneId }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TimeZoneOption(
+            id = DisplayTimeZones.SYSTEM_ID,
+            label = stringResource(R.string.timezone_system),
+            selected = timeZoneId == DisplayTimeZones.SYSTEM_ID,
+            onClick = {
+                query = ""
+                focusManager.clearFocus()
+                onTimeZoneChange(DisplayTimeZones.SYSTEM_ID)
+            },
+        )
+        if (timeZoneId != DisplayTimeZones.SYSTEM_ID) {
+            TimeZoneOption(
+                id = timeZoneId,
+                label = selectedOption?.let { stringResource(it.labelRes) }
+                    ?: DisplayTimeZones.label(timeZoneId, resources),
+                selected = true,
+                onClick = { query = "" },
+            )
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(stringResource(R.string.timezone_search_label)) },
+            placeholder = { Text(stringResource(R.string.timezone_search_placeholder)) },
+            leadingIcon = {
+                Icon(Icons.Outlined.Search, contentDescription = null)
+            },
+            trailingIcon = if (query.isNotEmpty()) {
+                {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.timezone_search_clear),
+                        )
+                    }
+                }
+            } else {
+                null
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+        )
+        if (query.trim().isNotEmpty() && matches.isEmpty()) {
+            Text(
+                stringResource(R.string.timezone_search_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        matches.forEach { option ->
+            TimeZoneOption(
+                id = option.id,
+                label = stringResource(option.labelRes),
+                selected = false,
+                onClick = {
+                    onTimeZoneChange(option.id)
+                    query = ""
+                    focusManager.clearFocus()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeZoneOption(
+    id: String,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val zone = DisplayTimeZones.resolve(id)
+    val offset = DisplayTime.offsetLabel(zone)
+    val supporting = if (id == DisplayTimeZones.SYSTEM_ID) {
+        stringResource(R.string.timezone_device_offset, offset)
+    } else {
+        offset
+    }
+    val border = if (selected) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                contentDescription = "$label，$supporting"
+            }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = border,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Schedule,
+                contentDescription = null,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    supporting,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (selected) {
+                Text(
+                    stringResource(R.string.selected),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguageOption(
+    option: AppLanguage,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = stringResource(option.labelRes)
+    val border = if (selected) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                contentDescription = label
+            }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = border,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Language,
+                contentDescription = null,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (selected) {
+                Text(
+                    stringResource(R.string.selected),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeModeOption(
+    modifier: Modifier = Modifier,
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    description: String,
+    onClick: () -> Unit,
+) {
+    val border = if (selected) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    Surface(
+        modifier = modifier
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                contentDescription = "$label，$description"
+            }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = border,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaletteOption(
+    palette: ColorPalette,
+    selected: Boolean,
+    enabled: Boolean,
+    supporting: String?,
+    onClick: () -> Unit,
+) {
+    val paletteName = stringResource(palette.displayNameRes)
+    val unavailable = stringResource(R.string.palette_unavailable)
+    val optionDescription = stringResource(R.string.palette_option_description, paletteName)
+    val paletteDescription = buildString {
+        append(optionDescription)
+        if (supporting != null) append(" · $supporting")
+        if (!enabled) append(" · $unavailable")
+    }
+    val border = when {
+        selected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+                contentDescription = paletteDescription
+            }
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = border,
+        contentColor = if (enabled) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+        },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(palette.previewSwatch.copy(alpha = if (enabled) 1f else 0.4f))
+                    .border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = CircleShape,
+                    ),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    paletteName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                supporting?.let {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (enabled) 1f else 0.6f,
+                        ),
+                    )
+                }
+            }
+            if (selected) {
+                Text(
+                    stringResource(R.string.selected),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}

@@ -1,0 +1,152 @@
+package com.lamuier.agenT.ui
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.lamuier.agenT.R
+import com.lamuier.agenT.codex.*
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import kotlin.math.floor
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, onSelect: (LocalDate) -> Unit) {
+    val context = LocalContext.current
+    val locale = context.resources.configuration.locales[0]
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val colors = mapOf(
+        ResetHeatmapKind.Regular to Color(if (dark) 0xFFFF906F else 0xFFEF7655),
+        ResetHeatmapKind.Banked to Color(if (dark) 0xFFE6B18C else 0xFFF5BA8E),
+        ResetHeatmapKind.Other to Color(if (dark) 0xFF91B6F0 else 0xFF7EA3D9))
+    val empty = Color(if (dark) 0xFF343943 else 0xFFECE3D0)
+    val outline = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
+    val selectedColor = MaterialTheme.colorScheme.primary
+    val gridScroll = rememberScrollState()
+    val density = LocalDensity.current
+    val cell = 22.dp
+    val gap = 4.dp
+    val step = cell + gap
+    val header = 24.dp
+    val gridWidth = step * data.weeks.size + 20.dp
+    val gridHeight = header + step * 7 - gap
+    val stepPx = with(density) { step.toPx() }
+    val cellPx = with(density) { cell.toPx() }
+    val headerPx = with(density) { header.toPx() }
+    LaunchedEffect(data.from, data.to) {
+        withFrameNanos { }
+        gridScroll.scrollTo(gridScroll.maxValue)
+    }
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(ResetHeatmapKind.Regular to R.string.reset_heatmap_regular,
+                    ResetHeatmapKind.Banked to R.string.reset_heatmap_banked,
+                    ResetHeatmapKind.Other to R.string.reset_heatmap_other).forEach { (kind, label) ->
+                    HeatmapLegend(colors.getValue(kind), stringResource(label))
+                }
+                HeatmapLegend(empty, stringResource(R.string.reset_heatmap_no_record))
+            }
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.width(40.dp).padding(top = header), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    (0..6).forEach { row -> Box(Modifier.height(cell), contentAlignment = Alignment.CenterStart) {
+                        val label = when (row) { 1 -> R.string.reset_heatmap_mon; 3 -> R.string.reset_heatmap_wed; 5 -> R.string.reset_heatmap_fri; else -> null }
+                        label?.let { Text(stringResource(it), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                    } }
+                }
+                Box(Modifier.weight(1f).horizontalScroll(gridScroll)) {
+                    Box(Modifier.width(gridWidth).height(gridHeight)) {
+                        Canvas(Modifier.fillMaxSize().pointerInput(data, stepPx, cellPx, headerPx) {
+                            detectTapGestures { point ->
+                                val x = point.x; val y = point.y - headerPx
+                                if (x >= 0 && y >= 0 && x % stepPx < cellPx && y % stepPx < cellPx)
+                                    CodexResetHeatmap.dayAt(data, floor(x / stepPx).toInt(), floor(y / stepPx).toInt())
+                                        ?.let { onSelect(it.date) }
+                            }
+                        }) {
+                            data.weeks.forEachIndexed { column, week -> week.forEachIndexed { row, day ->
+                                if (!day.inRange) return@forEachIndexed
+                                val topLeft = Offset(column * stepPx, headerPx + row * stepPx)
+                                val size = Size(cellPx, cellPx)
+                                val radius = 4.dp.toPx()
+                                val path = Path().apply { addRoundRect(RoundRect(topLeft.x, topLeft.y,
+                                    topLeft.x + size.width, topLeft.y + size.height, CornerRadius(radius, radius))) }
+                                clipPath(path) {
+                                    val types = day.kinds.sortedBy { it.ordinal }
+                                    if (types.isEmpty()) drawRect(empty, topLeft, size)
+                                    else types.forEachIndexed { index, type ->
+                                        val width = cellPx / types.size
+                                        drawRect(colors.getValue(type), Offset(topLeft.x + index * width, topLeft.y), Size(width, cellPx))
+                                    }
+                                }
+                                if (day.entries.isNotEmpty()) drawRoundRect(outline, topLeft, size, CornerRadius(radius, radius), style = Stroke(1.dp.toPx()))
+                                if (day.date == selectedDate) drawRoundRect(selectedColor, topLeft, size, CornerRadius(radius, radius), style = Stroke(2.dp.toPx()))
+                            } }
+                        }
+                        var previousMonth: java.time.YearMonth? = null
+                        data.weeks.forEachIndexed { column, week ->
+                            val firstDay = week.firstOrNull { it.inRange } ?: return@forEachIndexed
+                            val monthDay = week.firstOrNull { it.inRange && it.date.dayOfMonth == 1 } ?: firstDay
+                            val month = java.time.YearMonth.from(monthDay.date)
+                            if (month != previousMonth) {
+                                Text(monthDay.date.format(DateTimeFormatter.ofPattern("MMM", locale)),
+                                    Modifier.offset(x = step * column), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                previousMonth = month
+                            }
+                            week.forEachIndexed { row, day -> if (day.inRange) {
+                                val description = context.getString(R.string.reset_heatmap_day_accessibility,
+                                    day.date.toString(), day.entries.size)
+                                // Virtual cells provide TalkBack actions; pointer hit testing stays exact on the dense grid.
+                                Box(Modifier.offset(x = step * column, y = header + step * row).size(cell).semantics {
+                                    contentDescription = description
+                                    selected = day.date == selectedDate
+                                    onClick { onSelect(day.date); true }
+                                })
+                            } }
+                        }
+                    }
+                }
+            }
+            Text(stringResource(R.string.reset_heatmap_hint), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun HeatmapLegend(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(color))
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}

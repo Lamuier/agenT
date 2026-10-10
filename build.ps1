@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    CursorT 唯一构建入口。
+    agenT 唯一构建入口。
 
 .DESCRIPTION
     .\build.ps1                 # Debug 构建
@@ -224,14 +224,14 @@ function Write-SigningMetadata {
 
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-    $env:CURSOR_PULSE_KEYTOOL_PASS = $PlainPassword
+    $env:AGENTT_KEYTOOL_PASS = $PlainPassword
     try {
         $exportArgs = @(
             "-exportcert",
             "-keystore", $StoreFile,
             "-alias", $KeyAliasName,
             "-file", $certificateFile,
-            "-storepass:env", "CURSOR_PULSE_KEYTOOL_PASS"
+            "-storepass:env", "AGENTT_KEYTOOL_PASS"
         )
         if ($StoreFile.ToLowerInvariant().EndsWith(".p12")) {
             $exportArgs = @(
@@ -240,7 +240,7 @@ function Write-SigningMetadata {
                 "-storetype", "PKCS12",
                 "-alias", $KeyAliasName,
                 "-file", $certificateFile,
-                "-storepass:env", "CURSOR_PULSE_KEYTOOL_PASS"
+                "-storepass:env", "AGENTT_KEYTOOL_PASS"
             )
         }
         $exportOutput = Invoke-Native $keytool $exportArgs
@@ -250,7 +250,7 @@ function Write-SigningMetadata {
         }
     } finally {
         # 用赋 null 清除环境变量：Remove-Item Env: 在部分宿主的删除包装器下会变成终止性绑定错误
-        $env:CURSOR_PULSE_KEYTOOL_PASS = $null
+        $env:AGENTT_KEYTOOL_PASS = $null
     }
 
     $securePassword = ConvertTo-SecureString $PlainPassword -AsPlainText -Force
@@ -336,8 +336,8 @@ function Invoke-SetupSigning {
         return
     }
 
-    $alias = "cursor-pulse-release"
-    $storeFile = Join-Path $SigningRoot "cursor-pulse-release.p12"
+    $alias = "agent-release"
+    $storeFile = Join-Path $SigningRoot "agent-release.p12"
     if ((Test-Path -LiteralPath $storeFile) -and -not $ForceRebind) {
         throw "拒绝覆盖已有密钥库: $storeFile（请加 -ForceRebind）"
     }
@@ -347,7 +347,7 @@ function Invoke-SetupSigning {
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
     $plainPassword = [Convert]::ToBase64String($passwordBytes)
     $keytool = Join-Path (Resolve-JavaHome) "bin\keytool.exe"
-    $env:CURSOR_PULSE_KEYTOOL_PASS = $plainPassword
+    $env:AGENTT_KEYTOOL_PASS = $plainPassword
     try {
         $generateArgs = @(
             "-genkeypair", "-noprompt",
@@ -358,9 +358,9 @@ function Invoke-SetupSigning {
             "-keysize", "4096",
             "-sigalg", "SHA256withRSA",
             "-validity", "10000",
-            "-dname", "CN=CursorT Release,O=CursorT,C=CN",
-            "-storepass:env", "CURSOR_PULSE_KEYTOOL_PASS",
-            "-keypass:env", "CURSOR_PULSE_KEYTOOL_PASS"
+            "-dname", "CN=Lamuier,OU=Lamu,O=Lamu,L=GZ,ST=GD,C=CN",
+            "-storepass:env", "AGENTT_KEYTOOL_PASS",
+            "-keypass:env", "AGENTT_KEYTOOL_PASS"
         )
         $generateOutput = Invoke-Native $keytool $generateArgs
         if ($LASTEXITCODE -ne 0) {
@@ -371,7 +371,7 @@ function Invoke-SetupSigning {
         Write-SigningMetadata -Root $SigningRoot -StoreFile $storeFile `
             -KeyAliasName $alias -PlainPassword $plainPassword -Source "generated-pkcs12"
     } finally {
-        $env:CURSOR_PULSE_KEYTOOL_PASS = $null
+        $env:AGENTT_KEYTOOL_PASS = $null
         [Array]::Clear($passwordBytes, 0, $passwordBytes.Length)
         $plainPassword = $null
     }
@@ -384,12 +384,17 @@ function Import-ReleaseSigningEnv([string]$MetadataFile) {
             throw "签名资产缺失: $requiredPath"
         }
     }
-    $credential = Import-Clixml -LiteralPath $metadata.credentialFile
-    $plainPassword = $credential.GetNetworkCredential().Password
-    $env:CURSOR_PULSE_RELEASE_STORE_FILE = [string]$metadata.storeFile
-    $env:CURSOR_PULSE_RELEASE_STORE_PASSWORD = $plainPassword
-    $env:CURSOR_PULSE_RELEASE_KEY_ALIAS = [string]$metadata.keyAlias
-    $env:CURSOR_PULSE_RELEASE_KEY_PASSWORD = $plainPassword
+    if ($metadata.credentialFormat -eq "text") {
+        $plainPassword = (Get-Content -Raw -LiteralPath $metadata.credentialFile).TrimEnd("`r", "`n")
+        if ([string]::IsNullOrEmpty($plainPassword)) { throw "签名密码文件为空" }
+    } else {
+        $credential = Import-Clixml -LiteralPath $metadata.credentialFile
+        $plainPassword = $credential.GetNetworkCredential().Password
+    }
+    $env:AGENTT_RELEASE_STORE_FILE = (Resolve-Path -LiteralPath $metadata.storeFile).Path
+    $env:AGENTT_RELEASE_STORE_PASSWORD = $plainPassword
+    $env:AGENTT_RELEASE_KEY_ALIAS = [string]$metadata.keyAlias
+    $env:AGENTT_RELEASE_KEY_PASSWORD = $plainPassword
     return [pscustomobject]@{
         Metadata = $metadata
         PlainPassword = $plainPassword
@@ -398,10 +403,10 @@ function Import-ReleaseSigningEnv([string]$MetadataFile) {
 
 function Clear-ReleaseSigningEnv {
     foreach ($name in @(
-        "CURSOR_PULSE_RELEASE_STORE_FILE",
-        "CURSOR_PULSE_RELEASE_STORE_PASSWORD",
-        "CURSOR_PULSE_RELEASE_KEY_ALIAS",
-        "CURSOR_PULSE_RELEASE_KEY_PASSWORD"
+        "AGENTT_RELEASE_STORE_FILE",
+        "AGENTT_RELEASE_STORE_PASSWORD",
+        "AGENTT_RELEASE_KEY_ALIAS",
+        "AGENTT_RELEASE_KEY_PASSWORD"
     )) {
         Remove-Item "Env:$name" -ErrorAction SilentlyContinue
     }
@@ -463,7 +468,7 @@ function Test-ReleaseApk {
     $badging = Invoke-Native $aapt @("dump", "badging", $apkPath)
     if ($LASTEXITCODE -ne 0) { throw "无法读取 APK badging" }
     $packageLine = $badging | Where-Object { $_ -like "package:*" } | Select-Object -First 1
-    if ($packageLine -notmatch "name='com\.lamuier\.cursorT'") { throw "包名不正确: $packageLine" }
+    if ($packageLine -notmatch "name='com\.lamuier\.agenT'") { throw "包名不正确: $packageLine" }
     if ($packageLine -notmatch "versionCode='$ExpectedVersionCode'") { throw "versionCode 不正确: $packageLine" }
     $escapedVersionName = [regex]::Escape($ExpectedVersionName)
     if ($packageLine -notmatch "versionName='$escapedVersionName'") { throw "versionName 不正确: $packageLine" }
@@ -536,7 +541,7 @@ function Test-ReleaseApk {
     if ($manifest -notmatch "android:allowBackup[^\n]*0x0") { throw "allowBackup 不是 false" }
     if ($manifest -notmatch "android:usesCleartextTraffic[^\n]*0x0") { throw "usesCleartextTraffic 不是 false" }
 
-    Write-Host "校验通过: com.lamuier.cursorT $ExpectedVersionName ($ExpectedVersionCode)"
+    Write-Host "校验通过: com.lamuier.agenT $ExpectedVersionName ($ExpectedVersionCode)"
     Write-Host "  ABIs      : $($nativeAbis -join ', ')"
     Write-Host "  Cert SHA256: $actualFingerprint"
 }
@@ -624,9 +629,9 @@ function Invoke-InstallDebug {
 function Invoke-ReleasePackage {
     $version = Get-AppVersion
     $sdk = Resolve-AndroidSdk
-    $artifactBaseName = "CursorT-v$($version.VersionName)"
+    $artifactBaseName = "agenT-v$($version.VersionName)"
 
-    Write-Host "CursorT Release 打包"
+    Write-Host "agenT Release 打包"
     Write-Host "  versionName : $($version.VersionName)"
     Write-Host "  versionCode : $($version.VersionCode)"
     Write-Host "  Android SDK : $sdk"
@@ -689,7 +694,7 @@ function Invoke-ReleasePackage {
             Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-release.sha256") -Encoding ascii
 
         [ordered]@{
-            packageName = "com.lamuier.cursorT"
+            packageName = "com.lamuier.agenT"
             versionCode = $version.VersionCode
             versionName = $version.VersionName
             apk = $destination
@@ -699,7 +704,7 @@ function Invoke-ReleasePackage {
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-build.json") -Encoding utf8
 
         # dist 只保留最新版本：删除旧版本产物（仅匹配本项目命名模式，不触碰其他文件）
-        $artifactPattern = '^(CursorUsage|CursorT)-v\S+-(release\.apk|mapping\.txt|release\.sha256|build\.json)$'
+        $artifactPattern = '^(CursorUsage|agenT|QuotaT|AgentT)-v\S+-(release\.apk|mapping\.txt|release\.sha256|build\.json)$'
         $staleFiles = Get-ChildItem -LiteralPath $dist -File |
             Where-Object { $_.Name -match $artifactPattern -and $_.Name -notlike "$artifactBaseName-*" }
         foreach ($stale in $staleFiles) {
