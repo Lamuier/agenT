@@ -19,6 +19,7 @@ import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.util.DisplayTimeZones
 import com.lamuier.agenT.data.NotificationPreferences
 import com.lamuier.agenT.model.AgenTOverview
+import com.lamuier.agenT.model.AgenTasks
 import com.lamuier.agenT.util.AppLocale
 import com.lamuier.agenT.util.UsageCalculations
 import com.lamuier.agenT.codex.CodexQuotaRepository
@@ -49,8 +50,8 @@ class AgenTNotificationCoordinator(
     private fun strings(): Context = AppLocale.wrap(appContext)
 
     /**
-     * 以最新用量快照刷新常驻通知与阈值提醒。usage 为 null（无账号 / 无数据）时
-     * 撤下常驻通知。每次调用都会按开关状态维护周期刷新任务。
+     * 用量、服务状态与 Cursor 任务共用实时活动；没有任何缓存时撤下通知。
+     * 每次调用都会按开关状态维护周期刷新任务。
      */
     fun refresh(usage: AgenTOverview?, scheduleWindowRefresh: Boolean = true) {
         ensureChannels()
@@ -66,12 +67,7 @@ class AgenTNotificationCoordinator(
         if (!settings.liveUpdatesEnabled || !canPost) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
         } else {
-            if (codex != null) postCombinedLiveUpdate(usage, codex, revision)
-            else if (usage == null || usage.accountId <= 0) {
-                notificationManager.cancel(LIVE_NOTIFICATION_ID)
-            } else {
-                postCombinedLiveUpdate(usage, null, 0)
-            }
+            postCombinedLiveUpdate(usage?.takeIf { it.accountId > 0 }, codex, revision)
         }
         if (settings.thresholdRemindersEnabled && canPostNotifications() && usage != null) {
             maybePostThresholdReminder(usage)
@@ -96,7 +92,7 @@ class AgenTNotificationCoordinator(
         refresh(cachedCursor(), scheduleWindowRefresh)
     }
 
-    /** Style changes update only the ongoing presentation; never fetch or replay one-shot alerts. */
+    /** Cache-only presentation update for style or task changes; never fetch or replay one-shot alerts. */
     fun refreshCopyFromCache() {
         val settings = preferences.read()
         if (!settings.liveUpdatesEnabled || !canPostNotifications()) {
@@ -106,8 +102,7 @@ class AgenTNotificationCoordinator(
         ensureChannels()
         val cursor = cachedCursor()?.takeIf { it.accountId > 0 }
         val (codex, revision) = cachedCodex()
-        if (cursor == null && codex == null) notificationManager.cancel(LIVE_NOTIFICATION_ID)
-        else postCombinedLiveUpdate(cursor, codex, revision)
+        postCombinedLiveUpdate(cursor, codex, revision)
     }
 
     private fun cachedCursor(): AgenTOverview? = runCatching {
@@ -115,6 +110,12 @@ class AgenTNotificationCoordinator(
         val accountId = repository.selectedAccountId()
             ?: repository.listAccounts().firstOrNull()?.id
         accountId?.let { repository.cachedUsage(it) }
+    }.getOrNull()
+
+    private fun cachedTasks(): AgenTasks? = runCatching {
+        val repository = CursorRepository(appContext)
+        val accountId = repository.selectedAccountId() ?: repository.listAccounts().firstOrNull()?.id
+        accountId?.let { repository.cachedTasks(it) }
     }.getOrNull()
 
     private fun renderer() = QuotaNotificationRenderer(appContext, preferences.read().catLanguageEnabled)
@@ -143,12 +144,23 @@ class AgenTNotificationCoordinator(
                 }
             }
         }
+        val tasks = async {
+            if (preferences.read().liveUpdatesEnabled) safely {
+                val repository = CursorRepository(appContext)
+                val account = repository.listAccounts().firstOrNull { it.id == repository.selectedAccountId() }
+                    ?: repository.listAccounts().firstOrNull()
+                if (account != null && !account.tokenExpired &&
+                    (repository.cachedTasks(account.id)?.cacheAgeSeconds ?: Int.MAX_VALUE) >= 15 * 60)
+                    repository.fetchTasks(account.id, forceRefresh = true)
+            }
+        }
         val codex = async {
             safely {
                 val repository = CodexQuotaRepository(appContext)
                 val revision = repository.tokenRevision()
                 val credential = repository.credentialInfo()
-                if (credential != null && !credential.expired && !credential.invalid &&
+                if (DashboardPreferences.get(appContext).readCodexUsageAutoRefresh() &&
+                    credential != null && !credential.expired && !credential.invalid &&
                     (forceCodex || CodexRefreshPolicy.shouldFetch(repository.cachedUsage(revision), System.currentTimeMillis() / 1000, 15 * 60)))
                     repository.fetchUsage(revision, scheduleWindowRefresh)
             }
@@ -160,7 +172,7 @@ class AgenTNotificationCoordinator(
                     repository.fetch(forceRefresh = false)
             }
         } }
-        cursor.await(); codex.await(); statuses.forEach { it.await() }
+        cursor.await(); tasks.await(); codex.await(); statuses.forEach { it.await() }
         refreshFromCache(scheduleWindowRefresh)
     }
 
@@ -199,6 +211,13 @@ class AgenTNotificationCoordinator(
             putExtra(EXTRA_WIDGET_OPEN_TAB, DashboardTab.Overview.id)
         }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+    private fun tasksIntent(): PendingIntent = PendingIntent.getActivity(appContext, CONTENT_REQUEST_CODE + 1,
+        Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            action = ACTION_OPEN_FROM_WIDGET
+            putExtra(EXTRA_WIDGET_OPEN_TAB, DashboardTab.Tasks.id)
+        }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
     @Synchronized
     private fun postCombinedLiveUpdate(cursor: AgenTOverview?, codex: CodexQuotaOverview?, revision: Long) {
         // Serialize style changes and regular updates; a queued old request must use current preferences.
@@ -210,7 +229,8 @@ class AgenTNotificationCoordinator(
         val notification = renderer().live(cursor, codex, revision,
             preferences.read().percentDisplayMode, zone, overviewIntent(), CHANNEL_ID,
             cursorStatus = runCatching { ServiceStatusRepository(appContext).cached() }.getOrNull(),
-            codexStatus = runCatching { ServiceStatusRepository(appContext, OfficialStatusProvider.Codex).cached() }.getOrNull())
+            codexStatus = runCatching { ServiceStatusRepository(appContext, OfficialStatusProvider.Codex).cached() }.getOrNull(),
+            tasks = cachedTasks(), tasksIntent = tasksIntent())
         if (notification == null) { notificationManager.cancel(LIVE_NOTIFICATION_ID); return }
         runCatching { notificationManager.notify(LIVE_NOTIFICATION_ID, notification) }
     }

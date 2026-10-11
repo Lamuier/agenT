@@ -66,6 +66,7 @@ class MainActivity : FragmentActivity() {
             val timeZoneId by dashboardPreferences.timeZoneId.collectAsStateWithLifecycle()
             val language by dashboardPreferences.language.collectAsStateWithLifecycle()
             val overviewUsageRingMode by dashboardPreferences.overviewUsageRingMode.collectAsStateWithLifecycle()
+            val codexUsageAutoRefresh by dashboardPreferences.codexUsageAutoRefresh.collectAsStateWithLifecycle()
             AgenTTheme(settings = themeSettings) {
                 val cursorViewModel = remember {
                     ViewModelProvider(
@@ -126,6 +127,8 @@ class MainActivity : FragmentActivity() {
                         if (enabled) ensureNotificationPermissionAndRefresh()
                         else AgenTNotificationCoordinator.get(applicationContext).refreshFromCache()
                     },
+                    codexUsageAutoRefresh = codexUsageAutoRefresh,
+                    onCodexUsageAutoRefreshChange = dashboardPreferences::setCodexUsageAutoRefresh,
                     onCodexResetRemindersToggle = { enabled ->
                         notificationPreferences.setCodexResetRemindersEnabled(enabled)
                         if (enabled) ensureNotificationPermissionAndRefresh()

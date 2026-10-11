@@ -46,6 +46,9 @@ class DashboardPreferences(context: Context) {
     private val _overviewUsageRingMode = MutableStateFlow(readOverviewUsageRingMode())
     val overviewUsageRingMode: StateFlow<OverviewUsageRingMode> = _overviewUsageRingMode.asStateFlow()
 
+    private val _codexUsageAutoRefresh = MutableStateFlow(readCodexUsageAutoRefresh())
+    val codexUsageAutoRefresh: StateFlow<Boolean> = _codexUsageAutoRefresh.asStateFlow()
+
     fun read(): List<DashboardTab> =
         DashboardTab.resolveSavedOrder(preferences.getString(KEY_TAB_ORDER, null))
 
@@ -93,12 +96,22 @@ class DashboardPreferences(context: Context) {
         _overviewUsageRingMode.value = mode
     }
 
+    /** 默认开启。关闭后前台轮询、后台任务和用量小组件周期刷新都不再请求 Codex 用量。 */
+    fun readCodexUsageAutoRefresh(): Boolean =
+        preferences.getBoolean(KEY_CODEX_USAGE_AUTO_REFRESH, true)
+
+    fun setCodexUsageAutoRefresh(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_CODEX_USAGE_AUTO_REFRESH, enabled).apply()
+        _codexUsageAutoRefresh.value = enabled
+    }
+
     companion object {
         private const val PREFERENCES_NAME = AppLocale.PREFERENCES_NAME
         private const val KEY_TAB_ORDER = "tab_order"
         private const val KEY_TASK_GROUP_MODE = "task_group_mode"
         private const val KEY_TIME_ZONE = "time_zone"
         private const val KEY_OVERVIEW_USAGE_RING = "overview_usage_ring"
+        private const val KEY_CODEX_USAGE_AUTO_REFRESH = "codex_usage_auto_refresh"
 
         @Volatile
         private var instance: DashboardPreferences? = null

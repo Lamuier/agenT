@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stable 32dp intrinsic size; app identity plus a shape-coded status badge. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="32dp" android:height="32dp" android:gravity="center">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFE8EFF8" />
+            <stroke android:width="1.5dp" android:color="#FF587DB4" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item android:width="26dp" android:height="26dp" android:gravity="center"
+        android:drawable="@drawable/ic_island_formal_mark" />
+    <item android:width="12dp" android:height="12dp" android:gravity="bottom|right"
+        android:drawable="@drawable/ic_island_badge_task_running" />
+</layer-list>

@@ -20,8 +20,8 @@ class IslandArtworkTest {
             assertTrue(pictures.add(picture))
             assertTrue(icons.add(IslandArtwork.iconResource(state, cat)))
         }
-        assertEquals(12, pictures.size)
-        assertEquals(12, icons.size)
+        assertEquals(IslandMonitorState.entries.size * 2, pictures.size)
+        assertEquals(IslandMonitorState.entries.size * 2, icons.size)
     }
 
     @Test fun multipleAttentionGetsASeparateCacheKeyWithoutKeyChurnForEveryCount() {
@@ -54,7 +54,7 @@ class IslandArtworkTest {
                 .getElementsByTagName("path")
             badgePaths += (0 until paths.length).joinToString("|") { paths.item(it).attributes.getNamedItem("android:pathData").nodeValue }
         }
-        assertEquals(6, badges.size)
-        assertEquals(6, badgePaths.size)
+        assertEquals(IslandMonitorState.entries.size, badges.size)
+        assertEquals(IslandMonitorState.entries.size, badgePaths.size)
     }
 }

@@ -3,6 +3,9 @@ package com.lamuier.agenT.notification
 import androidx.annotation.StringRes
 import com.lamuier.agenT.R
 import com.lamuier.agenT.model.ServiceStatus
+import com.lamuier.agenT.model.AgentTask
+import com.lamuier.agenT.model.AgentTaskStatus
+import com.lamuier.agenT.model.AgenTasks
 import com.lamuier.agenT.model.StatusIndicator
 
 internal enum class PendingServiceReason(@StringRes val messageRes: Int) {
@@ -36,6 +39,22 @@ internal sealed interface MonitorAttention {
         }
     }
 
+    data class Task(val task: AgentTask) : MonitorAttention {
+        override val key = "task:${task.id}"
+        override val state = if (TaskActivityModel.isActive(task.status)) IslandMonitorState.TaskRunning else IslandMonitorState.TaskEnded
+        override val priority = when (task.status) {
+            AgentTaskStatus.Error, AgentTaskStatus.Expired -> 450
+            AgentTaskStatus.Finished -> 250
+            else -> 200
+        }
+    }
+
+    data object PendingTasks : MonitorAttention {
+        override val key = "tasks-sync:Cursor"
+        override val state = IslandMonitorState.Syncing
+        override val priority = 100
+    }
+
     data class PendingQuota(val source: QuotaNoticeSource) : MonitorAttention {
         override val key = "quota-sync:${source.name}"
         override val state = IslandMonitorState.Syncing
@@ -58,9 +77,12 @@ internal data class MonitorSnapshot(val primary: IslandMonitorState, val attenti
             metrics: List<QuotaNoticeMetric>,
             freshSources: Set<QuotaNoticeSource>,
             services: Map<String, ServiceStatus?>,
+            tasks: AgenTasks? = null,
+            nowMillis: Long = System.currentTimeMillis(),
         ): MonitorSnapshot {
             val quotas = metrics.distinctBy { it.source }
-            val expectedProviders = quotas.map { if (it.source == QuotaNoticeSource.Cursor) "Cursor" else "Codex" }.toSet()
+            val expectedProviders = quotas.map { if (it.source == QuotaNoticeSource.Cursor) "Cursor" else "Codex" }.toSet() +
+                if (tasks != null) setOf("Cursor") else emptySet()
             val providers = services.keys + expectedProviders
             val entries = buildList {
                 providers.forEach { provider ->
@@ -90,10 +112,20 @@ internal data class MonitorSnapshot(val primary: IslandMonitorState, val attenti
                         add(MonitorAttention.Quota(metric))
                     }
                 }
+                tasks?.let { snapshot ->
+                    if (snapshot.cacheAgeSeconds > IslandMonitorState.FRESH_SECONDS) add(MonitorAttention.PendingTasks)
+                    snapshot.tasks.distinctBy { it.id }.sortedByDescending { it.latestTimeMs }.forEach { task ->
+                        val active = snapshot.cacheAgeSeconds <= IslandMonitorState.FRESH_SECONDS && TaskActivityModel.isActive(task.status)
+                        val ended = TaskActivityModel.isTerminal(task.status) && snapshot.completedAtMillis[task.id]?.let {
+                            nowMillis - it in 0 until TaskActivityModel.COMPLETION_RETENTION_MILLIS
+                        } == true
+                        if (active || ended) add(MonitorAttention.Task(task))
+                    }
+                }
             }.distinctBy { it.key }.sortedWith(compareByDescending<MonitorAttention> { it.priority }
                 .thenByDescending { (it as? MonitorAttention.Quota)?.metric?.usedPercent ?: 0.0 })
             val primary = entries.firstOrNull()?.state
-                ?: if (quotas.isEmpty()) IslandMonitorState.Syncing else IslandMonitorState.Running
+                ?: if (quotas.isEmpty() && tasks == null) IslandMonitorState.Syncing else IslandMonitorState.Running
             return MonitorSnapshot(primary, entries)
         }
     }

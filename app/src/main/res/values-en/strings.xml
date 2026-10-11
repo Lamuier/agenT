@@ -81,7 +81,7 @@
     <string name="theme_mode_dark">Dark</string>
     <string name="color_palette_section">Color palette</string>
 
-    <string name="notification_live_title">Assistant status</string>
+    <string name="notification_live_title">Live activities</string>
     <string name="notification_mode_used">Used quota</string>
     <string name="notification_reset_reminders_label">Codex reset reminders</string>
     <string name="notification_reset_reminders_description">Notify once when refresh confirms each 5-hour or weekly renewal. Battery restrictions may delay checks; reaching a timer alone does not prove recovery.</string>
@@ -167,14 +167,14 @@
     <string name="notification_reminder_title">Cursor usage alert</string>
     <string name="notification_reminder_body_full">Monthly usage has reached 100%%</string>
     <string name="notification_reminder_body_threshold">Usage reached %1$d%% (now %2$d%%)</string>
-    <string name="notification_live_channel_name">Assistant status monitor</string>
-    <string name="notification_live_channel_description">Ongoing Cursor and Codex state, low quota, and service alerts with Live Updates and HyperIsland</string>
+    <string name="notification_live_channel_name">Live activities</string>
+    <string name="notification_live_channel_description">Ongoing and recently ended Cursor tasks, plus Cursor and Codex quota and service status with Live Updates and HyperIsland</string>
     <string name="notification_reminder_channel_name">Usage threshold alerts</string>
     <string name="notification_reminder_channel_description">Alert independently when each Cursor or Codex quota reaches 80%% or 100%%</string>
 
     <string name="notification_section_title">Notifications</string>
-    <string name="notification_live_updates_label">Assistant status monitor (ongoing)</string>
-    <string name="notification_live_updates_description">Monitor Cursor and Codex with shared island states: Patrol, Quota low, Service issue, or Sync pending. No usage numbers.</string>
+    <string name="notification_live_updates_label">Live activities (ongoing)</string>
+    <string name="notification_live_updates_description">Show running Cursor tasks and keep completed, failed, or expired results for one hour. Also monitor Cursor and Codex for quota and service issues. Sync every five minutes in the foreground, roughly fifteen in the background; battery restrictions may delay updates.</string>
     <string name="notification_threshold_reminders_label">Usage threshold alerts</string>
     <string name="notification_threshold_reminders_description">Alert independently when Cursor cycle quota or Codex 5-hour / weekly quota reaches 80%% / 100%%</string>
     <string name="notification_display_mode_title">Primary percentage</string>
@@ -232,6 +232,7 @@
     <string name="task_source_automations">Automations</string>
     <string name="task_source_sdk">SDK</string>
     <string name="task_source_grok_bot">Grok Bot</string>
+    <string name="task_source_remote_control">Remote Control</string>
     <string name="task_source_unknown">Other source</string>
 
     <string name="relative_just_now">Just now</string>
@@ -633,6 +634,8 @@
     <!-- agenT: Codex service -->
     <string name="codex_title">Codex usage</string>
     <string name="codex_usage_title">Quota overview</string>
+    <string name="codex_usage_auto_refresh_label">Auto-update Codex usage</string>
+    <string name="codex_usage_auto_refresh_description">When on, Codex usage is requested on return to the foreground, while the app stays open, about every 15 minutes in the background, and on the usage widget schedule. When off, it updates only from a manual refresh, a widget refresh, or saving the token. The last result stays visible.</string>
     <string name="codex_refresh">Refresh Codex usage</string>
     <string name="codex_manage_token">Codex account and token</string>
     <string name="codex_empty_title">Connect Codex</string>
@@ -874,4 +877,24 @@
     <string name="notification_multi_syncing_chip">Sync</string>
     <string name="notification_multi_syncing_chip_cat">Wait</string>
     <string name="notification_multi_preview">Multiple-state example: %1$s (+2 means two other items to review, not usage)</string>
+    <string name="island_task_running">Task running</string>
+    <string name="island_task_running_chip">Run</string>
+    <string name="island_task_running_cat">Working, meow</string>
+    <string name="island_task_running_chip_cat">Work</string>
+    <string name="island_task_ended">Task ended</string>
+    <string name="island_task_ended_chip">End</string>
+    <string name="island_task_ended_cat">Ended, meow</string>
+    <string name="island_task_ended_chip_cat">Done</string>
+    <string name="notification_task_creating">Cursor · Creating: %1$s</string>
+    <string name="notification_task_creating_cat">Cursor · Preparing, meow: %1$s</string>
+    <string name="notification_task_running">Cursor · Running: %1$s</string>
+    <string name="notification_task_running_cat">Cursor · Working, meow: %1$s</string>
+    <string name="notification_task_finished">Cursor · Completed: %1$s</string>
+    <string name="notification_task_finished_cat">Cursor · Completed, meow: %1$s</string>
+    <string name="notification_task_error">Cursor · Task failed: %1$s</string>
+    <string name="notification_task_error_cat">Cursor · Task failed, meow: %1$s</string>
+    <string name="notification_task_expired">Cursor · Task expired: %1$s</string>
+    <string name="notification_task_expired_cat">Cursor · Task expired, meow: %1$s</string>
+    <string name="notification_tasks_waiting">Cursor tasks need an update; waiting to sync.</string>
+    <string name="notification_tasks_waiting_cat">Cursor tasks await sync, meow.</string>
 </resources>

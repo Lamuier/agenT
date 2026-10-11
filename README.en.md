@@ -13,6 +13,8 @@ Chinese is the primary language of this repository and the default app locale. E
 
 ---
 
+Current version: **1.0.1** (`versionCode` 2).
+
 ## Features
 
 ### Two services, one entry point
@@ -28,7 +30,7 @@ Chinese is the primary language of this repository and the default app locale. E
 - Overview rings can switch in Settings between split pools and a combined total. In split mode, if only one pool is exhausted, the outer ring shows the pool that still has quota. Color rules: [docs/overview-ring-colors.en.md](docs/overview-ring-colors.en.md).
 - The Usage tab also shows billing-cycle token totals: input / output / cache tokens and cost by model. You can look back by calendar month or past billing cycles, with pool share estimated from token cost. Grok Bot weekly quota is a separate section and is not mixed into monthly pools.
 - Default navigation is Overview / Usage / Tasks / Resets / Status, with configurable order and explicit soft-colored scope badges. Overview, Usage, and Status are Shared; Tasks is Cursor-only; Resets is Codex-only. Billing is removed from saved orders without moving surviving tabs, and old Billing links open Usage. Narrow screens scroll horizontally, and older four-tab orders gain Tasks after Usage. Phones use full-width stacked cards, while tablets use two columns when width allows, with shared quota and reset-time styling.
-- The Tasks tab lists Cursor cloud tasks (background agents), grouped by repository / status / time / source. Merged branches are hidden. Sources that the website hides by default (Grok Bot, API, SDK, and others) are included. Tapping a task opens the official Agents page in Chrome Custom Tabs for the full conversation.
+- The Tasks tab lists Cursor cloud tasks (background agents), grouped by repository / status / time / source. Merged branches are hidden. Sources that the website hides by default (Grok Bot, API, SDK, Remote Control, and others) are included. Remote Control means a task on a private local worker with no machine pool. Tapping a task opens the official Agents page in Chrome Custom Tabs for the full conversation.
 - Status shows official Cursor and Codex availability together, with selectable component details, active incidents, and history. No token is required. The complete OpenAI component endpoint supplies Codex Web, API, CLI, desktop, and extension status; unrelated OpenAI faults are not reported as Codex faults.
 - Rings, progress bars, and key numbers use light motion without clutter.
 
@@ -48,12 +50,12 @@ Chinese is the primary language of this repository and the default app locale. E
 - The returned official balance is authoritative, not the detail count. Show grant / expiration / status only when supplied. Missing official totals remain unavailable; balance decreases are not proof of redemption and offline resets are not backfilled. This page does not redeem credits.
 - Keep up to 500 encrypted, token-free records isolated by Codex user and workspace. Token rotation preserves records only when both user and workspace are known; unknown identities or workspaces are isolated by token. Deleting the Codex credential also removes all reset history.
 
-### Assistant status notifications
+### Live activities and notifications
 
-- Settings → Notifications includes an opt-in Cat-speak switch. Formal copy remains the default; enabling it updates ongoing notifications, Live Update chips, the island, and future one-shot quota / renewal reminders. Preview the six captions below the switch. The local preference persists, and switching only refreshes ongoing presentation without network calls, permission requests, or replaying reminders.
-- Island artwork distinguishes both style and all six states: a flat monochrome cat in formal mode or the colored cat in cat-speak mode, with check / warning / empty-battery / cross / wrench / clock badges and matching accents. Every combination has its own picture-cache reference; launcher artwork is unchanged.
+- Settings → Notifications includes an opt-in Cat-speak switch. Formal copy remains the default; enabling it updates ongoing notifications, Live Update chips, the island, and future one-shot quota / renewal reminders. Preview the eight captions below the switch. The local preference persists, and switching only refreshes ongoing presentation without network calls, permission requests, or replaying reminders.
+- Island artwork distinguishes both style and all eight states: a flat monochrome cat in formal mode or the colored cat in cat-speak mode, with check / warning / empty-battery / cross / wrench / clock / play / stop badges and matching accents. Every combination has its own picture-cache reference; launcher artwork is unchanged.
 - Multiple conditions retain the highest-priority caption with +N other attention rows and a second + icon badge. Expanded details keep every quota, service, and pending-data row; independent windows count separately even when their states match. Stale outages become update-pending rather than fresh failures, and confirmed incidents can coexist with incomplete feeds. The count is not usage; v7 single / composite picture keys stay stable as the count changes.
-- Persistent notifications share the island attention logic: Patrol, Quota low / empty, Service issue / Maintenance, or Sync pending. No usage numbers, amounts, or progress metrics; both providers refresh roughly every 15 minutes. See the bilingual [copy review](docs/notification-copy-review.md) for the complete current text.
+- Settings and the notification channel are named Live activities. Cursor tasks show their name and repository while creating / running, and completed, failed, or expired results remain for one hour, with a Tasks shortcut. First sync establishes a baseline without replaying history. Persistent notifications share the island attention logic: Patrol, Quota low / empty, Service issue / Maintenance, or Sync pending. No usage numbers, amounts, or progress metrics; both providers and Cursor tasks refresh roughly every 15 minutes, subject to system and network delays. See the bilingual [copy review](docs/notification-copy-review.md) for the complete current text.
 - Independent one-shot alerts at 80% / 100%, deduplicated by provider, credential revision, and reset time.
 - Opt into Codex reset reminders in Settings to receive independent 5-hour / weekly renewal notices after fresh-response confirmation; timers alone, old history, and manual records do not trigger recovery claims.
 - Check freshness on foreground return and near reset deadlines. Background refresh runs roughly every 15 minutes with additional reset-time checks, subject to network and OS battery delays; notifications are not exact-to-the-second alarms.
@@ -70,7 +72,7 @@ Chinese is the primary language of this repository and the default app locale. E
 
 ### Everyday details
 
-- Auto-refresh on launch and when returning to the foreground; silent sync every 5 minutes in the foreground; manual refresh is also available.
+- Auto-refresh on launch and when returning to the foreground; silent sync every 5 minutes in the foreground; manual refresh is also available. Background refresh runs about every 15 minutes for usage and status (the ongoing monitor runs even without a widget; a placed widget adds its own pass). System sleep may delay it. Settings includes “Auto-update Codex usage”; when off, Codex usage is requested only by a manual refresh, a widget refresh, or saving the token.
 - 64-bit only. High refresh rate is used in the foreground and released when you leave.
 - Light / dark follow the system. Accessibility and large-screen layouts are supported. Primary-tab order, Cursor quota display, time zone, and UI language can be changed in Settings (time zone defaults to follow system; other zones are searchable). Default copy is Simplified Chinese; Follow system uses English on English devices and falls back to Chinese otherwise.
 - Built-in Windows guide for extracting a Token.

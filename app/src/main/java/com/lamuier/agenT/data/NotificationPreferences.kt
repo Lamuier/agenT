@@ -21,7 +21,7 @@ enum class PercentDisplayMode(val serialName: String) {
 }
 
 /**
- * 通知相关偏好：常驻「助手状态监控」Live Update、用量阈值与 Codex 重置提醒开关。
+ * 通知相关偏好：常驻「实时活动」Live Update、用量阈值与 Codex 重置提醒开关。
  * 百分比口径仅保留为兼容旧偏好的字段，常驻通知不再显示用量数字。
  */
 data class NotificationSettings(

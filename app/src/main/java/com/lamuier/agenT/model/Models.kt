@@ -165,7 +165,7 @@ enum class AgentTaskPrStatus {
 
 /**
  * 云端任务的发起来源。对应 `BACKGROUND_COMPOSER_SOURCE_*`；
- * 官网默认会隐藏 API / SDK / Grok Bot 等来源，本应用按来源分组展示。
+ * 官网默认会隐藏 API / SDK / Grok Bot / Remote Control 等来源，本应用按来源分组展示。
  */
 enum class AgentTaskSource {
     Website,
@@ -184,6 +184,7 @@ enum class AgentTaskSource {
     Automations,
     Sdk,
     GrokBot,
+    RemoteControl,
     Unknown,
 }
 
@@ -232,6 +233,9 @@ data class AgenTasks(
     val fetchedAt: String,
     val fromCache: Boolean,
     val cacheAgeSeconds: Int = 0,
+    /** Local observation time and terminal transitions, persisted with the encrypted task cache. */
+    val observedAtMillis: Long = 0,
+    val completedAtMillis: Map<String, Long> = emptyMap(),
 )
 
 /** 长按图标静态 Shortcut 对应的应用内动作。 */

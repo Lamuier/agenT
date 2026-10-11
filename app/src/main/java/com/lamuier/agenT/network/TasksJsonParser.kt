@@ -39,6 +39,8 @@ object TasksJsonParser {
     /** 归一化为缓存 JSON（仅任务数据，缓存元信息由 TasksCacheStore 包装）。 */
     fun toJson(model: AgenTasks): String = JSONObject()
         .put("tasks", JSONArray(model.tasks.map(::taskToJson)))
+        .put("observedAtMillis", model.observedAtMillis)
+        .put("completedAtMillis", JSONObject(model.completedAtMillis))
         .toString()
 
     fun parseStored(
@@ -49,12 +51,18 @@ object TasksJsonParser {
     ): AgenTasks {
         val root = JSONObject(rawJson)
         val tasks = parseTasksArray(root.optJSONArray("tasks"))
+        val completed = root.optJSONObject("completedAtMillis")
+        val completionTimes = completed?.keys()?.asSequence()?.mapNotNull { id ->
+            completed.optLong(id, 0L).takeIf { it > 0L }?.let { id to it }
+        }?.toMap().orEmpty()
         return AgenTasks(
             accountId = accountId,
             tasks = tasks,
             fetchedAt = fetchedAt,
             fromCache = true,
             cacheAgeSeconds = cacheAgeSeconds,
+            observedAtMillis = root.optLong("observedAtMillis", 0L),
+            completedAtMillis = completionTimes,
         )
     }
 
@@ -91,7 +99,7 @@ object TasksJsonParser {
     fun parseSource(raw: String?): AgentTaskSource {
         val token = normalize(raw)?.removePrefix(SOURCE_PREFIX) ?: return AgentTaskSource.Unknown
         return when (token) {
-            "website", "web" -> AgentTaskSource.Website
+            "website", "web", "glass" -> AgentTaskSource.Website
             "editor", "ide", "desktop" -> AgentTaskSource.Editor
             "slack" -> AgentTaskSource.Slack
             "linear" -> AgentTaskSource.Linear
@@ -107,6 +115,7 @@ object TasksJsonParser {
             "automations", "automation" -> AgentTaskSource.Automations
             "sdk" -> AgentTaskSource.Sdk
             "grok_bot", "grokbot", "grok", "sand" -> AgentTaskSource.GrokBot
+            "local", "remote_control", "remotecontrol" -> AgentTaskSource.RemoteControl
             "unspecified" -> AgentTaskSource.Unknown
             else -> AgentTaskSource.Unknown
         }
@@ -148,7 +157,7 @@ object TasksJsonParser {
             updatedAtMs = item.optLong("updatedAtMs", 0L),
             lastActivityMs = item.nullableLong("lastMessageActivityAtMs")
                 ?: item.nullableLong("lastActivityMs"),
-            source = parseSource(item.nullableString("source")),
+            source = resolveSource(item),
         )
     }
 
@@ -204,7 +213,29 @@ object TasksJsonParser {
         AgentTaskSource.Automations -> "automations"
         AgentTaskSource.Sdk -> "sdk"
         AgentTaskSource.GrokBot -> "grok_bot"
+        AgentTaskSource.RemoteControl -> "remote_control"
         AgentTaskSource.Unknown -> "unknown"
+    }
+
+    /**
+     * Remote Control 是跑在本机私有 worker、且没有指定机器池的云端任务。
+     * 有池名称时仍按原来源展示，避免把自托管机器池标成远程控制。
+     */
+    private fun resolveSource(item: JSONObject): AgentTaskSource {
+        val parsed = parseSource(item.nullableString("source"))
+        if (!isRemoteControl(item)) return parsed
+        return AgentTaskSource.RemoteControl
+    }
+
+    private fun isRemoteControl(item: JSONObject): Boolean {
+        val privateWorker = item.optBoolean("usePrivateWorker", false) ||
+            item.optBoolean("use_private_worker", false)
+        if (!privateWorker) return false
+        val pool = item.nullableString("poolName")
+            ?: item.nullableString("pool_name")
+            ?: item.nullableString("selectedPoolName")
+            ?: item.nullableString("selected_pool_name")
+        return pool == null
     }
 
     private fun normalize(raw: String?): String? =

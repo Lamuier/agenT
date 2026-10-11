@@ -51,6 +51,7 @@ object AgentTaskPresentation {
             AgentTaskSource.Automations -> R.string.task_source_automations
             AgentTaskSource.Sdk -> R.string.task_source_sdk
             AgentTaskSource.GrokBot -> R.string.task_source_grok_bot
+            AgentTaskSource.RemoteControl -> R.string.task_source_remote_control
             AgentTaskSource.Unknown -> R.string.task_source_unknown
         }
         return resources?.getString(id) ?: fallbackZh(id)
@@ -175,6 +176,7 @@ object AgentTaskPresentation {
         R.string.task_source_automations -> "自动化"
         R.string.task_source_sdk -> "SDK"
         R.string.task_source_grok_bot -> "Grok Bot"
+        R.string.task_source_remote_control -> "远程控制"
         R.string.task_source_unknown -> "其他来源"
         else -> ""
     }

@@ -9,10 +9,10 @@ import org.junit.Test
 /** Shared app descriptions must not regress to branding for only one provider. */
 class UnifiedBrandCopyTest {
     @Test
-    fun ongoingSettingsAndSystemChannelsDescribeAssistantStatus() {
+    fun ongoingSettingsAndSystemChannelsDescribeLiveActivities() {
         val resourceRoot = listOf(File("src/main/res"), File("app/src/main/res"))
             .first { it.isDirectory }
-        for ((locale, expected) in mapOf("values" to "助手状态监控", "values-en" to "Assistant status monitor")) {
+        for ((locale, expected) in mapOf("values" to "实时活动", "values-en" to "Live activities")) {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
             }

@@ -13,6 +13,8 @@ internal class NotificationCopy(private val catLanguageEnabled: Boolean = false)
     @StringRes
     fun multiChip(state: IslandMonitorState): Int = resource(when (state) {
         IslandMonitorState.Running -> R.string.notification_multi_running_chip
+        IslandMonitorState.TaskRunning -> R.string.island_task_running_chip
+        IslandMonitorState.TaskEnded -> R.string.island_task_ended_chip
         IslandMonitorState.LowQuota -> R.string.notification_multi_low_chip
         IslandMonitorState.EmptyQuota -> R.string.notification_multi_empty_chip
         IslandMonitorState.ServiceIssue -> R.string.notification_multi_service_chip
@@ -29,6 +31,16 @@ internal class NotificationCopy(private val catLanguageEnabled: Boolean = false)
 
     companion object {
         internal val catResources = mapOf(
+            R.string.island_task_running to R.string.island_task_running_cat,
+            R.string.island_task_ended to R.string.island_task_ended_cat,
+            R.string.island_task_running_chip to R.string.island_task_running_chip_cat,
+            R.string.island_task_ended_chip to R.string.island_task_ended_chip_cat,
+            R.string.notification_task_creating to R.string.notification_task_creating_cat,
+            R.string.notification_task_running to R.string.notification_task_running_cat,
+            R.string.notification_task_finished to R.string.notification_task_finished_cat,
+            R.string.notification_task_error to R.string.notification_task_error_cat,
+            R.string.notification_task_expired to R.string.notification_task_expired_cat,
+            R.string.notification_tasks_waiting to R.string.notification_tasks_waiting_cat,
             R.string.island_monitor_running to R.string.island_monitor_running_cat,
             R.string.island_monitor_low to R.string.island_monitor_low_cat,
             R.string.island_monitor_empty to R.string.island_monitor_empty_cat,

@@ -82,8 +82,8 @@
     <string name="theme_mode_dark">深色</string>
     <string name="color_palette_section">主题色板</string>
 
-    <!-- 通知：助手状态监控 Live Update -->
-    <string name="notification_live_title">助手状态</string>
+    <!-- 通知：实时活动 Live Update -->
+    <string name="notification_live_title">实时活动</string>
     <string name="notification_mode_used">已用额度</string>
     <string name="notification_reset_reminders_label">Codex 额度重置提醒</string>
     <string name="notification_reset_reminders_description">5 小时与每周窗口刷新确认重置后，各提醒一次。后台节电可能延迟；仅倒计时到点不会宣称已恢复。</string>
@@ -169,15 +169,15 @@
     <string name="notification_reminder_title">Cursor 用量提醒</string>
     <string name="notification_reminder_body_full">本月用量已达到 100%%</string>
     <string name="notification_reminder_body_threshold">用量已达 %1$d%%（当前 %2$d%%）</string>
-    <string name="notification_live_channel_name">助手状态监控</string>
-    <string name="notification_live_channel_description">常驻显示 Cursor 与 Codex 的运行、额度不足及服务异常等关注信息，支持上岛与实况</string>
+    <string name="notification_live_channel_name">实时活动</string>
+    <string name="notification_live_channel_description">常驻显示 Cursor 执行中及刚结束的任务，以及 Cursor 与 Codex 的额度和服务状态，支持上岛与实况</string>
     <string name="notification_reminder_channel_name">用量阈值提醒</string>
     <string name="notification_reminder_channel_description">Cursor 与 Codex 各项额度达到 80%% 或 100%% 时分别提醒一次</string>
 
     <!-- 设置：通知开关 -->
     <string name="notification_section_title">通知</string>
-    <string name="notification_live_updates_label">助手状态监控（常驻）</string>
-    <string name="notification_live_updates_description">监控 Cursor 与 Codex，与超级岛使用同一关注状态：领地巡视、额度告急、服务异常或等待同步，不显示用量数字</string>
+    <string name="notification_live_updates_label">实时活动（常驻）</string>
+    <string name="notification_live_updates_description">显示 Cursor 执行中任务，完成、出错或过期后保留一小时；同时关注 Cursor 与 Codex 的额度和服务异常。前台每五分钟、后台约十五分钟同步，系统节电可能延迟。</string>
     <string name="notification_threshold_reminders_label">用量阈值提醒</string>
     <string name="notification_threshold_reminders_description">Cursor 周期额度与 Codex 5 小时 / 每周额度达到 80%% / 100%% 时，分别提醒一次</string>
     <string name="notification_display_mode_title">主百分比显示</string>
@@ -235,6 +235,7 @@
     <string name="task_source_automations">自动化</string>
     <string name="task_source_sdk">SDK</string>
     <string name="task_source_grok_bot">Grok Bot</string>
+    <string name="task_source_remote_control">远程控制</string>
     <string name="task_source_unknown">其他来源</string>
 
     <string name="relative_just_now">刚刚</string>
@@ -636,6 +637,8 @@
     <!-- agenT：Codex 服务 -->
     <string name="codex_title">Codex 用量</string>
     <string name="codex_usage_title">额度概览</string>
+    <string name="codex_usage_auto_refresh_label">自动更新 Codex 用量</string>
+    <string name="codex_usage_auto_refresh_description">开启时，前台返回、前台停留、后台约每 15 分钟，以及用量小组件的周期刷新都会请求 Codex 用量。关闭后只在手动刷新、小组件上手动刷新或保存 Token 时更新，平时继续显示上次结果。</string>
     <string name="codex_refresh">刷新 Codex 用量</string>
     <string name="codex_manage_token">Codex 账号与 Token</string>
     <string name="codex_empty_title">连接 Codex</string>
@@ -877,4 +880,24 @@
     <string name="notification_multi_syncing_chip">等待同步</string>
     <string name="notification_multi_syncing_chip_cat">等同步喵</string>
     <string name="notification_multi_preview">多状态示例：%1$s（+2 表示还有两项关注，不是用量）</string>
+    <string name="island_task_running">任务执行</string>
+    <string name="island_task_running_chip">执行</string>
+    <string name="island_task_running_cat">干活中喵</string>
+    <string name="island_task_running_chip_cat">干活喵</string>
+    <string name="island_task_ended">任务结束</string>
+    <string name="island_task_ended_chip">结束</string>
+    <string name="island_task_ended_cat">收工了喵</string>
+    <string name="island_task_ended_chip_cat">收工喵</string>
+    <string name="notification_task_creating">Cursor · 正在创建：%1$s</string>
+    <string name="notification_task_creating_cat">Cursor · 任务准备中喵：%1$s</string>
+    <string name="notification_task_running">Cursor · 正在执行：%1$s</string>
+    <string name="notification_task_running_cat">Cursor · 正在干活喵：%1$s</string>
+    <string name="notification_task_finished">Cursor · 任务已完成：%1$s</string>
+    <string name="notification_task_finished_cat">Cursor · 任务完成喵：%1$s</string>
+    <string name="notification_task_error">Cursor · 任务出错：%1$s</string>
+    <string name="notification_task_error_cat">Cursor · 任务出错了喵：%1$s</string>
+    <string name="notification_task_expired">Cursor · 任务已过期：%1$s</string>
+    <string name="notification_task_expired_cat">Cursor · 任务过期了喵：%1$s</string>
+    <string name="notification_tasks_waiting">Cursor 任务需要更新，正在等待同步。</string>
+    <string name="notification_tasks_waiting_cat">Cursor 任务等同步喵。</string>
 </resources>

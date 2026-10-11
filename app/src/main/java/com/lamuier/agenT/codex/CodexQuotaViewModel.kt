@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lamuier.agenT.R
+import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.data.ServiceStatusRepository
 import com.lamuier.agenT.network.OfficialStatusProvider
 import java.io.IOException
@@ -87,6 +88,7 @@ class CodexQuotaViewModel(
 
     fun refresh(force: Boolean = true) {
         if (_state.value.publicResets != null) refreshPublicResets(force)
+        if (!force && !DashboardPreferences.get(appContext).readCodexUsageAutoRefresh()) return
         val credential = _state.value.credential ?: return
         if (requestInFlight) { if (force) refreshQueued = true; return }
         if ((credential.expired || credential.invalid) && !force) return

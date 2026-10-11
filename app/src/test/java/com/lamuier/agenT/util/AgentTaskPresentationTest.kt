@@ -41,6 +41,7 @@ class AgentTaskPresentationTest {
     @Test
     fun sourceLabel_coversGrokBotAndWebsite() {
         assertEquals("Grok Bot", AgentTaskPresentation.sourceLabel(AgentTaskSource.GrokBot))
+        assertEquals("远程控制", AgentTaskPresentation.sourceLabel(AgentTaskSource.RemoteControl))
         assertEquals("网页", AgentTaskPresentation.sourceLabel(AgentTaskSource.Website))
         assertEquals("其他来源", AgentTaskPresentation.sourceLabel(AgentTaskSource.Unknown))
     }

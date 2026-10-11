@@ -31,7 +31,6 @@ class IslandMonitorStateTest {
                 item.attributes.getNamedItem("name").nodeValue to item.textContent
             }
             assertEquals(expected, strings["island_monitor_running"])
-            assertTrue(strings.getValue("notification_live_updates_description").contains(expected))
             assertTrue(strings.getValue("notification_monitor_running").contains("%1\$s"))
             assertFalse(strings.values.any { it.contains("助手巡航") || it.contains("On duty") })
         }
@@ -49,7 +48,6 @@ class IslandMonitorStateTest {
             }
             assertEquals(expected.first, strings["island_monitor_service"])
             assertEquals(expected.second, strings["island_monitor_service_chip"])
-            assertTrue(strings.getValue("notification_live_updates_description").contains(expected.first))
             assertFalse(strings.values.any { it.contains("服务卡壳") || it.contains("Service hiccup") })
         }
     }

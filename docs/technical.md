@@ -15,7 +15,7 @@
 | 平台 | `compileSdk` / `targetSdk` = 37 · `minSdk` = 26（Android 8.0） |
 | 安装包 ID | `com.lamuier.agenT` |
 | 源码 namespace | `com.lamuier.agenT`（与安装包 ID 一致） |
-| 版本 | `versionCode` = 1 · `versionName` = 1.0.0 |
+| 版本 | `versionCode` = 2 · `versionName` = 1.0.1 |
 | 体积 | Release 开启 R8 混淆与资源压缩，仅引入 AndroidX（含 Browser Custom Tabs）与 Biometric，无第三方网络 / 依赖注入框架 |
 
 ## 构建与发布
@@ -66,7 +66,7 @@ Debug 默认先跑单元测试与 Lint，再产出 `app\build\outputs\apk\debug\
 .\build.ps1 -Release
 ```
 
-默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\agenT-v1.0.0-release.apk`。
+默认不做 clean（避免 Windows 上 `app\build` 被占用导致失败）；需要干净构建加 `-Clean`，联网拉依赖加 `-Online`，跳过测试 / Lint 加 `-SkipChecks`。脚本会校验签名证书、zipalign、包名、版本、权限与 Manifest，输出 `dist\agenT-v1.0.1-release.apk`。
 
 ### 数据安全实现要点
 
@@ -93,7 +93,7 @@ Android App（本机）
 
 - Cursor 别名、Cursor Access Token、Codex Token 与可选 Account ID 使用 Android Keystore 不可导出密钥 + AES-GCM 加密保存。
 - Cursor Token 只发往 `api2.cursor.sh` 与 `cursor.com`。Codex Token 只发往 `chatgpt.com`。不允许自定义服务地址，拒绝重定向。状态页和公共重置请求不携带 Token。
-- 仅缓存解析后的用量与任务字段（任务缓存同样按 账号+凭据修订号 加密存储），不保存 Cursor 原始响应。任务对话不在应用内请求，改为打开官方网页。任务列表请求会带上 `include_sources`（含 `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`），解析 `source` 后按仓库 / 状态 / 时间 / 来源分组展示；已合并 PR 的任务不进入任务页列表。
+- 仅缓存解析后的用量与任务字段（任务缓存同样按 账号+凭据修订号 加密存储），不保存 Cursor 原始响应。任务对话不在应用内请求，改为打开官方网页。任务列表请求会带上 `include_sources` 与 `include_hidden_sources`（含 `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`、`BACKGROUND_COMPOSER_SOURCE_GLASS` 与 `BACKGROUND_COMPOSER_SOURCE_LOCAL`），并请求 `include_workers`。`usePrivateWorker` 且没有机器池的任务标为 Remote Control。解析 `source` 后按仓库 / 状态 / 时间 / 来源分组展示；已合并 PR 的任务不进入任务页列表。
 - 绝对时间按设置中的展示时区格式化并附带 GMT 偏移（默认跟随系统，其他时区可搜索）；本机无时区的缓存时间戳按写入时的系统时区解读后再换算。
 - Cursor 概览仍使用同心圆环：外环是用量，内环是计费周期。设置可在分列两池与合并总用量之间切换，偏好保存在本机 SharedPreferences。配色、健康度阈值和单池用尽时只画另一池的规则见 [overview-ring-colors.md](overview-ring-colors.md)。
 - 界面语言默认跟随系统：英文系统用 `values-en`，其余回退默认中文资源；设置可强制简体中文或 English。默认 `values/strings.xml` 为中文。
@@ -104,7 +104,7 @@ Android App（本机）
 - Cursor 账号 JSON 的读-改-写使用进程内共享锁，界面、小组件和通知不会互相盖掉。Codex 凭据写入、用量缓存写入和重置历史共用 `CodexStorageLock`。公共重置缓存是另一份明文偏好，不走这把锁。
 - Codex 重置身份在解码 JWT payload 前补齐 base64url 填充，同一用户更换 Token 后仍能对上本机记录。
 - Debug 界面验收入口不导出。凭据检查使用独立偏好名和 Keystore 别名；语言、时区和主题在验收结束或下次进程启动时恢复。
-- 桌面小组件与主进程共用同一进程，避免跨进程 SharedPreferences 把账号密文或用量缓存写回旧副本。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口。
+- 桌面小组件与主进程共用同一进程，避免跨进程 SharedPreferences 把账号密文或用量缓存写回旧副本。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。常驻监控另有一个约 15 分钟的 JobScheduler，即使没有小组件也会在缓存过期后请求 Cursor 用量、Codex 用量、官方状态以及 Cursor 任务；临近 Codex 窗口重置时还会加一次检查。设置「自动更新 Codex 用量」默认开启，关闭后这些自动路径不再请求 Codex 用量，手动刷新和保存 Token 仍会请求。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口。
 
 凭据所在的 SharedPreferences 被排除在云备份和设备迁移之外（`allowBackup=false`，`fullBackupContent=false`，`data_extraction_rules.xml` 排除 `sharedpref`）。明文 HTTP 关闭。Token 不进入 `savedInstanceState`、日志或用量 / 任务缓存。
 

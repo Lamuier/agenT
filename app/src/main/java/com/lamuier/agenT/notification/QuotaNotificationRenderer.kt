@@ -15,6 +15,9 @@ import com.lamuier.agenT.codex.CodexQuotaOverview
 import com.lamuier.agenT.codex.CodexQuotaWindow
 import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.model.AgenTOverview
+import com.lamuier.agenT.model.AgenTasks
+import com.lamuier.agenT.model.AgentTaskStatus
+import com.lamuier.agenT.util.AgentTaskPresentation
 import com.lamuier.agenT.model.TotalFormat
 import com.lamuier.agenT.model.ServiceStatus
 import com.lamuier.agenT.util.AppLocale
@@ -33,10 +36,11 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
 
     fun live(cursor: AgenTOverview?, codex: CodexQuotaOverview?, revision: Long,
         mode: PercentDisplayMode, zone: ZoneId, contentIntent: PendingIntent, channel: String,
-        cursorStatus: ServiceStatus? = null, codexStatus: ServiceStatus? = null): Notification? {
+        cursorStatus: ServiceStatus? = null, codexStatus: ServiceStatus? = null, tasks: AgenTasks? = null,
+        tasksIntent: PendingIntent = contentIntent): Notification? {
         val metrics = QuotaNoticeModel.metrics(cursor, codex, revision)
-        if (metrics.isEmpty()) return null
-        val provider = if (metrics.any { it.source == QuotaNoticeSource.Cursor }) {
+        if (metrics.isEmpty() && tasks == null) return null
+        val provider = if (tasks != null || metrics.any { it.source == QuotaNoticeSource.Cursor }) {
             if (metrics.any { it.source != QuotaNoticeSource.Cursor }) "Cursor + Codex" else "Cursor"
         } else "Codex"
         val freshSources = metrics.filter {
@@ -44,10 +48,26 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
                 ?.let { age -> age <= IslandMonitorState.FRESH_SECONDS } == true
         }.map { it.source }.toSet()
         val snapshot = MonitorSnapshot.collect(metrics, freshSources,
-            linkedMapOf("Cursor" to cursorStatus, "Codex" to codexStatus))
+            linkedMapOf("Cursor" to cursorStatus, "Codex" to codexStatus), tasks)
         val monitor = snapshot.primary
         val alerts = snapshot.attentions.map { attention ->
             when (attention) {
+                is MonitorAttention.Task -> {
+                    val task = attention.task
+                    val name = task.name.replace(Regex("[\\p{Cntrl}\\s]+"), " ").trim().take(160)
+                        .ifBlank { text(R.string.task_untitled) }
+                    val repo = AgentTaskPresentation.repoDisplayName(task.repoUrl)?.replace(Regex("[\\p{Cntrl}\\s]+"), " ")?.take(80)
+                    val detail = if (repo.isNullOrBlank()) name else "$name · $repo"
+                    text(when (task.status) {
+                        AgentTaskStatus.Creating -> R.string.notification_task_creating
+                        AgentTaskStatus.Running -> R.string.notification_task_running
+                        AgentTaskStatus.Finished -> R.string.notification_task_finished
+                        AgentTaskStatus.Error -> R.string.notification_task_error
+                        AgentTaskStatus.Expired -> R.string.notification_task_expired
+                        AgentTaskStatus.Unknown -> R.string.notification_tasks_waiting
+                    }, detail)
+                }
+                MonitorAttention.PendingTasks -> text(R.string.notification_tasks_waiting)
                 is MonitorAttention.Quota -> "${text(attention.metric.source.titleRes)} · ${text(attention.state.labelRes)}"
                 is MonitorAttention.Service -> "${attention.provider} · ${text(NotificationCopy.serviceDetail(attention.indicator))}"
                 is MonitorAttention.PendingQuota -> text(R.string.notification_quota_waiting, text(attention.source.titleRes))
@@ -65,7 +85,11 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
             // No oversized thumbnail: the system header and island already carry the app identity.
             .setContentTitle(title).setContentText(summary)
             .setStyle(Notification.BigTextStyle().bigText(body))
-            .setContentIntent(contentIntent).setCategory(Notification.CATEGORY_PROGRESS)
+            .setContentIntent(if (snapshot.attentions.firstOrNull() is MonitorAttention.Task) tasksIntent else contentIntent)
+            .apply {
+                if (snapshot.attentions.any { it is MonitorAttention.Task || it == MonitorAttention.PendingTasks })
+                    addAction(Notification.Action.Builder(null, text(R.string.tab_tasks), tasksIntent).build())
+            }.setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(true).setOnlyAlertOnce(true)
             .setShowWhen(false).setColor(when (monitor) {
                 IslandMonitorState.ServiceIssue, IslandMonitorState.EmptyQuota -> 0xFFC45160.toInt()

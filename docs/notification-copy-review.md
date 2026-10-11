@@ -1,6 +1,6 @@
 # 通知与超级岛提示语清单
 
-本清单对应当前源码中实际使用的通知、实况、超级岛与通知设置文案，不是全应用所有按钮 / 页面文案，也不包含已停用的旧用量通知模板。当前正式提示保留「服务异常」「领地巡视」「服务维护」，并提供默认关闭的猫语风格开关。仓库里的 `dist/agenT-v1.0.0-release.apk` 构建于 2026-10-09，不包含此后未发布源码里的文案改动。
+本清单对应当前源码中实际使用的通知、实况、超级岛与通知设置文案，不是全应用所有按钮 / 页面文案，也不包含已停用的旧用量通知模板。当前正式提示保留「服务异常」「领地巡视」「服务维护」，并提供默认关闭的猫语风格开关。最新本地 Release 重打包包含当前源码；安装包构建时间与 SHA-256 以 `dist/agenT-v1.0.1-build.json` 为准。2026-10-09 的旧安装包不包含此后未发布源码里的文案改动。
 
 ## 正式 / 猫言猫语开关与图标
 
@@ -14,14 +14,16 @@
 | 服务异常 | 服务炸毛 | 叉 |
 | 服务维护 | 维护喵喵 | 扳手 |
 | 等待同步 | 等同步喵 | 时钟 |
+| 任务执行 | 干活中喵 | 播放 |
+| 任务结束 | 收工了喵 | 停止 |
 
-正式图标采用简洁单色猫助手；猫语图标使用当前彩色猫助手。角标形状与边框配色同时区分状态，不仅靠颜色。App 启动图标不变；十二种组合分别使用 `miui.focus.pic_agentt_{formal|cat}_{状态}_v7` 图像引用，所有胶囊 / 锁屏 / 展开入口引用同一选中图案。
+正式图标采用简洁单色猫助手；猫语图标使用当前彩色猫助手。角标形状与边框配色同时区分状态，不仅靠颜色。App 启动图标不变；十六种组合分别使用 `miui.focus.pic_agentt_{formal|cat}_{状态}_v7` 图像引用，所有胶囊 / 锁屏 / 展开入口引用同一选中图案。
 
 图标静态预览由 `scripts/preview-island-styles.cjs` 生成到 `dist/ui-review/island-formal-cat-states.png`（`dist/` 不入库），展示 128 / 32 / 20px；基于源 XML 资源与当前启动图案，不是小米系统截图，也未启动模拟器。
 
 ## 多状态同时出现
 
-缩略态保留最重要的状态并附加「+N」，图标同时显示主状态角标和额外的「+」标记；展开后逐条列出所有情况，不轮播隐藏主状态。「N」表示另外几项需要关注，不是百分比、剩余额度或官方事件数量。单态中文保持四字；多态中文通常六字符，所有正式 / 猫语短提示不超过七字符，超过九项时用 +9+。
+缩略态保留最重要的状态并附加「+N」，图标同时显示主状态角标和额外的「+」标记；展开后逐条列出所有情况，不轮播隐藏主状态。「N」表示另外几项需要关注，不是百分比、剩余额度或官方事件数量。监控单态中文保持四字，任务短提示为二至三字；多态中文通常六字符，所有正式 / 猫语短提示不超过七字符，超过九项时用 +9+。
 
 | 当前情况 | 正式缩略提示 | 猫语缩略提示 | 展开说明 |
 | --- | --- | --- | --- |
@@ -147,6 +149,23 @@
 
 标题 `{值1}` 为 Codex 5 小时或 Codex 每周；正文 `{值1}` 为当前剩余比例，`{值2}` 为下次重置时间，未知时显示「重置时间未知」。必须由新鲜响应确认跨期，不能只因倒计时到点就宣称恢复。
 
+## Cursor 任务活动
+
+Cursor 任务与额度、服务关注条目共用一条实时活动通知；名称及仓库仅取已解析任务摘要，长文本会压缩换行并截断。展开保留全部条目，多项活动使用 +N。严重服务故障及额度用尽仍优先；任务出错 / 过期高于维护与额度偏低，完成结果高于执行中任务。任务通知提供任务页入口。
+
+首次成功同步建立基线，旧缓存缺少观察时间时也按首轮处理。确认创建中 / 执行中转为完成、出错或过期，或两次轮询间新创建并结束的任务时，记录本机观察时间并保留一小时。重复同步、应用重启和文案切换不重置这一时间；重跑任务会移除旧结束状态。未知状态或任务从列表消失不推断为结束。观察时间与任务摘要一并按账号 / 凭据修订号加密缓存。
+
+前台五分钟、后台约十五分钟轮询；超过二十分钟的执行中缓存只显示待同步，已确认结束结果按一小时独立到期。系统节电与网络限制可能延迟更新。
+
+| 正式中文 | 猫语中文 | 正式英文 | 猫语英文 |
+| --- | --- | --- | --- |
+| Cursor · 正在创建：%1$s | Cursor · 任务准备中喵：%1$s | Cursor · Creating: %1$s | Cursor · Preparing, meow: %1$s |
+| Cursor · 正在执行：%1$s | Cursor · 正在干活喵：%1$s | Cursor · Running: %1$s | Cursor · Working, meow: %1$s |
+| Cursor · 任务已完成：%1$s | Cursor · 任务完成喵：%1$s | Cursor · Completed: %1$s | Cursor · Completed, meow: %1$s |
+| Cursor · 任务出错：%1$s | Cursor · 任务出错了喵：%1$s | Cursor · Task failed: %1$s | Cursor · Task failed, meow: %1$s |
+| Cursor · 任务已过期：%1$s | Cursor · 任务过期了喵：%1$s | Cursor · Task expired: %1$s | Cursor · Task expired, meow: %1$s |
+| Cursor 任务需要更新，正在等待同步。 | Cursor 任务等同步喵。 | Cursor tasks need an update; waiting to sync. | Cursor tasks await sync, meow. |
+
 ## 通知设置
 
 | 中文原文 | 英文原文 |
@@ -155,8 +174,8 @@
 | 猫言猫语 | Cat-speak |
 | 关闭使用正式提示，开启使用猫言猫语。通知、实况与超级岛同步切换，不改变状态和提醒规则。 | Off uses formal copy; on uses cat-speak in notifications, Live Updates, and the island. State and alert rules stay unchanged. |
 | 提示语示例：{值1} | Copy examples: {值1} |
-| 助手状态监控（常驻） | Assistant status monitor (ongoing) |
-| 监控 Cursor 与 Codex，与超级岛使用同一关注状态：领地巡视、额度告急、服务异常或等待同步，不显示用量数字 | Monitor Cursor and Codex with shared island states: Patrol, Quota low, Service issue, or Sync pending. No usage numbers. |
+| 实时活动（常驻） | Live activities (ongoing) |
+| 显示 Cursor 执行中任务，完成、出错或过期后保留一小时；同时关注 Cursor 与 Codex 的额度和服务异常。前台每五分钟、后台约十五分钟同步，系统节电可能延迟。 | Show running Cursor tasks and keep completed, failed, or expired results for one hour. Also monitor Cursor and Codex for quota and service issues. Sync every five minutes in the foreground, roughly fifteen in the background; battery restrictions may delay updates. |
 | 用量阈值提醒 | Usage threshold alerts |
 | Cursor 周期额度与 Codex 5 小时 / 每周额度达到 80% / 100% 时，分别提醒一次 | Alert independently when Cursor cycle quota or Codex 5-hour / weekly quota reaches 80% / 100% |
 | Codex 额度重置提醒 | Codex reset reminders |
@@ -166,8 +185,8 @@
 
 | 中文原文 | 英文原文 |
 | --- | --- |
-| 助手状态监控 | Assistant status monitor |
-| 常驻显示 Cursor 与 Codex 的运行、额度不足及服务异常等关注信息，支持上岛与实况 | Ongoing Cursor and Codex state, low quota, and service alerts with Live Updates and HyperIsland |
+| 实时活动 | Live activities |
+| 常驻显示 Cursor 执行中及刚结束的任务，以及 Cursor 与 Codex 的额度和服务状态，支持上岛与实况 | Ongoing and recently ended Cursor tasks, plus Cursor and Codex quota and service status with Live Updates and HyperIsland |
 | 用量阈值提醒 | Usage threshold alerts |
 | Cursor 与 Codex 各项额度达到 80% 或 100% 时分别提醒一次 | Alert independently when each Cursor or Codex quota reaches 80% or 100% |
 | Codex 窗口重置 | Codex window resets |
@@ -177,6 +196,6 @@
 
 - 中文 / 英文资源：`app/src/main/res/values/strings.xml`、`app/src/main/res/values-en/strings.xml`。
 - 提示种类与新鲜度：`IslandMonitorState.kt`；聚合与优先级：`MonitorSnapshot.kt`；内容拼接：`QuotaNotificationRenderer.kt`；额度来源：`QuotaNoticeModel.kt`；正式 / 猫语及短提示：`NotificationCopy.kt`。
-- 单态中文保持四字，多态通常六字符，所有胶囊 / 实况短提示不超过七字符；资源回归测试检查文案、占位符与数量含义，超级岛 payload 测试检查正文、短提示、锁屏标题与单态 / 多态图标引用。
-- 多状态聚合的测试覆盖 972 种额度 / 服务组合、过期与缺失数据、同类多窗口、重复条目、恢复减项、组合图片引用和七字符边界。源码中现有 227 个 `@Test`。偏好持久化、旧开关 / 去重状态保留、双语占位符、短提示长度、十二种图标 / 图片引用、切换不重发提醒均有单元或源码契约检查。2026-10-10 的 Debug Lint 中间结果里另有 12 个位于当时未改页面的旧 API / Compose 配置读取问题，见 `app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt`；该次没有处理，也不把那份报告当成当前全量 Lint 结论。
+- 监控单态中文保持四字，任务短提示为二至三字，多态通常六字符，所有胶囊 / 实况短提示不超过七字符；资源回归测试检查文案、占位符与数量含义，超级岛 payload 测试检查正文、短提示、锁屏标题与单态 / 多态图标引用。
+- 多状态聚合的测试覆盖 972 种额度 / 服务组合、过期与缺失数据、同类多窗口、重复条目、恢复减项、组合图片引用和七字符边界。任务新增验证覆盖首轮基线、执行到结束、快速任务、重启、未知 / 消失、账号隔离、缓存回读、过期及告警共存。偏好持久化、旧开关 / 去重状态保留、双语占位符、短提示长度、十六种图标 / 图片引用、切换不重发提醒均有单元或源码契约检查。2026-10-10 的 Debug Lint 中间结果里另有 12 个位于当时未改页面的旧 API / Compose 配置读取问题，见 `app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt`；该次没有处理，也不把那份报告当成当前全量 Lint 结论。
 - 本轮仅使用本地资源与单元测试，不启动模拟器、不触碰实体手机、不发起账户或官方服务接口请求。

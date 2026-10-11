@@ -6,6 +6,8 @@ import com.lamuier.agenT.model.StatusIndicator
 
 internal enum class IslandMonitorState(val labelRes: Int, val chipRes: Int = labelRes) {
     Running(R.string.island_monitor_running),
+    TaskRunning(R.string.island_task_running, R.string.island_task_running_chip),
+    TaskEnded(R.string.island_task_ended, R.string.island_task_ended_chip),
     LowQuota(R.string.island_monitor_low, R.string.island_monitor_low_chip),
     EmptyQuota(R.string.island_monitor_empty, R.string.island_monitor_empty_chip),
     ServiceIssue(R.string.island_monitor_service, R.string.island_monitor_service_chip),

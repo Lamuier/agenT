@@ -6,86 +6,23 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unreleased
 
-- Align the docs with the current app: technical notes now cover Codex, public resets, the Custom Tabs allowlist as implemented (including subdomains and query rules), the Codex storage lock, and the still-active Overview rings. Ring notes say billing cycle. The privacy policy states that credential SharedPreferences are excluded from cloud backup and device transfer, effective 2026-10-11. Notification and icon notes follow the source and record that the 2026-10-09 release APK does not include later unreleased changes
+## 1.0.1 — 2026-10-11
 
-- Share one process-wide lock for Cursor account JSON so the UI, widgets, and notifications cannot overwrite a newer token
-- Keep the debug visual review activity private, run its credential checks in separate preferences and keystore aliases, and restore language, time zone, and theme when the review ends or the process starts again
-- Pad JWT base64url payloads before deriving a Codex reset identity, so replacing a token still matches the same local history
-- Reject public-reset ETags that contain control characters, and keep the existing cache with an error when the cache write fails
-- Show Codex token length and character validation with the current interface language
+> Version decision: 1.0.0 → 1.0.1. This batch adds user-visible capabilities and would normally be a minor release under SemVer. Release as 1.0.1 at the user's explicit request, increment `versionCode` to 2, and retain the package ID and signing identity.
 
-- Aggregate ongoing-monitor conditions into independent attention rows, retaining severe service failures, quota exhaustion, degradation, maintenance, low quota, and pending data in priority order; do not present stale failures as fresh incidents or hide incomplete / unknown feeds behind confirmed alerts
-- Show primary state +N additional rows in formal / cat-speak captions, preserve all expanded details, and add a second + artwork badge with distinct v7 cache keys; validate short-caption limits, logical deduplication, recovery, and 972 state combinations without changing permissions, preferences, or one-shot reminder deduplication
-
-- Add a persisted, opt-in Cat-speak notification setting with formal copy as default; use one bilingual resource mapping for ongoing notifications, Live Update chips, island captions, and future quota / reset reminders. Preview all six states in Settings and refresh only ongoing presentation on changes, with no network, permission request, or reminder replay
-- Add twelve island artworks for formal / cat-speak × six states, using monochrome / colored cat identities, accents, and shape-coded status badges; use separate v6 picture references to prevent stale icons while leaving launcher artwork unchanged
-
-- Rename the Chinese maintenance caption from 服务检修 to 服务维护 across ongoing notifications, live status chips, the island, and the copy review; keep maintenance-state detection unchanged
-
-- Rename the normal monitoring state to 领地巡视 / Patrol and align expanded notifications, Settings, and the bilingual copy review; leave maintenance and other state-selection logic unchanged
-
-- Replace the Service hiccup wording with Service issue / Issue, and the Chinese text with 服务异常, across ongoing notifications, live status chips, the island, and Settings; retain state selection, alert priority, and refresh behavior, and add a current notification copy review
-
-- Remove the standalone Billing page and its navigation / order-setting entries; default to Overview / Usage / Tasks / Resets / Status, drop saved Billing entries without moving other tabs, and route legacy Billing links to Usage; retain cost, cycle, and quota data on Usage
-- Rename the ongoing Settings switch and installed notification channel to Assistant status monitor, update the dual-assistant startup subtitle, and refresh channel names even with reminders disabled while preserving channel IDs, preferences, and permissions
-- Replace launcher artwork with an optimized version of the supplied robot-cat hugging an energy orb, simplify surrounding decoration, preserve transparency and adaptive safe padding, and align the monochrome icon and island picture reference
-
-- Replace the reset timeline with a seven-row calendar heatmap using weekly columns, regular / banked / other record colors, split-color mixed days, 3 / 6 / 12-month windows, earlier / newer navigation, horizontal scrolling, and per-date details; preserve registration, classification, deletion, and source links
-- Group dates by the display time zone and mark blank cells as no supplied records, not proof of no reset; keep the chart window independent of personal statistics and source filtering separate from counts
-
-- Merge Codex Resets public API announcements / observations into the reset timeline with source filters, credit and original-post links, bounded pagination, deduplication, offline cache, ETag, and rate-limit backoff; exclude public records from personal counts, skip forecasts / pending plans, and send no credentials
-- Use the same attention state in ongoing notifications and the island, with relevant provider / window alerts but no usage percentages, money, or metric progress; retain one-shot threshold / renewal reminders and remove the ongoing used / remaining selector
-- Document the third-party public-data host, anonymous requests, and cache while preserving official-only credential handling
-- Show only the app icon and an attention-aware status in the collapsed island: On duty, Quota low / empty, Service hiccup, Maintenance, or Sync pending; keep percentages, reset times, and details in the expanded card
-- Refresh official Cursor / Codex service state with the existing monitoring cadence and react to foreground status changes; prioritize severe incidents and avoid treating unknown or stale facts as healthy; version the app-image reference
-
-- Move Billing and Tasks back into primary navigation immediately after Usage; upgrade saved four-tab orders while preserving six-tab custom orders, and remove duplicate Overview actions
-- Add explicit Shared / Cursor / Codex badges with soft colors to navigation and tab-order settings; retain horizontal scrolling and active-tab visibility on narrow screens
-- Use a dedicated usage-ring / bar mark for the island and notification small icon, version its picture cache key, and leave the launcher artwork unchanged
-
-- Add an opt-in Codex reset-reminder setting: notify each 5-hour / weekly renewal once after fresh-response confirmation, deduplicated by account / workspace and event; never claim recovery from a timer, manual record, or unclassified early change
-- Refresh Codex promptly on foreground return with freshness checks, near-reset checks, queued forced refresh, and reset-time background jobs; show cached data on failure and acknowledge OS battery delays
-- Reuse current agenT artwork for the island, version its picture reference to invalidate old images, and align the monochrome status icon with the chat-bubble / sparkle silhouette
-
-- Polish ordinary and Live Update notifications with shared provider titles, short metric labels, percent-bearing values, and no oversized thumbnail; expanded ordinary notifications include separate reset, amount, cache, and update details
-- Identify the quota source in status chips; unify 80% / 100% reminder titles and used / remaining details while retaining cycle deduplication, background refresh, and native promotion-compatible templates
-- Use separate text rows on Android 16 and earlier instead of an ambiguous single aggregate meter; simplify the island capsule to its named critical quota and display mode, with a countdown tied to that window
-
-- Add a dedicated Codex Resets tab with week, calendar-month, and configurable subscription-month views for personal-use records, registered official adjustments, observed window renewals, and unclassified changes; support registration, classification, filtering, and local deletion
-- Use single-line horizontally scrollable navigation on narrow screens / larger fonts, keeping the active tab visible instead of wrapping or clipping long labels
-- Show only returned official balance and credit details, expiration, and 5-hour / weekly recovery countdowns; never infer redemption from a lower balance or early recovery and never consume credits
-- Encrypt up to 500 reset records with Android Keystore and isolate them by user / workspace; preserve records across JWT token rotation and remove all reset history when deleting the Codex credential; explicitly mark missing official totals as unknown
-
-- Polish detailed and mini usage widgets with soft surfaces, hairline outlines, plan badges, a circular refresh action, balanced spacing, aligned numbers, and mini progress bars
-- Use provider-aware meter colors with gentle 90% / 100% warnings while retaining quota, cycle, and reset information
-
-- Use one secure token-management sheet for Cursor and Codex with shared save, reveal, copy, delete, and acquisition guidance; switching providers clears transient credentials
-- Use one Settings token entry and two launcher shortcuts, Token management / Settings; legacy shortcut actions also open unified management instead of revealing Cursor tokens
-
-- Stack Cursor above Codex in the compact detailed usage widget, with separate 5-hour and weekly progress and reset times; adapt to 250×180dp and larger fonts while retaining the mini widget's horizontal layout
-- Remove the Codex Overview workspace action, its spacing and copy, and the unused browser allowlist
-
-- Correct the startup subtitle in both languages to cover Cursor and Codex; align shared widget and notification-channel descriptions and add a bilingual copy regression check
-
-- Unify primary navigation around Overview / Usage / Status; keep Cursor billing and tasks in its detail actions with legacy deep links
-- Use a matching bottom-sheet credential editor for Codex, add acquisition guidance and device-unlock-gated reveal, and share sensitive clipboard labeling
-- Include Cursor and both Codex limit windows in the ongoing monitor and 80% / 100% reminders, deduplicated by provider, credential revision, and reset time; refresh both providers in the background
-
-- Choose Overview layout from available width and font scale; phones use full-width stacked cards so Codex text never becomes a narrow vertical column
-- Use shared number, progress, status-dot, and update-time styling; retain Cursor separate-pool / total display and normalize plan names and reset timestamps
-- Redesign usage-widget hierarchy, spacing, and background with matching large quota numbers and one shared synchronization footer
-- Add a Debug-only native screenshot review activity using fixtures for pages and RemoteViews; it is excluded from Release packages
-
-- Add unified Service connections at the top of Settings for Cursor accounts and Codex tokens; connection prompts navigate to Settings
-- Use matching assistant cards on Overview, add provider filtering on Usage, and show both providers in the toolbar connection count
-- Load the complete official OpenAI component feed and related incidents for Codex Web / API / CLI / desktop / extension, separate from local credential sync state
-- Show Cursor and Codex together in every usage and status widget, with independent refresh, cached results, and credential-change updates
-
-- Remove the Cursor / Codex chooser and open directly into one unified dashboard
-- Show Cursor and Codex together on Overview, Usage, and Status; an unconfigured or failed provider no longer hides the other provider
-- Refresh Cursor and Codex together from the toolbar or pull-to-refresh gesture
-- Replace the launcher artwork with a light, flat chat-assistant bubble and sparkle, plus a simplified monochrome themed icon
-- Migrate the source namespace to `com.lamuier.agenT` and generic Application, ViewModel, Theme, and Widget identifiers to `AgenT`; use `agenT` as the display name
+- Unify the Cursor / Codex dashboard, service connections, and token management. Overview, Usage, Status, and widgets show both providers; one secure sheet handles credentials and device-unlock-gated reveal / copy. Launcher shortcuts open Token management and Settings
+- Use Overview / Usage / Tasks / Resets / Status navigation with provider badges, narrow-screen scrolling, and custom order. Remove the standalone Billing tab, route legacy links to Usage, and preserve cost, cycle, and quota information
+- Rename Assistant status monitor to Live activities. Ongoing notifications, Android Live Updates, and HyperIsland show creating / running Cursor tasks and completed, failed, or expired results with a Tasks shortcut. Keep ended results for one hour without extending retention or replaying history on first sync. Observation times share the encrypted account / credential-revision cache. Sync every five minutes in the foreground, roughly fifteen in the background; stale running states become sync-pending
+- Combine quota, service, and task attention rows, show the primary state with +N, and keep all expanded details. Prioritize severe incidents and exhausted quota; stale cached incidents never become new failures. Use clear low-quota, maintenance, issue, and sync-pending copy without ongoing usage numbers or amounts, while preserving channel IDs, switches, permissions, and one-shot deduplication
+- Add an opt-in Cat-speak setting, with formal copy by default and localized notification, live chip, island, quota-alert, and renewal templates. Sixteen style / state icons cover eight states; composite v7 references add a + badge. Update the launcher to the robot-cat hugging a blue energy orb, including its monochrome themed icon
+- Add an on-by-default Auto-update Codex usage switch. Turning it off stops automatic polling and periodic widget requests while preserving manual refresh and token-save requests. Improve foreground freshness, near-reset checks, queued forced refresh, and background window checks; retain cached data on failures
+- Add Codex reset management and confirmed-window renewal alerts. Report weekly, calendar-month, or subscription-month statistics with official detail, local observations, and user records; support registration, filtering, classification, and deletion. Encrypt and isolate history by user / workspace; neither lower balances nor expired timers prove redemption or renewal, and the app never redeems resets
+- Add public read-only reset records and a weekly-column, seven-row calendar heatmap with 3 / 6 / 12-month windows, source filters, date details, and original-post links. Group by display time zone; public rows do not count as personal use and blank cells do not prove no resets. Send no credentials, skip forecasts / pending plans, and support pagination, deduplication, offline cache, ETag, and rate-limit backoff
+- Include Grok Bot, API, SDK, and Remote Control Cursor tasks with repository / status / time / source grouping. Label private local workers without machine pools as Remote Control, omit merged PRs from Tasks, and open conversations through official Custom Tabs
+- Load and filter the complete official Codex Web / API / CLI / desktop / extension status feed, marking incomplete components as unknown. Show both providers across usage / status widgets and improve compact layouts, number hierarchy, progress, and larger-font adaptation
+- Fix process-wide Cursor account-write races, JWT base64url padding, and public-reset cache failures; reject invalid ETags. Keep Debug review entry points unexported, use isolated credential preferences / keys, restore language / time-zone / theme settings, and improve token validation and localization
+- Align privacy and technical documentation with credential backup / transfer exclusions, official API and public-data boundaries, and current notification / artwork behavior. Add usage-heatmap feasibility notes; Debug review code stays out of Release APKs
+- `versionCode=2`, `versionName=1.0.1`
 
 ## 1.0.0
 

@@ -59,7 +59,8 @@ async function island(style, state, size, multiple = false) {
   return sharp(frame).composite(layers).png().toBuffer();
 }
 (async () => {
-  const states = ['running', 'low', 'empty', 'service', 'maintenance', 'syncing'];
+  const states = ['running', 'low', 'empty', 'service', 'maintenance', 'syncing', 'task_running', 'task_ended'];
+  const sheetWidth = 28 + states.length * 178 + 24;
   const layers = [], captions = [], hashes = new Set();
   const variants = [['formal', false], ['cat', false], ['formal', true], ['cat', true]];
   for (const [row, [style, multiple]] of variants.entries()) {
@@ -74,10 +75,10 @@ async function island(style, state, size, multiple = false) {
       captions.push(`<text x="${x + 64}" y="${y + 244}" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#CBD3E3">${state}</text>`);
     }
   }
-  if (hashes.size !== 24) throw new Error('Expected twenty-four visually distinct style/state/composite icons');
-  layers.push({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1196">${captions.join('')}</svg>`), left: 0, top: 0 });
+  if (hashes.size !== states.length * variants.length) throw new Error('Expected distinct style/state/composite icons');
+  layers.push({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${sheetWidth}" height="1196">${captions.join('')}</svg>`), left: 0, top: 0 });
   const preview = path.join(root, 'dist/ui-review/island-formal-cat-states.png');
   fs.mkdirSync(path.dirname(preview), { recursive: true });
-  await sharp({ create: { width: 1120, height: 1196, channels: 4, background: '#0F121B' } }).composite(layers).png().toFile(preview);
+  await sharp({ create: { width: sheetWidth, height: 1196, channels: 4, background: '#0F121B' } }).composite(layers).png().toFile(preview);
   console.log(JSON.stringify({ preview, uniqueIcons: hashes.size, sizesPx: [128, 32, 20], verification: 'static resources; not native Xiaomi rendering' }));
 })().catch(error => { console.error(error.message); process.exit(1); });

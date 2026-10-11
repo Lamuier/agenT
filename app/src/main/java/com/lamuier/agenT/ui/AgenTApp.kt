@@ -79,6 +79,8 @@ fun AgenTApp(
     onOverviewUsageRingModeChange: (OverviewUsageRingMode) -> Unit,
     onCodexResetRemindersToggle: (Boolean) -> Unit = {},
     onCatLanguageToggle: (Boolean) -> Unit = {},
+    codexUsageAutoRefresh: Boolean = true,
+    onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val codexState by codexViewModel.state.collectAsStateWithLifecycle()
@@ -332,6 +334,8 @@ fun AgenTApp(
             codexState = codexState,
             onCodexResetRemindersToggle = onCodexResetRemindersToggle,
             onCatLanguageToggle = onCatLanguageToggle,
+            codexUsageAutoRefresh = codexUsageAutoRefresh,
+            onCodexUsageAutoRefreshChange = onCodexUsageAutoRefreshChange,
         )
     }
 

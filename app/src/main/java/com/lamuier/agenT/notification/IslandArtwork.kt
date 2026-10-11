@@ -8,12 +8,14 @@ import android.graphics.Paint
 import android.graphics.drawable.Icon
 import com.lamuier.agenT.R
 
-/** App-branded, style-aware artwork; glyphs and colors distinguish all six states. */
+/** App-branded, style-aware artwork; glyphs and colors distinguish monitoring and task states. */
 internal object IslandArtwork {
     fun pictureReference(state: IslandMonitorState, catLanguageEnabled: Boolean, additionalCount: Int = 0): String {
         val style = if (catLanguageEnabled) "cat" else "formal"
         val key = when (state) {
             IslandMonitorState.Running -> "running"
+            IslandMonitorState.TaskRunning -> "task_running"
+            IslandMonitorState.TaskEnded -> "task_ended"
             IslandMonitorState.LowQuota -> "low"
             IslandMonitorState.EmptyQuota -> "empty"
             IslandMonitorState.ServiceIssue -> "service"
@@ -53,6 +55,8 @@ internal object IslandArtwork {
 
     @DrawableRes
     fun iconResource(state: IslandMonitorState, catLanguageEnabled: Boolean): Int = when (state) {
+        IslandMonitorState.TaskRunning -> if (catLanguageEnabled) R.drawable.ic_island_cat_task_running else R.drawable.ic_island_formal_task_running
+        IslandMonitorState.TaskEnded -> if (catLanguageEnabled) R.drawable.ic_island_cat_task_ended else R.drawable.ic_island_formal_task_ended
         IslandMonitorState.Running -> if (catLanguageEnabled) R.drawable.ic_island_cat_running else R.drawable.ic_island_formal_running
         IslandMonitorState.LowQuota -> if (catLanguageEnabled) R.drawable.ic_island_cat_low else R.drawable.ic_island_formal_low
         IslandMonitorState.EmptyQuota -> if (catLanguageEnabled) R.drawable.ic_island_cat_empty else R.drawable.ic_island_formal_empty

@@ -1170,6 +1170,7 @@ private object WidgetLoader {
         val credential = cached.credential ?: return cached
         val revision = cached.revision ?: return cached
         if (credential.expired || credential.invalid) return cached
+        if (!force && !DashboardPreferences.get(context).readCodexUsageAutoRefresh()) return cached
         if (!force && cached.usage != null && cached.usage.cacheAgeSeconds < CACHE_FRESH_SECONDS) return cached
         val repository = CodexQuotaRepository(context)
         return try {

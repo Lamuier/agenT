@@ -58,8 +58,11 @@ class CursorApiClient(private val context: Context) {
             .put("include_status", true)
             .put("include_archived", false)
             .put("should_include_collaborators", true)
-            // 官网默认隐藏 API / SDK / Grok Bot；显式列入全部已知来源，避免漏掉 Grok Bot 发起的云端任务。
+            // 官网默认隐藏 API / SDK / Grok Bot。Remote Control 从 Agents 页发起，来源是 GLASS，
+            // 并带 usePrivateWorker。include_sources 是白名单，漏掉 GLASS 时接口不会返回这些任务。
             .put("include_sources", JSONArray(AGENT_TASK_SOURCES))
+            .put("include_hidden_sources", JSONArray(AGENT_TASK_SOURCES))
+            .put("include_workers", true)
         parseJson(
             request(
                 url = "$CURSOR_WEB_BASE/api/background-composer/list",
@@ -261,6 +264,8 @@ class CursorApiClient(private val context: Context) {
             "BACKGROUND_COMPOSER_SOURCE_AUTOMATIONS",
             "BACKGROUND_COMPOSER_SOURCE_SDK",
             "BACKGROUND_COMPOSER_SOURCE_GROK_BOT",
+            "BACKGROUND_COMPOSER_SOURCE_LOCAL",
+            "BACKGROUND_COMPOSER_SOURCE_GLASS",
         )
 
         // UA 版本号自动跟随 versionName（debug 构建带 -debug 后缀），便于服务端识别与问题排查

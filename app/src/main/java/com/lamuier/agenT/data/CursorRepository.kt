@@ -192,13 +192,15 @@ class CursorRepository(context: Context) {
         val requestKey = NetworkRequestKey(accountId, snapshot.revision)
         val live = singleFlightTasks(requestKey) {
             try {
+                val previous = cachedTasks(accountId)
                 val payload = api.agentTasks(snapshot.accessToken)
                 ensureCurrent(snapshot)
                 if (!accountStore.markTokenInvalid(accountId, snapshot.revision, invalid = false)) {
                     throw AccountRevisionChangedException()
                 }
-                val fetched = TasksJsonParser.parse(payload, accountId = snapshot.id)
                 val storedAtMillis = System.currentTimeMillis()
+                val fetched = com.lamuier.agenT.notification.TaskActivityModel.observe(previous,
+                    TasksJsonParser.parse(payload, accountId = snapshot.id), storedAtMillis)
                 runCatching {
                     tasksCache.write(accountId, snapshot.revision, TasksJsonParser.toJson(fetched), storedAtMillis)
                 }
@@ -229,6 +231,7 @@ class CursorRepository(context: Context) {
             invalidateTasks(accountId, snapshot.revision)
             throw AccountRevisionChangedException()
         }
+        runCatching { com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshCopyFromCache() }
         return live
     }
 

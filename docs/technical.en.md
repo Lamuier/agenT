@@ -17,7 +17,7 @@ The Chinese [technical.md](technical.md) is canonical.
 | Platform | `compileSdk` / `targetSdk` = 37 · `minSdk` = 26 (Android 8.0) |
 | Application ID | `com.lamuier.agenT` |
 | Source namespace | `com.lamuier.agenT` (matches the application ID) |
-| Version | `versionCode` = 1 · `versionName` = 1.0.0 |
+| Version | `versionCode` = 2 · `versionName` = 1.0.1 |
 | Size | Release uses R8 shrinking and resource shrinking. Dependencies are AndroidX (including Browser Custom Tabs) and Biometric only—no third-party networking or DI |
 
 ## Build and release
@@ -68,7 +68,7 @@ Day-to-day release:
 .\build.ps1 -Release
 ```
 
-Clean is off by default (Windows often fails when `app\build` is locked). Add `-Clean` for a clean build, `-Online` to fetch dependencies, `-SkipChecks` to skip tests / Lint. The script checks the signing cert, zipalign, package name, version, permissions, and Manifest, and writes `dist\agenT-v1.0.0-release.apk`.
+Clean is off by default (Windows often fails when `app\build` is locked). Add `-Clean` for a clean build, `-Online` to fetch dependencies, `-SkipChecks` to skip tests / Lint. The script checks the signing cert, zipalign, package name, version, permissions, and Manifest, and writes `dist\agenT-v1.0.1-release.apk`.
 
 ### Data-security notes
 
@@ -95,7 +95,7 @@ Android App (on device)
 
 - The Cursor alias, Cursor access token, Codex token, and optional account ID use a non-exportable Android Keystore key plus AES-GCM.
 - The Cursor token is sent only to `api2.cursor.sh` and `cursor.com`. The Codex token is sent only to `chatgpt.com`. Custom service URLs are not allowed. Redirects are rejected. Status-page and public-reset requests do not carry a token.
-- Only parsed usage and task fields are cached (task cache is also encrypted per account + credential revision). Cursor raw responses are not stored. Conversations are not fetched in-app; the official website is opened instead. Task list requests include `include_sources` (including `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`). After parsing `source`, tasks are grouped by repository / status / time / source. Tasks with a merged PR are omitted from the Tasks tab.
+- Only parsed usage and task fields are cached (task cache is also encrypted per account + credential revision). Cursor raw responses are not stored. Conversations are not fetched in-app; the official website is opened instead. Task list requests include `include_sources` and `include_hidden_sources` (including `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`, `BACKGROUND_COMPOSER_SOURCE_GLASS`, and `BACKGROUND_COMPOSER_SOURCE_LOCAL`) and set `include_workers`. A task with `usePrivateWorker` and no machine pool is labeled Remote Control. After parsing `source`, tasks are grouped by repository / status / time / source. Tasks with a merged PR are omitted from the Tasks tab.
 - Absolute times are formatted in the Settings display time zone with a GMT offset (default: follow system; other zones are searchable). Cache timestamps without a zone are read in the system zone at write time, then converted.
 - Cursor Overview still uses concentric rings: the outer ring is usage and the inner ring is the billing cycle. Settings switch between split pools and a combined total. The preference stays in on-device SharedPreferences. Colors, health thresholds, and the rule that draws only the remaining pool when one pool is exhausted are in [overview-ring-colors.en.md](overview-ring-colors.en.md).
 - UI language follows the system by default: English systems use `values-en`; everything else falls back to the default Chinese resources. Settings can force Simplified Chinese or English. Default `values/strings.xml` is Chinese.
@@ -106,7 +106,7 @@ Android App (on device)
 - Cursor account JSON read-modify-write uses one process-wide lock, so the UI, widgets, and notifications cannot overwrite each other. Codex credential writes, usage-cache writes, and reset history share `CodexStorageLock`. The public-reset cache is a separate plaintext preference file and does not use that lock.
 - Codex reset identity pads the JWT payload before base64url decoding, so replacing a token still matches the same on-device history.
 - The debug visual-review activity is not exported. Credential checks use separate preference names and keystore aliases. Language, time zone, and theme are restored when the review ends or the next process starts.
-- Home screen widgets run in the app process so SharedPreferences writes cannot clobber account ciphertext or usage cache from a stale widget-process copy. Usage and status widgets share one JobService refresh schedule (cache TTL 15 minutes). Usage sizes are fixed 2×1 / 4×3; status sizes are fixed 2×1 / 2×2 / 4×1 / 4×2 / 4×3. Placing only a status widget does not request usage APIs.
+- Home screen widgets run in the app process so SharedPreferences writes cannot clobber account ciphertext or usage cache from a stale widget-process copy. Usage and status widgets share one JobService refresh schedule (cache TTL 15 minutes). A separate JobScheduler, about every 15 minutes, refreshes Cursor usage, Codex usage, official status, and Cursor tasks after the cache expires even when no widget is placed. An extra check runs near a Codex window reset. “Auto-update Codex usage” is on by default; turning it off stops those automatic Codex usage requests. Manual refresh and saving the token still request it. Usage sizes are fixed 2×1 / 4×3; status sizes are fixed 2×1 / 2×2 / 4×1 / 4×2 / 4×3. Placing only a status widget does not request usage APIs.
 
 SharedPreferences that hold credentials are excluded from cloud backup and device transfer (`allowBackup=false`, `fullBackupContent=false`, and `sharedpref` excluded in `data_extraction_rules.xml`). Cleartext HTTP is disabled. Tokens are not written to `savedInstanceState`, logs, or usage / task caches.
 

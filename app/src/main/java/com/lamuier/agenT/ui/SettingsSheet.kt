@@ -106,6 +106,8 @@ internal fun SettingsSheet(
     codexState: CodexQuotaUiState,
     onCodexResetRemindersToggle: (Boolean) -> Unit = {},
     onCatLanguageToggle: (Boolean) -> Unit = {},
+    codexUsageAutoRefresh: Boolean = true,
+    onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
 ) {
     val systemPaletteAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -162,6 +164,12 @@ internal fun SettingsSheet(
                         })),
                     icon = Icons.Outlined.Key,
                     onClick = onManageTokens,
+                )
+                SettingToggleRow(
+                    label = stringResource(R.string.codex_usage_auto_refresh_label),
+                    description = stringResource(R.string.codex_usage_auto_refresh_description),
+                    checked = codexUsageAutoRefresh,
+                    onCheckedChange = onCodexUsageAutoRefreshChange,
                 )
             }
             HorizontalDivider()

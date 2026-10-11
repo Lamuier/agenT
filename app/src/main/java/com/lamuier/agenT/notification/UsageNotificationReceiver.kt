@@ -8,7 +8,7 @@ import com.lamuier.agenT.widget.AgenTWidgetUpdater
 import kotlinx.coroutines.launch
 
 /**
- * 开机 / 应用更新后恢复常驻助手状态监控通知与周期刷新任务。
+ * 开机 / 应用更新后恢复常驻实时活动通知与周期刷新任务。
  */
 class UsageNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

@@ -115,6 +115,9 @@ class TasksJsonParserTest {
         assertEquals(AgentTaskSource.GrokBot, TasksJsonParser.parseSource("BACKGROUND_COMPOSER_SOURCE_GROK_BOT"))
         assertEquals(AgentTaskSource.Website, TasksJsonParser.parseSource("website"))
         assertEquals(AgentTaskSource.Sdk, TasksJsonParser.parseSource("sdk"))
+        assertEquals(AgentTaskSource.Website, TasksJsonParser.parseSource("BACKGROUND_COMPOSER_SOURCE_GLASS"))
+        assertEquals(AgentTaskSource.RemoteControl, TasksJsonParser.parseSource("BACKGROUND_COMPOSER_SOURCE_LOCAL"))
+        assertEquals(AgentTaskSource.RemoteControl, TasksJsonParser.parseSource("remote_control"))
         assertEquals(AgentTaskSource.Unknown, TasksJsonParser.parseSource(null))
         assertEquals(AgentTaskSource.Unknown, TasksJsonParser.parseSource("BACKGROUND_COMPOSER_SOURCE_WHATEVER"))
     }
@@ -147,6 +150,30 @@ class TasksJsonParserTest {
         )
         val tasks = TasksJsonParser.parse(payload, accountId = 1)
         assertEquals(AgentTaskSource.Unknown, tasks.tasks.single().source)
+    }
+
+    @Test
+    fun parse_privateWorkerWithoutPool_isRemoteControl() {
+        val payload = JSONObject(
+            """
+            {"composers":[
+              {"bcId":"bc-rc","name":"本机远程","status":"running","source":"BACKGROUND_COMPOSER_SOURCE_GLASS","usePrivateWorker":true},
+              {"bcId":"bc-pool","name":"机器池","status":"running","source":"website","usePrivateWorker":true,"poolName":"office"},
+              {"bcId":"bc-web","name":"云端","status":"running","source":"website"}
+            ]}
+            """.trimIndent(),
+        )
+        val tasks = TasksJsonParser.parse(payload, accountId = 1).tasks.associateBy { it.id }
+        assertEquals(AgentTaskSource.RemoteControl, tasks.getValue("bc-rc").source)
+        assertEquals(AgentTaskSource.Website, tasks.getValue("bc-pool").source)
+        assertEquals(AgentTaskSource.Website, tasks.getValue("bc-web").source)
+        val restored = TasksJsonParser.parseStored(
+            rawJson = TasksJsonParser.toJson(TasksJsonParser.parse(payload, accountId = 1)),
+            accountId = 1,
+            fetchedAt = "2026-10-11 12:00:00",
+            cacheAgeSeconds = 1,
+        )
+        assertEquals(AgentTaskSource.RemoteControl, restored.tasks.single { it.id == "bc-rc" }.source)
     }
 
     @Test
