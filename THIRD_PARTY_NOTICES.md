@@ -26,6 +26,8 @@ Apache License 2.0 全文：<https://www.apache.org/licenses/LICENSE-2.0>
 
 Eclipse Public License 2.0 全文：<https://www.eclipse.org/legal/epl-2.0/>
 
+- **org.json**（`org.json:json`，版权 JSON.org）——仅用于本地单元测试，不包含在 Release APK 内。许可证：<https://github.com/stleary/JSON-java/blob/master/LICENSE>
+
 ## 声明
 
 以上组件按「按原样」基础分发，各自遵循其原许可证条款；与 agenT（MIT）本身分发的许可互相独立。本声明如需更新，随依赖变更在 [CHANGELOG.md](CHANGELOG.md) 记录。

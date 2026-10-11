@@ -2,7 +2,7 @@
 
 > This policy applies to the agenT Android app (package `com.lamuier.agenT`). [中文](PRIVACY.md) | **English**
 
-**Effective date: 2026-10-08**
+**Effective date: 2026-10-11**
 
 agenT is a local-first Cursor and Codex usage app: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
 
@@ -35,14 +35,14 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 - Official Codex component status and related incidents come from public JSON on `status.openai.com`, used only for Status, widgets, and offline display. Requests never include a token or Account ID; the public cache contains no credentials.
 - The Access Token is used only for usage and task-list APIs (`api2.cursor.sh`, `cursor.com`). It is not sent with status-page requests or Custom Tabs
 - The Codex token is used only for `chatgpt.com/backend-api/wham/usage`; it is never sent to Cursor or another host
-- Opening a task conversation or PR uses Chrome Custom Tabs to a checked `cursor.com` / `github.com` page. Those requests are made by the system browser with the browser’s own login, without this app’s Access Token
+- Opening a task conversation, pull request, official status page, or allowed public-reset link uses Chrome Custom Tabs to a checked HTTPS page: `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `stspg.io` and its subdomains, `codex-resets.com`, and `x.com` / `twitter.com` posts whose path is `/thsottiaux/status/<digits>`. Those requests are made by the system browser with the browser’s own login, without this app’s Access Token
 - All connections initiated by this app require HTTPS. Cleartext is forbidden. Redirects are rejected
 - No personal credentials, records, or analytics are uploaded to third-party or developer-operated servers. Public API requests carry only pagination / cache parameters and standard network request information.
 
 ## Data security
 
 - Token and usage cache are written with the system keystore; keys do not leave secure hardware. Public service-status cache has no secrets and is stored in plaintext in the app private directory
-- Cloud backup and device transfer are disabled (`allowBackup=false`). A new phone or cloud restore will not bring your token
+- SharedPreferences that hold credentials are excluded from cloud backup and device transfer (`allowBackup=false`, `fullBackupContent=false`, and `sharedpref` excluded in `data_extraction_rules.xml`). A new phone or cloud restore will not bring your token
 - While a token is shown in plain text, `FLAG_SECURE` is enabled to block screenshots, recording, and Recents thumbnails
 - Copied tokens (Android 13+) are marked sensitive so system clipboard previews show a placeholder
 

@@ -1,6 +1,6 @@
 # 全量代码审计（2026-10-10）
 
-范围是当时工作区里的完整 agenT 源码。旧 `cursorT` 包已删除，新包为 `com.lamuier.agenT`。审查使用 Open Code Review 的委托预览，只审规则标出的可审文件。
+范围是当时工作区里的完整 agenT 源码。旧 `cursorT` 包已删除，新包为 `com.lamuier.agenT`。审查使用 Open Code Review 的委托预览，只审规则标出的可审文件。下文「处理」项已进入源码。2026-10-11 起，产品文档按当前清单、备份规则和链接白名单修订；本页仍是当日审计记录，不随后续功能改写结论。
 
 ## 覆盖
 
@@ -65,4 +65,4 @@ ChatGPT / JWT 的 payload 通常是不补 `=` 的 base64url。过期判断会先
 
 ## 未改
 
-规则排除的测试、已删除的 `cursorT` 源码、Markdown 和二进制资源没有逐份审。小组件任务在系统 `onStopJob` 时不调用 `jobFinished`，这是 JobScheduler 的正常约定，没有改。下文「处理」项已进入源码。
+规则排除的测试、已删除的 `cursorT` 源码、Markdown 和二进制资源没有逐份审。小组件任务在系统 `onStopJob` 时不调用 `jobFinished`，这是 JobScheduler 的正常约定，没有改。

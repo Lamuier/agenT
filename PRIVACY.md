@@ -2,7 +2,7 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-08**
+**生效日期：2026-10-11**
 
 agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
 
@@ -33,14 +33,14 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 - Codex 官方组件状态与相关事件来自 `status.openai.com` 的公开 JSON，仅用于状态页、小组件和离线回显，不携带 Token 或 Account ID；公开缓存不含凭据。
 - Access Token 只用于用量与任务列表接口（`api2.cursor.sh`、`cursor.com`），不会随状态页请求或 Custom Tabs 发送
 - Codex Token 只用于 `chatgpt.com/backend-api/wham/usage`，不会发送给 Cursor 或其他域名
-- 打开任务对话或查看 PR 时，应用通过 Chrome Custom Tabs 打开已校验的 `cursor.com` / `github.com` 页面；这些请求由系统浏览器发出，使用浏览器自身的登录态，不携带本应用 Access Token
+- 打开任务对话、PR、官方状态页或允许的公共重置链接时，应用通过 Chrome Custom Tabs 打开已校验的 HTTPS 页面：`cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及路径为 `/thsottiaux/status/<数字>` 的 `x.com` / `twitter.com` 原帖。这些请求由系统浏览器发出，使用浏览器自身的登录态，不携带本应用 Access Token
 - 全部由本应用发起的连接强制 HTTPS，禁止明文传输，拒绝重定向
 - 不向第三方或开发者服务器上传个人凭据、个人记录或分析数据；公共 API 请求仅带分页 / 条件缓存参数及普通网络请求信息
 
 ## 数据安全
 
 - Token 与用量缓存经系统密钥库加密后落盘，密钥不出安全硬件；公开的服务状态缓存不含敏感信息，明文保存在应用私有目录
-- 云备份与设备迁移已排除（`allowBackup=false`）：换机、云恢复不会带走你的 Token
+- 凭据所在的 SharedPreferences 不参与云备份和设备迁移（`allowBackup=false`，`fullBackupContent=false`，并在 `data_extraction_rules.xml` 中排除 `sharedpref`）。换机或云恢复不会带走 Token
 - Token 明文展示期间自动启用 `FLAG_SECURE`，阻止截屏 / 录屏 / 最近任务缩略图捕获
 - 复制 Token 时（Android 13+）剪贴板标记为敏感内容，系统预览仅显示占位
 

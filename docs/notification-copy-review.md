@@ -1,6 +1,6 @@
 # 通知与超级岛提示语清单
 
-本清单对应当前源码中实际使用的通知、实况、超级岛与通知设置文案，不是全应用所有按钮 / 页面文案，也不包含已停用的旧用量通知模板。当前正式提示保留「服务异常」「领地巡视」「服务维护」，并提供默认关闭的猫语风格开关。上述功能和多状态聚合已包含在最新 `dist/agenT-v1.0.0-release.apk`，版本与证书保持不变。
+本清单对应当前源码中实际使用的通知、实况、超级岛与通知设置文案，不是全应用所有按钮 / 页面文案，也不包含已停用的旧用量通知模板。当前正式提示保留「服务异常」「领地巡视」「服务维护」，并提供默认关闭的猫语风格开关。仓库里的 `dist/agenT-v1.0.0-release.apk` 构建于 2026-10-09，不包含此后未发布源码里的文案改动。
 
 ## 正式 / 猫言猫语开关与图标
 
@@ -17,7 +17,7 @@
 
 正式图标采用简洁单色猫助手；猫语图标使用当前彩色猫助手。角标形状与边框配色同时区分状态，不仅靠颜色。App 启动图标不变；十二种组合分别使用 `miui.focus.pic_agentt_{formal|cat}_{状态}_v7` 图像引用，所有胶囊 / 锁屏 / 展开入口引用同一选中图案。
 
-[图标静态预览](../dist/ui-review/island-formal-cat-states.png)展示 128 / 32 / 20px；基于源 XML 资源与当前启动图案，不是小米系统截图，也未启动模拟器。
+图标静态预览由 `scripts/preview-island-styles.cjs` 生成到 `dist/ui-review/island-formal-cat-states.png`（`dist/` 不入库），展示 128 / 32 / 20px；基于源 XML 资源与当前启动图案，不是小米系统截图，也未启动模拟器。
 
 ## 多状态同时出现
 
@@ -178,5 +178,5 @@
 - 中文 / 英文资源：`app/src/main/res/values/strings.xml`、`app/src/main/res/values-en/strings.xml`。
 - 提示种类与新鲜度：`IslandMonitorState.kt`；聚合与优先级：`MonitorSnapshot.kt`；内容拼接：`QuotaNotificationRenderer.kt`；额度来源：`QuotaNoticeModel.kt`；正式 / 猫语及短提示：`NotificationCopy.kt`。
 - 单态中文保持四字，多态通常六字符，所有胶囊 / 实况短提示不超过七字符；资源回归测试检查文案、占位符与数量含义，超级岛 payload 测试检查正文、短提示、锁屏标题与单态 / 多态图标引用。
-- 多状态聚合额外覆盖了 972 种额度 / 服务组合、过期与缺失数据、同类多窗口、重复条目、恢复减项、组合图片引用和七字符边界；当前共 227 项测试通过。偏好持久化、旧开关 / 去重状态保留、双语占位符、短提示长度、十二种图标 / 图片引用、切换不重发提醒均已覆盖单元或源码契约检查。全量 Lint 另发现 12 个位于本轮未改动页面的旧 API / Compose 配置读取错误，见 `app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt`；本次未处理，不声称全量 Lint 通过。
+- 多状态聚合的测试覆盖 972 种额度 / 服务组合、过期与缺失数据、同类多窗口、重复条目、恢复减项、组合图片引用和七字符边界。源码中现有 227 个 `@Test`。偏好持久化、旧开关 / 去重状态保留、双语占位符、短提示长度、十二种图标 / 图片引用、切换不重发提醒均有单元或源码契约检查。2026-10-10 的 Debug Lint 中间结果里另有 12 个位于当时未改页面的旧 API / Compose 配置读取问题，见 `app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt`；该次没有处理，也不把那份报告当成当前全量 Lint 结论。
 - 本轮仅使用本地资源与单元测试，不启动模拟器、不触碰实体手机、不发起账户或官方服务接口请求。

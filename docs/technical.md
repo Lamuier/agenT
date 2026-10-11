@@ -72,7 +72,7 @@ Debug 默认先跑单元测试与 Lint，再产出 `app\build\outputs\apk\debug\
 
 ```text
 Android App（本机）
-  ├─ Bearer Token  ──▶  https://api2.cursor.sh/...DashboardService/*
+  ├─ Cursor Bearer ──▶  https://api2.cursor.sh/...DashboardService/*
   │                      GetCurrentPeriodUsage / GetPlanInfo /
   │                      GetUsageLimitStatusAndActiveGrants /
   │                      GetAggregatedUsageEvents（按模型 Token 汇总；可带 startDate/endDate 查历史）
@@ -82,17 +82,41 @@ Android App（本机）
   ├─ Chrome Custom Tabs ──▶ https://cursor.com/agents?id=<bcId>（完整对话，走浏览器 Cookie）
   │                      https://cursor.com/agents（官方 Agents 页）
   │                      https://github.com/...（任务关联的 PR，经 URL 白名单校验）
-  └─ 公开状态（无 Token）──▶  https://status.cursor.com/api/v2/summary.json
-                              https://status.cursor.com/api/v2/incidents.json
+  ├─ Codex Bearer  ──▶  https://chatgpt.com/backend-api/wham/usage
+  ├─ 公开状态（无 Token）──▶  https://status.cursor.com/api/v2/summary.json
+  │                      https://status.cursor.com/api/v2/incidents.json
+  │                      https://status.openai.com/api/v2/summary.json
+  │                      https://status.openai.com/api/v2/components.json
+  │                      https://status.openai.com/api/v2/incidents.json
+  └─ 公共重置（无 Token）──▶  https://codex-resets.com/api/v1/resets
 ```
 
-- Alias 与 Access Token 使用 Android Keystore 不可导出密钥 + AES-GCM 加密保存。
-- Token 仅发往固定 Cursor 官方 HTTPS 域名，禁止重定向，不允许自定义服务地址。状态页请求不携带 Token。Custom Tabs 由系统浏览器发起，不携带本应用 Access Token。
-- Token 不进入 `savedInstanceState`、日志或用量 / 任务缓存；Release 禁止应用数据备份、设备迁移及明文 HTTP。
+- Cursor 别名、Cursor Access Token、Codex Token 与可选 Account ID 使用 Android Keystore 不可导出密钥 + AES-GCM 加密保存。
+- Cursor Token 只发往 `api2.cursor.sh` 与 `cursor.com`。Codex Token 只发往 `chatgpt.com`。不允许自定义服务地址，拒绝重定向。状态页和公共重置请求不携带 Token。
 - 仅缓存解析后的用量与任务字段（任务缓存同样按 账号+凭据修订号 加密存储），不保存 Cursor 原始响应。任务对话不在应用内请求，改为打开官方网页。任务列表请求会带上 `include_sources`（含 `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`），解析 `source` 后按仓库 / 状态 / 时间 / 来源分组展示；已合并 PR 的任务不进入任务页列表。
 - 绝对时间按设置中的展示时区格式化并附带 GMT 偏移（默认跟随系统，其他时区可搜索）；本机无时区的缓存时间戳按写入时的系统时区解读后再换算。
-- Cursor 概览额度显示（分列两池 / 合并总用量）保存在本机 SharedPreferences，沿用旧 storage key。主界面改为统一指标卡和细进度条，旧圆环配色说明作为历史设计资料保留。
+- Cursor 概览仍使用同心圆环：外环是用量，内环是计费周期。设置可在分列两池与合并总用量之间切换，偏好保存在本机 SharedPreferences。配色、健康度阈值和单池用尽时只画另一池的规则见 [overview-ring-colors.md](overview-ring-colors.md)。
 - 界面语言默认跟随系统：英文系统用 `values-en`，其余回退默认中文资源；设置可强制简体中文或 English。默认 `values/strings.xml` 为中文。
-- Custom Tabs 目标 URL 必须通过白名单：`cursor.com/agents`（无查询串或仅 `id=<bcId>`），或无 query/fragment 的 `github.com` HTTPS 链接。
-- 服务状态使用 Statuspage 公开 JSON（`/api/v2/summary.json` 与 `/api/v2/incidents.json`），不解析 HTML、不订阅 RSS。`summary.json` 含总览、组件与未恢复事件；`incidents.json` 提供近期历史。二者均为官方、结构化、无需鉴权的接口。
-- 桌面小组件与主进程共用同一进程，避免跨进程 SharedPreferences 把账号密文或用量缓存写回旧副本。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口；状态请求不携带 Token。
+- 应用内链接走 Chrome Custom Tabs，且必须通过白名单。一律要求 HTTPS，并拒绝 userinfo。`cursor.com` 及其子域：没有查询串时允许任意路径；有查询串时只允许路径 `/agents` 且查询串恰好为 `id=<bcId>`（`bc` 后接 `-` 或 `_`，再加 1–80 位字母、数字、下划线或连字符），并拒绝 fragment。`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域：拒绝 query 与 fragment。`codex-resets.com` 只限制端口为默认或 443。`x.com` 与 `twitter.com` 的路径须匹配 `/thsottiaux/status/<数字>`，结尾斜杠可选。Custom Tabs 由系统浏览器发起，不附带本应用 Token。
+- Cursor 服务状态使用 Statuspage 公开 JSON（`summary.json` 与 `incidents.json`）。Codex 另读 `status.openai.com` 的 `components.json`。不解析 HTML、不订阅 RSS。状态请求不携带 Token。
+- Codex 用量只请求 `https://chatgpt.com/backend-api/wham/usage`，Bearer 为 Codex Token，可选 `ChatGPT-Account-ID`。禁止重定向。
+- 公共重置只对 `https://codex-resets.com/api/v1/resets` 发匿名 GET，不带 Token。分页游标须为长度 1–1024 的字母、数字、下划线或连字符。ETag 只接受长度 1–512 且不含控制字符的值；非法值丢弃。缓存 `commit()` 失败时保留已有快照并提示。
+- Cursor 账号 JSON 的读-改-写使用进程内共享锁，界面、小组件和通知不会互相盖掉。Codex 凭据写入、用量缓存写入和重置历史共用 `CodexStorageLock`。公共重置缓存是另一份明文偏好，不走这把锁。
+- Codex 重置身份在解码 JWT payload 前补齐 base64url 填充，同一用户更换 Token 后仍能对上本机记录。
+- Debug 界面验收入口不导出。凭据检查使用独立偏好名和 Keystore 别名；语言、时区和主题在验收结束或下次进程启动时恢复。
+- 桌面小组件与主进程共用同一进程，避免跨进程 SharedPreferences 把账号密文或用量缓存写回旧副本。用量与状态两套小组件共用同一个 JobService 刷新调度（缓存 TTL 15 分钟）。用量为固定 2×1 / 4×3；状态为固定 2×1 / 2×2 / 4×1 / 4×2 / 4×3。仅放置状态小组件时不会请求用量接口。
+
+凭据所在的 SharedPreferences 被排除在云备份和设备迁移之外（`allowBackup=false`，`fullBackupContent=false`，`data_extraction_rules.xml` 排除 `sharedpref`）。明文 HTTP 关闭。Token 不进入 `savedInstanceState`、日志或用量 / 任务缓存。
+
+## 文档索引
+
+| 文档 | 内容 |
+| --- | --- |
+| [README.md](../README.md) | 功能与使用 |
+| [PRIVACY.md](../PRIVACY.md) | 隐私政策 |
+| [CHANGELOG.md](../CHANGELOG.md) | 变更记录 |
+| [overview-ring-colors.md](overview-ring-colors.md) | 概览圆环配色与分列规则 |
+| [notification-copy-review.md](notification-copy-review.md) | 通知与超级岛文案 |
+| [icon-generation.md](icon-generation.md) | 启动图标与超级岛图像 |
+| [usage-heatmap-feasibility.md](usage-heatmap-feasibility.md) | 使用热力图可行性，尚未接入 |
+| [code-audit-2026-10-10.md](code-audit-2026-10-10.md) | 2026-10-10 代码审计及已处理项 |

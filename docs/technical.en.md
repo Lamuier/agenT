@@ -74,7 +74,7 @@ Clean is off by default (Windows often fails when `app\build` is locked). Add `-
 
 ```text
 Android App (on device)
-  ├─ Bearer Token  ──▶  https://api2.cursor.sh/...DashboardService/*
+  ├─ Cursor Bearer ──▶  https://api2.cursor.sh/...DashboardService/*
   │                      GetCurrentPeriodUsage / GetPlanInfo /
   │                      GetUsageLimitStatusAndActiveGrants /
   │                      GetAggregatedUsageEvents (per-model token totals; startDate/endDate for history)
@@ -84,17 +84,41 @@ Android App (on device)
   ├─ Chrome Custom Tabs ──▶ https://cursor.com/agents?id=<bcId> (full conversation, browser cookies)
   │                      https://cursor.com/agents (official Agents page)
   │                      https://github.com/... (task PR, URL allowlist)
-  └─ Public status (no token) ──▶  https://status.cursor.com/api/v2/summary.json
-                              https://status.cursor.com/api/v2/incidents.json
+  ├─ Codex Bearer  ──▶  https://chatgpt.com/backend-api/wham/usage
+  ├─ Public status (no token) ──▶  https://status.cursor.com/api/v2/summary.json
+  │                      https://status.cursor.com/api/v2/incidents.json
+  │                      https://status.openai.com/api/v2/summary.json
+  │                      https://status.openai.com/api/v2/components.json
+  │                      https://status.openai.com/api/v2/incidents.json
+  └─ Public resets (no token) ──▶  https://codex-resets.com/api/v1/resets
 ```
 
-- Alias and Access Token use a non-exportable Android Keystore key plus AES-GCM.
-- The token is sent only to fixed official Cursor HTTPS hosts. Redirects are rejected. Custom service URLs are not allowed. Status-page requests do not carry the token. Custom Tabs are opened by the system browser and do not carry this app’s Access Token.
-- The token is not written to `savedInstanceState`, logs, or usage / task caches. Release disables app backup, device transfer, and cleartext HTTP.
+- The Cursor alias, Cursor access token, Codex token, and optional account ID use a non-exportable Android Keystore key plus AES-GCM.
+- The Cursor token is sent only to `api2.cursor.sh` and `cursor.com`. The Codex token is sent only to `chatgpt.com`. Custom service URLs are not allowed. Redirects are rejected. Status-page and public-reset requests do not carry a token.
 - Only parsed usage and task fields are cached (task cache is also encrypted per account + credential revision). Cursor raw responses are not stored. Conversations are not fetched in-app; the official website is opened instead. Task list requests include `include_sources` (including `BACKGROUND_COMPOSER_SOURCE_GROK_BOT`). After parsing `source`, tasks are grouped by repository / status / time / source. Tasks with a merged PR are omitted from the Tasks tab.
 - Absolute times are formatted in the Settings display time zone with a GMT offset (default: follow system; other zones are searchable). Cache timestamps without a zone are read in the system zone at write time, then converted.
-- Cursor Overview quota display (separate pools / combined total) keeps the existing SharedPreferences storage key. The UI uses shared metric cards and thin progress bars; the old ring-color notes remain as historical design documentation.
+- Cursor Overview still uses concentric rings: the outer ring is usage and the inner ring is the billing cycle. Settings switch between split pools and a combined total. The preference stays in on-device SharedPreferences. Colors, health thresholds, and the rule that draws only the remaining pool when one pool is exhausted are in [overview-ring-colors.en.md](overview-ring-colors.en.md).
 - UI language follows the system by default: English systems use `values-en`; everything else falls back to the default Chinese resources. Settings can force Simplified Chinese or English. Default `values/strings.xml` is Chinese.
-- Custom Tabs URLs must pass an allowlist: `cursor.com/agents` (no query, or only `id=<bcId>`), or `github.com` HTTPS links with no query/fragment.
-- Service status uses Statuspage public JSON (`/api/v2/summary.json` and `/api/v2/incidents.json`). HTML is not parsed and RSS is not subscribed. `summary.json` has overview, components, and unresolved incidents; `incidents.json` has recent history. Both are official, structured, unauthenticated APIs.
-- Home screen widgets run in the app process so SharedPreferences writes cannot clobber account ciphertext or usage cache from a stale widget-process copy. Usage and status widgets share one JobService refresh schedule (cache TTL 15 minutes). Usage sizes are fixed 2×1 / 4×3; status sizes are fixed 2×1 / 2×2 / 4×1 / 4×2 / 4×3. Placing only a status widget does not request usage APIs. Status requests do not carry a token.
+- In-app links use Chrome Custom Tabs and must pass an allowlist. Every URL must be HTTPS and must not include userinfo. `cursor.com` and its subdomains allow any path when there is no query; a query is allowed only on `/agents` and only when it is exactly `id=<bcId>` (`bc` followed by `-` or `_`, then 1–80 letters, digits, underscores, or hyphens). Fragments are rejected. `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, and `stspg.io` and its subdomains reject queries and fragments. `codex-resets.com` is limited to the default port or port 443. `x.com` and `twitter.com` paths must match `/thsottiaux/status/<digits>`, with an optional trailing slash. Custom Tabs are opened by the system browser and do not carry this app’s token.
+- Cursor service status uses Statuspage public JSON (`summary.json` and `incidents.json`). Codex also reads `components.json` from `status.openai.com`. HTML is not parsed and RSS is not subscribed. Status requests do not carry a token.
+- Codex usage requests only `https://chatgpt.com/backend-api/wham/usage`, with the Codex token as Bearer and an optional `ChatGPT-Account-ID`. Redirects are rejected.
+- Public resets are anonymous GETs to `https://codex-resets.com/api/v1/resets` and never include a token. Page cursors must be 1–1024 characters of letters, digits, underscores, or hyphens. An ETag is kept only when it is 1–512 characters and contains no control characters; invalid values are dropped. A failed cache `commit()` keeps the previous snapshot and surfaces an error.
+- Cursor account JSON read-modify-write uses one process-wide lock, so the UI, widgets, and notifications cannot overwrite each other. Codex credential writes, usage-cache writes, and reset history share `CodexStorageLock`. The public-reset cache is a separate plaintext preference file and does not use that lock.
+- Codex reset identity pads the JWT payload before base64url decoding, so replacing a token still matches the same on-device history.
+- The debug visual-review activity is not exported. Credential checks use separate preference names and keystore aliases. Language, time zone, and theme are restored when the review ends or the next process starts.
+- Home screen widgets run in the app process so SharedPreferences writes cannot clobber account ciphertext or usage cache from a stale widget-process copy. Usage and status widgets share one JobService refresh schedule (cache TTL 15 minutes). Usage sizes are fixed 2×1 / 4×3; status sizes are fixed 2×1 / 2×2 / 4×1 / 4×2 / 4×3. Placing only a status widget does not request usage APIs.
+
+SharedPreferences that hold credentials are excluded from cloud backup and device transfer (`allowBackup=false`, `fullBackupContent=false`, and `sharedpref` excluded in `data_extraction_rules.xml`). Cleartext HTTP is disabled. Tokens are not written to `savedInstanceState`, logs, or usage / task caches.
+
+## Document index
+
+| Document | Contents |
+| --- | --- |
+| [README.en.md](../README.en.md) | Features and usage |
+| [PRIVACY.en.md](../PRIVACY.en.md) | Privacy policy |
+| [CHANGELOG.en.md](../CHANGELOG.en.md) | Change history |
+| [overview-ring-colors.en.md](overview-ring-colors.en.md) | Overview ring colors and split rules |
+| [notification-copy-review.md](notification-copy-review.md) | Notification and island copy (Chinese canonical) |
+| [icon-generation.md](icon-generation.md) | Launcher and island artwork (Chinese) |
+| [usage-heatmap-feasibility.md](usage-heatmap-feasibility.md) | Usage-heatmap feasibility; not implemented |
+| [code-audit-2026-10-10.md](code-audit-2026-10-10.md) | 2026-10-10 code audit and the fixes that followed |

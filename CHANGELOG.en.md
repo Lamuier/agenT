@@ -6,6 +6,8 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unreleased
 
+- Align the docs with the current app: technical notes now cover Codex, public resets, the Custom Tabs allowlist as implemented (including subdomains and query rules), the Codex storage lock, and the still-active Overview rings. Ring notes say billing cycle. The privacy policy states that credential SharedPreferences are excluded from cloud backup and device transfer, effective 2026-10-11. Notification and icon notes follow the source and record that the 2026-10-09 release APK does not include later unreleased changes
+
 - Share one process-wide lock for Cursor account JSON so the UI, widgets, and notifications cannot overwrite a newer token
 - Keep the debug visual review activity private, run its credential checks in separate preferences and keystore aliases, and restore language, time zone, and theme when the review ends or the process starts again
 - Pad JWT base64url payloads before deriving a Codex reset identity, so replacing a token still matches the same local history

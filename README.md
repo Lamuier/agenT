@@ -23,6 +23,7 @@ agenT 是整合 Cursor 与 Codex 的 AI 编程助手中枢。概览、用量和�
 ### 用量一目了然
 
 - 总用量、计费周期、套餐额度构成、两个用量池（Cursor 模型 / 其他模型）与 Grok Bot 每周独立额度，集中呈现于「用量」页。
+- 概览圆环可在设置中切换分列两池或合并总用量。分列时若只有一个池用尽，外环只显示仍有额度的池。配色约定见 [docs/overview-ring-colors.md](docs/overview-ring-colors.md)。
 - 「用量」页另含本计费周期 Token 汇总：按模型展示输入 / 输出 / 缓存 Token 与费用；也可按自然月或历史计费周期回看 Token，并按费用估算两池占比。Grok Bot 周额度单独成节，不混入月度用量池。
 - 主导航默认依次为「概览 / 用量 / 任务 / 重置 / 状态」，顺序可在设置中自定义。文字角标辅以配色：概览、用量、状态为「通用」，任务为 Cursor 专属，重置为 Codex 专属；窄屏可横向滚动。账单页已移除，已保存顺序自动剔除账单并保留其他页签的位置，旧账单跳转转到用量；旧四项顺序在用量后补入任务。手机使用全宽纵排卡片，平板按实际宽度显示两列，两项服务使用统一额度和重置时间格式。
 - 「任务」页展示 Cursor 云端任务（后台智能体）列表，可按仓库 / 状态 / 时间 / 来源分组；已合并分支会从列表移除。Grok Bot、API、SDK 等官网默认隐藏的来源也会列入。点击任务会用 Chrome Custom Tabs 打开官方 Agents 页面查看完整对话。
@@ -108,6 +109,20 @@ python -c 'import os,sqlite3,json; from pathlib import Path; p=Path(os.environ["
 先安装 Codex CLI 并执行 `codex login`。凭据通常位于 `%USERPROFILE%\.codex\auth.json`（Windows）或 `~/.codex/auth.json`（macOS / Linux）；在 agenT「设置 → 服务连接 → Token 管理 → Codex」中填写 `tokens.access_token`，`tokens.account_id` 可按需填写。使用后请清空剪贴板。
 
 ---
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [PRIVACY.md](PRIVACY.md) | 隐私政策 |
+| [CHANGELOG.md](CHANGELOG.md) | 变更记录 |
+| [docs/technical.md](docs/technical.md) | 构建、接口与数据安全 |
+| [docs/overview-ring-colors.md](docs/overview-ring-colors.md) | 概览圆环配色 |
+| [docs/notification-copy-review.md](docs/notification-copy-review.md) | 通知与超级岛文案 |
+| [docs/icon-generation.md](docs/icon-generation.md) | 图标生成记录 |
+| [docs/usage-heatmap-feasibility.md](docs/usage-heatmap-feasibility.md) | 使用热力图可行性（未接入） |
+| [docs/code-audit-2026-10-10.md](docs/code-audit-2026-10-10.md) | 2026-10-10 代码审计及已处理项 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 第三方开源组件 |
 
 ## 许可与免责声明
 

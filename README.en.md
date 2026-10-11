@@ -25,6 +25,7 @@ Chinese is the primary language of this repository and the default app locale. E
 ### Usage at a glance
 
 - Total usage, billing cycle, plan quota mix, two usage pools (Cursor models / other models), and Grok Bot weekly quota in one place on the Usage tab.
+- Overview rings can switch in Settings between split pools and a combined total. In split mode, if only one pool is exhausted, the outer ring shows the pool that still has quota. Color rules: [docs/overview-ring-colors.en.md](docs/overview-ring-colors.en.md).
 - The Usage tab also shows billing-cycle token totals: input / output / cache tokens and cost by model. You can look back by calendar month or past billing cycles, with pool share estimated from token cost. Grok Bot weekly quota is a separate section and is not mixed into monthly pools.
 - Default navigation is Overview / Usage / Tasks / Resets / Status, with configurable order and explicit soft-colored scope badges. Overview, Usage, and Status are Shared; Tasks is Cursor-only; Resets is Codex-only. Billing is removed from saved orders without moving surviving tabs, and old Billing links open Usage. Narrow screens scroll horizontally, and older four-tab orders gain Tasks after Usage. Phones use full-width stacked cards, while tablets use two columns when width allows, with shared quota and reset-time styling.
 - The Tasks tab lists Cursor cloud tasks (background agents), grouped by repository / status / time / source. Merged branches are hidden. Sources that the website hides by default (Grok Bot, API, SDK, and others) are included. Tapping a task opens the official Agents page in Chrome Custom Tabs for the full conversation.
@@ -110,6 +111,20 @@ After pasting into the app, clear the clipboard: `Set-Clipboard -Value $null`. D
 Install Codex CLI and run `codex login`. Credentials are normally stored in `%USERPROFILE%\.codex\auth.json` on Windows or `~/.codex/auth.json` on macOS / Linux. Enter `tokens.access_token` under Settings → Service connections → Token management → Codex in agenT; `tokens.account_id` is optional. Clear the clipboard afterward.
 
 ---
+
+## Documents
+
+| Document | Contents |
+| --- | --- |
+| [PRIVACY.en.md](PRIVACY.en.md) | Privacy policy |
+| [CHANGELOG.en.md](CHANGELOG.en.md) | Change history |
+| [docs/technical.en.md](docs/technical.en.md) | Build, APIs, and data security |
+| [docs/overview-ring-colors.en.md](docs/overview-ring-colors.en.md) | Overview ring colors |
+| [docs/notification-copy-review.md](docs/notification-copy-review.md) | Notification and island copy (Chinese) |
+| [docs/icon-generation.md](docs/icon-generation.md) | Icon generation notes (Chinese) |
+| [docs/usage-heatmap-feasibility.md](docs/usage-heatmap-feasibility.md) | Usage-heatmap feasibility (not implemented) |
+| [docs/code-audit-2026-10-10.md](docs/code-audit-2026-10-10.md) | 2026-10-10 code audit and the fixes that followed (Chinese) |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Third-party open-source notices |
 
 ## License and disclaimer
 
