@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    agenT 唯一构建入口。
+    agenT Windows 构建入口；macOS / Linux 使用 build.sh，标准流程见 build.md。
 
 .DESCRIPTION
     .\build.ps1                 # Debug 构建
@@ -22,7 +22,7 @@
     跳过 unit test / lint。
 
 .PARAMETER AdoptDebugKeystore / AdoptKeystore / GenerateNewKey / ForceRebind
-    仅 -SetupSigning 使用。默认沿用 ~/.android/debug.keystore。
+    旧选项已停用；-SetupSigning 只配置统一 release.keystore 与共享私有密码文件。
 #>
 param(
     [switch]$Install,
@@ -207,173 +207,60 @@ function Get-CertSha256([string]$CertPath) {
     }
 }
 
-function Write-SigningMetadata {
-    param(
-        [string]$Root,
-        [string]$StoreFile,
-        [string]$KeyAliasName,
-        [string]$PlainPassword,
-        [string]$Source
-    )
-
-    $keytool = Join-Path (Resolve-JavaHome) "bin\keytool.exe"
-    $metadataFile = Join-Path $Root "release-signing.json"
-    $certificateFile = Join-Path $Root "release-cert.cer"
-    $credentialFile = Join-Path $Root "release-password.clixml"
-    $pinnedFile = Join-Path $Root "pinned-certificate.sha256"
-
-    New-Item -ItemType Directory -Force -Path $Root | Out-Null
-
-    $env:AGENTT_KEYTOOL_PASS = $PlainPassword
-    try {
-        $exportArgs = @(
-            "-exportcert",
-            "-keystore", $StoreFile,
-            "-alias", $KeyAliasName,
-            "-file", $certificateFile,
-            "-storepass:env", "AGENTT_KEYTOOL_PASS"
-        )
-        if ($StoreFile.ToLowerInvariant().EndsWith(".p12")) {
-            $exportArgs = @(
-                "-exportcert",
-                "-keystore", $StoreFile,
-                "-storetype", "PKCS12",
-                "-alias", $KeyAliasName,
-                "-file", $certificateFile,
-                "-storepass:env", "AGENTT_KEYTOOL_PASS"
-            )
-        }
-        $exportOutput = Invoke-Native $keytool $exportArgs
-        if ($LASTEXITCODE -ne 0) {
-            $exportOutput | ForEach-Object { Write-Host $_ }
-            throw "keytool 导出证书失败"
-        }
-    } finally {
-        # 用赋 null 清除环境变量：Remove-Item Env: 在部分宿主的删除包装器下会变成终止性绑定错误
-        $env:AGENTT_KEYTOOL_PASS = $null
-    }
-
-    $securePassword = ConvertTo-SecureString $PlainPassword -AsPlainText -Force
-    [pscredential]::new($KeyAliasName, $securePassword) | Export-Clixml -LiteralPath $credentialFile
-
-    $fingerprint = Get-CertSha256 $certificateFile
-    [ordered]@{
-        schemaVersion = 2
-        storeFile = $StoreFile
-        credentialFile = $credentialFile
-        keyAlias = $KeyAliasName
-        certificateFile = $certificateFile
-        certificateSha256 = $fingerprint
-        source = $Source
-        keyPasswordSameAsStore = $true
-        createdAt = (Get-Date).ToString("o")
-    } | ConvertTo-Json | Set-Content -LiteralPath $metadataFile -Encoding utf8
-
-    Set-Content -LiteralPath $pinnedFile -Value $fingerprint -Encoding ascii
-
-    Write-Host "Release 签名已配置: $metadataFile"
-    Write-Host "  Store     : $StoreFile"
-    Write-Host "  Alias     : $KeyAliasName"
-    Write-Host "  Cert SHA256: $fingerprint"
-}
-
 function Invoke-SetupSigning {
-    $adoptExisting = -not [string]::IsNullOrWhiteSpace($AdoptKeystore)
-    $useDebug = $AdoptDebugKeystore
-    $useNew = $GenerateNewKey
-
-    if (-not $useDebug -and -not $useNew -and -not $adoptExisting) {
-        $useDebug = $true
+    if ($AdoptDebugKeystore -or $GenerateNewKey -or $ForceRebind -or -not [string]::IsNullOrEmpty($StorePassword)) {
+        throw "已统一使用 release.keystore；不支持 Debug 密钥、新建密钥、重绑或命令行密码。请使用共享私有密码文件。"
     }
-    if ((@($useDebug, $useNew, $adoptExisting) | Where-Object { $_ }).Count -gt 1) {
-        throw "-AdoptDebugKeystore、-AdoptKeystore 与 -GenerateNewKey 只能选其一"
+    $store = (Resolve-Path -LiteralPath (Join-Path $ProjectRoot "../release.keystore")).Path
+    if ($AdoptKeystore -and (Resolve-Path -LiteralPath $AdoptKeystore).Path -ne $store) {
+        throw "只允许引用工程同级的 release.keystore"
     }
-    if ($adoptExisting) {
-        if (-not (Test-Path -LiteralPath $AdoptKeystore)) { throw "找不到密钥库: $AdoptKeystore" }
-        if ([string]::IsNullOrWhiteSpace($KeyAlias)) { throw "-AdoptKeystore 需要 -KeyAlias" }
-        if ([string]::IsNullOrWhiteSpace($StorePassword)) { throw "-AdoptKeystore 需要 -StorePassword" }
+    if ($KeyAlias -and $KeyAlias -ne "release") { throw "统一密钥别名必须为 release" }
+    $passwordFile = Join-Path $ProjectRoot "../release-password.txt"
+    $certificateFile = Join-Path $ProjectRoot "../release-cert.cer"
+    $expected = "5342F38CB24B950ED3B7112EC82C151B98A7ACBE67A1FA2EA3D0AA9F79C36FF3"
+    if (-not (Test-Path -LiteralPath $passwordFile) -or -not (Test-Path -LiteralPath $certificateFile)) {
+        throw "共享密码文件或统一公钥证书缺失；见 build.md"
     }
-
+    if ((Get-CertSha256 $certificateFile) -ne $expected) { throw "共享公钥证书与统一指纹不一致" }
     $metadataFile = Join-Path $SigningRoot "release-signing.json"
-    if ((Test-Path -LiteralPath $metadataFile) -and -not $ForceRebind) {
-        $metadata = Get-Content -Raw -LiteralPath $metadataFile | ConvertFrom-Json
-        foreach ($requiredPath in @($metadata.storeFile, $metadata.credentialFile, $metadata.certificateFile)) {
-            if (-not (Test-Path -LiteralPath $requiredPath)) {
-                throw "签名配置不完整: $requiredPath"
-            }
+    if (Test-Path -LiteralPath $metadataFile) {
+        $existing = Get-Content -Raw -LiteralPath $metadataFile | ConvertFrom-Json
+        if (([string]$existing.certificateSha256).Replace(":", "").ToUpperInvariant() -ne $expected) {
+            throw "已有其他签名身份；拒绝自动重绑"
         }
-        Write-Host "Release 签名已存在: $metadataFile"
-        Write-Host "  Cert SHA256: $($metadata.certificateSha256)"
-        Write-Host "  Source     : $($metadata.source)"
-        Write-Host "重绑请加: -SetupSigning -AdoptDebugKeystore -ForceRebind"
-        return
     }
-
-    if ((Test-Path -LiteralPath $metadataFile) -and $ForceRebind) {
-        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $backupRoot = Join-Path $SigningRoot "backup-$stamp"
-        New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-        Get-ChildItem -LiteralPath $SigningRoot -File | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $backupRoot $_.Name) -Force
-        }
-        Write-Host "已备份旧签名资产到: $backupRoot"
-    }
-
-    if ($adoptExisting) {
-        $resolvedStore = (Resolve-Path -LiteralPath $AdoptKeystore).Path
-        Write-SigningMetadata -Root $SigningRoot -StoreFile $resolvedStore `
-            -KeyAliasName $KeyAlias -PlainPassword $StorePassword -Source "existing-keystore"
-        return
-    }
-
-    if ($useDebug) {
-        $debugStore = Join-Path $env:USERPROFILE ".android\debug.keystore"
-        if (-not (Test-Path -LiteralPath $debugStore)) {
-            throw "未找到 debug.keystore: $debugStore（请先用 Android Studio 跑一次 Debug 构建）"
-        }
-        Write-SigningMetadata -Root $SigningRoot -StoreFile $debugStore `
-            -KeyAliasName "androiddebugkey" -PlainPassword "android" -Source "android-debug-keystore"
-        return
-    }
-
-    $alias = "agent-release"
-    $storeFile = Join-Path $SigningRoot "agent-release.p12"
-    if ((Test-Path -LiteralPath $storeFile) -and -not $ForceRebind) {
-        throw "拒绝覆盖已有密钥库: $storeFile（请加 -ForceRebind）"
-    }
-
-    New-Item -ItemType Directory -Force -Path $SigningRoot | Out-Null
-    $passwordBytes = New-Object byte[] 48
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
-    $plainPassword = [Convert]::ToBase64String($passwordBytes)
-    $keytool = Join-Path (Resolve-JavaHome) "bin\keytool.exe"
-    $env:AGENTT_KEYTOOL_PASS = $plainPassword
+    $keytool = Join-Path (Resolve-JavaHome) "bin/keytool.exe"
+    $temporaryCertificate = [IO.Path]::GetTempFileName()
+    $env:AGENTT_KEYTOOL_PASS = [IO.File]::ReadAllText($passwordFile, [Text.Encoding]::UTF8).TrimEnd("`r", "`n")
     try {
-        $generateArgs = @(
-            "-genkeypair", "-noprompt",
-            "-keystore", $storeFile,
-            "-storetype", "PKCS12",
-            "-alias", $alias,
-            "-keyalg", "RSA",
-            "-keysize", "4096",
-            "-sigalg", "SHA256withRSA",
-            "-validity", "10000",
-            "-dname", "CN=Lamuier,OU=Lamu,O=Lamu,L=GZ,ST=GD,C=CN",
-            "-storepass:env", "AGENTT_KEYTOOL_PASS",
-            "-keypass:env", "AGENTT_KEYTOOL_PASS"
-        )
-        $generateOutput = Invoke-Native $keytool $generateArgs
-        if ($LASTEXITCODE -ne 0) {
-            $generateOutput | ForEach-Object { Write-Host $_ }
-            throw "keytool 生成 Release 密钥失败"
+        if ([string]::IsNullOrEmpty($env:AGENTT_KEYTOOL_PASS) -or $env:AGENTT_KEYTOOL_PASS -match "[\r\n]") {
+            throw "密码文件须为 UTF-8 单行"
         }
-        Write-Host "警告: 已生成全新 Release 密钥，旧安装包无法覆盖升级。" -ForegroundColor Yellow
-        Write-SigningMetadata -Root $SigningRoot -StoreFile $storeFile `
-            -KeyAliasName $alias -PlainPassword $plainPassword -Source "generated-pkcs12"
+        $null = Invoke-Native $keytool @("-exportcert", "-keystore", $store, "-alias", "release",
+            "-storepass:env", "AGENTT_KEYTOOL_PASS", "-file", $temporaryCertificate)
+        if ($LASTEXITCODE -ne 0) { throw "原密钥库密码或证书读取失败" }
+        if ((Get-CertSha256 $temporaryCertificate) -ne $expected) { throw "密钥库证书与统一指纹不一致" }
+        $null = Invoke-Native $keytool @("-certreq", "-keystore", $store, "-alias", "release",
+            "-storepass:env", "AGENTT_KEYTOOL_PASS", "-keypass:env", "AGENTT_KEYTOOL_PASS")
+        if ($LASTEXITCODE -ne 0) { throw "原私钥解密与签名校验失败" }
+        New-Item -ItemType Directory -Force -Path $SigningRoot | Out-Null
+        [ordered]@{
+            schemaVersion = 2
+            storeFile = "../release.keystore"
+            credentialFile = "../release-password.txt"
+            credentialFormat = "text"
+            keyAlias = "release"
+            certificateFile = "../release-cert.cer"
+            certificateSha256 = $expected
+            keyPasswordSameAsStore = $true
+            source = "shared-release-keystore"
+        } | ConvertTo-Json | Set-Content -LiteralPath $metadataFile -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $SigningRoot "pinned-certificate.sha256") -Value $expected -Encoding ascii
+        Write-Host "已配置统一 release.keystore；未复制私钥或密码。"
     } finally {
         $env:AGENTT_KEYTOOL_PASS = $null
-        [Array]::Clear($passwordBytes, 0, $passwordBytes.Length)
-        $plainPassword = $null
+        Remove-Item -LiteralPath $temporaryCertificate -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -415,18 +302,7 @@ function Clear-ReleaseSigningEnv {
 function Ensure-ReleaseSigningConfigured {
     $metadataFile = Join-Path $SigningRoot "release-signing.json"
     if (Test-Path -LiteralPath $metadataFile) { return $metadataFile }
-
-    Write-Step "尚未配置签名，自动绑定 debug.keystore"
-    $debugStore = Join-Path $env:USERPROFILE ".android\debug.keystore"
-    if (-not (Test-Path -LiteralPath $debugStore)) {
-        throw "未找到 debug.keystore: $debugStore（请先用 Android Studio 跑一次 Debug，或执行 .\build.ps1 -SetupSigning）"
-    }
-    Write-SigningMetadata -Root $SigningRoot -StoreFile $debugStore `
-        -KeyAliasName "androiddebugkey" -PlainPassword "android" -Source "android-debug-keystore"
-    if (-not (Test-Path -LiteralPath $metadataFile)) {
-        throw "签名初始化后仍找不到: $metadataFile"
-    }
-    return $metadataFile
+    throw "缺少统一签名配置；请先准备 release.keystore 和共享私有密码，再运行 .\build.ps1 -SetupSigning（见 build.md）。禁止自动绑定 Debug 密钥。"
 }
 
 # --- verify ---
@@ -646,7 +522,7 @@ function Invoke-ReleasePackage {
         $metaProbe = Get-Content -Raw -LiteralPath $metadataFile | ConvertFrom-Json
         $current = ([string]$metaProbe.certificateSha256).Replace(":", "").ToUpperInvariant()
         if ($pinned -and $current -ne $pinned) {
-            throw "签名证书与 pinned-certificate.sha256 不一致。请运行: .\build.ps1 -SetupSigning -AdoptDebugKeystore -ForceRebind"
+            throw "签名证书与 pinned-certificate.sha256 不一致。请检查统一 release.keystore 与 pin；拒绝自动重绑，见 build.md"
         }
     }
 

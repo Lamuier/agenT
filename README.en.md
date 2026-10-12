@@ -1,138 +1,78 @@
 # agenT
 
-> Bring the Cursor and Codex AI coding assistants into one mobile hub—no third-party backend. Data stays on your device.
+> A native Android dashboard for Cursor and Codex usage, tasks, resets, and service status.
 
 [中文](README.md) | **English**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-agenT brings Cursor and Codex into one AI coding-assistant hub. Overview, Usage, and Status show both services together: Cursor provides usage, cloud tasks, status, notifications, and widgets; Codex shows the 5-hour, weekly, and additional limits from a ChatGPT subscription and official service status. There is no account system or self-hosted backend. Credentials and caches are encrypted locally.
+Project version: **1.1.0** (`versionCode` 3). This README describes the current source; see the [1.1.0 release notes](CHANGELOG.en.md#110--2026-10-12). Package ID: `com.lamuier.agenT`.
 
-Chinese is the primary language of this repository and the default app locale. English UI is available in Settings, or automatically when the system language is English.
+There is no app account system, self-hosted backend, advertising, or analytics SDK. Credentials and personal caches stay on the device; queries go directly to provider endpoints, while public reset announcements use an anonymous third-party source.
 
----
+## Features and entry points
 
-Current version: **1.0.1** (`versionCode` 2).
+| Page | Current functionality |
+| --- | --- |
+| Overview | Matching Cursor / Codex cards, quota and reset times; Cursor quota always shows separate own-model and other-model pools |
+| Usage | Cursor billing periods, plans, quota pools, per-model tokens / cost, historical windows and Grok Bot weekly quota; Codex 5-hour / weekly and additional windows |
+| Tasks | Cursor cloud tasks grouped by repository, status, time or source; includes Grok Bot, API, SDK and Remote Control; hides merged PRs and opens conversations on the official website |
+| Resets | Codex official fields, on-device observations and manual records; weekly / calendar-month / subscription-month statistics, personal and public reset calendars, filters and date details |
+| Status | Official Cursor / Codex components, ongoing incidents and history; no token required |
 
-## Features
+Reorderable navigation uses a bottom bar and swiping on phones, with a rail on wider windows. Settings are grouped into Service connections, Appearance, Notifications, System entry points and General. The UI supports Chinese / English, light / dark themes, dynamic color, display time zones, large fonts and safe fold regions. Settings use predictive back; navigation, filtering and scroll state can be restored.
 
-### Two services, one entry point
+- **Live activities and alerts:** ongoing Cursor tasks and recently ended results, plus provider quota and service attention items. Ended results remain for one hour. Quota thresholds and confirmed Codex window renewals trigger independent alerts. Cat-speak is optional and off by default; native Live Updates and Xiaomi HyperIsland presentation depend on the system. [Notification behavior](docs/notifications.md)
+- **System entry points:** seven dual-provider widgets (two usage, five status), sample previews and pinning; Token management, Settings, Overview and Tasks shortcuts; an overview Quick Settings tile.
+- **Haptics:** enabled by default, with a General switch. Light selections and one confirmation after successful manual refresh, save, copy or reset-record operations. All requests in a batch must succeed; failures, cached fallback and background sync stay silent. System preferences take precedence.
+- **Refresh and offline display:** checks freshness on resume, generally refreshes every five minutes in the foreground and roughly fifteen in the background, with extra checks near Codex resets. Cached data remains available after failure. Disable automatic Codex usage refresh while keeping manual refresh and token-save queries.
 
-- Open directly into one dashboard, with Cursor and Codex together on Overview, Usage, and Status.
-- Use one secure token-management sheet for Cursor and Codex under Service connections in Settings. Switch providers to save, reveal, copy, or delete credentials. Overview uses matching assistant cards, and Usage supports provider filtering.
-- Independent package ID `com.lamuier.agenT`, allowing installation alongside the older Cursor / Codex apps.
-- A robot-cat assistant hugging a blue energy orb, optimized for small sizes and circular masks, with a matching simplified monochrome icon on Android 13+ and updated island artwork.
+The 4×3 status widget groups component lists and incident summaries by provider; the usage widget preserves all three quota windows and reset times, with compact layouts for smaller hosts and large text.
 
-### Usage at a glance
+## Credentials
 
-- Total usage, billing cycle, plan quota mix, two usage pools (Cursor models / other models), and Grok Bot weekly quota in one place on the Usage tab.
-- Overview rings can switch in Settings between split pools and a combined total. In split mode, if only one pool is exhausted, the outer ring shows the pool that still has quota. Color rules: [docs/overview-ring-colors.en.md](docs/overview-ring-colors.en.md).
-- The Usage tab also shows billing-cycle token totals: input / output / cache tokens and cost by model. You can look back by calendar month or past billing cycles, with pool share estimated from token cost. Grok Bot weekly quota is a separate section and is not mixed into monthly pools.
-- Default navigation is Overview / Usage / Tasks / Resets / Status, with configurable order and explicit soft-colored scope badges. Overview, Usage, and Status are Shared; Tasks is Cursor-only; Resets is Codex-only. Billing is removed from saved orders without moving surviving tabs, and old Billing links open Usage. Narrow screens scroll horizontally, and older four-tab orders gain Tasks after Usage. Phones use full-width stacked cards, while tablets use two columns when width allows, with shared quota and reset-time styling.
-- The Tasks tab lists Cursor cloud tasks (background agents), grouped by repository / status / time / source. Merged branches are hidden. Sources that the website hides by default (Grok Bot, API, SDK, Remote Control, and others) are included. Remote Control means a task on a private local worker with no machine pool. Tapping a task opens the official Agents page in Chrome Custom Tabs for the full conversation.
-- Status shows official Cursor and Codex availability together, with selectable component details, active incidents, and history. No token is required. The complete OpenAI component endpoint supplies Codex Web, API, CLI, desktop, and extension status; unrelated OpenAI faults are not reported as Codex faults.
-- Rings, progress bars, and key numbers use light motion without clutter.
+Open Settings → Service connections → Token management, then select Cursor or Codex. Saved tokens stay masked; revealing them requires device unlock. Copies are marked sensitive where supported. Do not share tokens and clear the clipboard after pasting.
 
-### Codex quota
+| Provider | Source and fields |
+| --- | --- |
+| Cursor | In-app Windows extraction instructions; desktop state database entry `cursorAuth/accessToken`, commonly at `%APPDATA%\Cursor\User\globalStorage\state.vscdb` on Windows |
+| Codex | `~/.codex/auth.json` after Codex CLI login (`%USERPROFILE%\.codex\auth.json` on Windows); use `tokens.access_token` and optionally `tokens.account_id` |
 
-- 5-hour, weekly, and additional rate-limit windows with used / remaining percentages and reset times.
-- ChatGPT plan type, reset credits, and an encrypted offline cache of the latest successful result.
-- Codex OAuth access token and optional ChatGPT Account ID are encrypted with Android Keystore and sent only to the official `chatgpt.com` usage endpoint.
+An OpenAI platform API key does not replace a Codex / ChatGPT subscription token. Update expired or invalid credentials from the corresponding provider. Official status and anonymous public resets do not require a token.
 
-### Codex reset management
+## Data and limits
 
-- A seven-row calendar heatmap uses weekly columns and regular / banked / other colors, with 3 / 6 / 12-month windows, horizontal scrolling, earlier / newer navigation, and date details. Blank cells mean no supplied records, not proof that no reset occurred. Dates follow the display time zone independently of the personal statistics period.
-- Merge local account records with public announcements / observations from [Codex Resets](https://codex-resets.com), including source filters and original-post links. Public records are not account history or personal reset counts; forecasts / pending plans are excluded. No API key or token is sent. Support pagination, deduplication, offline cache, and rate-limit backoff.
-- The [usage heatmap assessment](docs/usage-heatmap-feasibility.md) documents Cursor / Codex daily-data routes and permission / coverage limits. No new usage collector or bridge is introduced in this change.
-- A dedicated Resets tab covers Monday-based weeks, calendar months, and subscription months with a user-configured ChatGPT billing start day; short months clamp to month end, and boundaries follow the display time zone.
-- Separate personal usage, registered official adjustments, observed 5-hour / weekly renewals, unclassified early changes, and credit-balance changes. Sources are labeled as official detail, local observation, or user record. Register, classify, filter, and delete local records.
-- The returned official balance is authoritative, not the detail count. Show grant / expiration / status only when supplied. Missing official totals remain unavailable; balance decreases are not proof of redemption and offline resets are not backfilled. This page does not redeem credits.
-- Keep up to 500 encrypted, token-free records isolated by Codex user and workspace. Token rotation preserves records only when both user and workspace are known; unknown identities or workspaces are isolated by token. Deleting the Codex credential also removes all reset history.
+- Credentials go only to the corresponding fixed official domains. Status and public-reset requests carry no token. Accounts, usage, tasks and personal resets use Android Keystore AES-GCM and are excluded from backup and device transfer.
+- Only parsed usage / task summaries are cached. Full task conversations stay on the official website; checked links open in the system browser.
+- The Resets page manages records and does not redeem resets. Public announcements / observations from `codex-resets.com` are not official account history and do not count toward personal totals. Missing dates do not prove that no reset occurred.
+- There is no daily token-usage heatmap; quota percentages cannot be converted directly into daily consumption.
+- Provider usage endpoints may change. Battery and network restrictions can delay background work and alerts; exact timing is not guaranteed. Android 8.0+ and arm64 only.
 
-### Live activities and notifications
+See the full [Privacy Policy](PRIVACY.en.md) for data handling and permissions.
 
-- Settings → Notifications includes an opt-in Cat-speak switch. Formal copy remains the default; enabling it updates ongoing notifications, Live Update chips, the island, and future one-shot quota / renewal reminders. Preview the eight captions below the switch. The local preference persists, and switching only refreshes ongoing presentation without network calls, permission requests, or replaying reminders.
-- Island artwork distinguishes both style and all eight states: a flat monochrome cat in formal mode or the colored cat in cat-speak mode, with check / warning / empty-battery / cross / wrench / clock / play / stop badges and matching accents. Every combination has its own picture-cache reference; launcher artwork is unchanged.
-- Multiple conditions retain the highest-priority caption with +N other attention rows and a second + icon badge. Expanded details keep every quota, service, and pending-data row; independent windows count separately even when their states match. Stale outages become update-pending rather than fresh failures, and confirmed incidents can coexist with incomplete feeds. The count is not usage; v7 single / composite picture keys stay stable as the count changes.
-- Settings and the notification channel are named Live activities. Cursor tasks show their name and repository while creating / running, and completed, failed, or expired results remain for one hour, with a Tasks shortcut. First sync establishes a baseline without replaying history. Persistent notifications share the island attention logic: Patrol, Quota low / empty, Service issue / Maintenance, or Sync pending. No usage numbers, amounts, or progress metrics; both providers and Cursor tasks refresh roughly every 15 minutes, subject to system and network delays. See the bilingual [copy review](docs/notification-copy-review.md) for the complete current text.
-- Independent one-shot alerts at 80% / 100%, deduplicated by provider, credential revision, and reset time.
-- Opt into Codex reset reminders in Settings to receive independent 5-hour / weekly renewal notices after fresh-response confirmation; timers alone, old history, and manual records do not trigger recovery claims.
-- Check freshness on foreground return and near reset deadlines. Background refresh runs roughly every 15 minutes with additional reset-time checks, subject to network and OS battery delays; notifications are not exact-to-the-second alarms.
-- Xiaomi HyperOS 3 shows the app icon and attention status, with affected providers / quota windows in expanded alerts. Exact usage remains in the app and widgets.
-- Persistent notifications and Android Live Updates use the same native text-state template with affected providers / windows and no percentages. One-shot threshold and reset reminders remain available.
+## Build and documentation
 
-### Home screen widgets
+Use `./build.sh` on macOS / Linux or `.\build.ps1` on Windows. Tests, Lint and build run by default; Release uses the existing signing key and validates the APK. Environment, options and signing are documented in the canonical [build.md](build.md) (Chinese).
 
-- Every Material 3 usage and status widget shows Cursor and Codex together. Usage comes in a horizontal 2×1 mini bar and a vertically stacked 4×3 detail card, with Cursor quota and Codex 5-hour / weekly quota; status comes in 2×1, 2×2, 4×1, 4×2, and 4×3. Android 12+ follows system colors. Status widgets do not need an Access Token.
+At the owner's request, current builds use the shared `release.keystore`, alias `release`, matching ScheduleTimeline and AndroidApkTemplate. APKs signed with the former independent agenT certificate cannot be updated directly with this signature. Handle local data before migration; the build scripts never uninstall or install the app automatically.
 
-### App shortcuts
-
-- Long-press the icon for Token management and Settings. Token management supports both Cursor and Codex; saved tokens require fingerprint / lock-screen verification, remain masked by default, and support secure copying.
-
-### Everyday details
-
-- Auto-refresh on launch and when returning to the foreground; silent sync every 5 minutes in the foreground; manual refresh is also available. Background refresh runs about every 15 minutes for usage and status (the ongoing monitor runs even without a widget; a placed widget adds its own pass). System sleep may delay it. Settings includes “Auto-update Codex usage”; when off, Codex usage is requested only by a manual refresh, a widget refresh, or saving the token.
-- 64-bit only. High refresh rate is used in the foreground and released when you leave.
-- Light / dark follow the system. Accessibility and large-screen layouts are supported. Primary-tab order, Cursor quota display, time zone, and UI language can be changed in Settings (time zone defaults to follow system; other zones are searchable). Default copy is Simplified Chinese; Follow system uses English on English devices and falls back to Chinese otherwise.
-- Built-in Windows guide for extracting a Token.
-
----
-
-## Privacy and security
-
-- **Official-only credentials**: Usage and availability use their official endpoints. Public reset records are requested anonymously from `codex-resets.com`, with no token or Account ID. No analytics, ads, or personal-record uploads.
-- **Encrypted locally**: Account and token are stored with the system keystore on your device. They are not backed up and are not transmitted in the clear.
-- **Minimal cache**: Only parsed usage numbers and task summaries are cached. Raw API responses are not saved. Conversations are viewed on the official website; the app does not fetch chat content.
-
-Full details: [PRIVACY.en.md](PRIVACY.en.md) (canonical Chinese: [PRIVACY.md](PRIVACY.md)). Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-> Cursor usage APIs have no public stability guarantee. The app may need an update when APIs change.
-> Codex’s `/backend-api/wham/usage` endpoint also has no public stability guarantee.
-
----
-
-## How to get a Cursor Access Token
-
-In the app, tap “How to get an Access Token” for the full steps. Windows users can also extract it manually:
-
-The state database is usually at `%APPDATA%\Cursor\User\globalStorage\state.vscdb`. The key is `cursorAuth/accessToken`.
-
-```powershell
-# sqlite3 installed
-sqlite3 "$env:APPDATA\Cursor\User\globalStorage\state.vscdb" "SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken';" | Set-Clipboard
-
-# Python only
-python -c 'import os,sqlite3,json; from pathlib import Path; p=Path(os.environ["APPDATA"])/"Cursor"/"User"/"globalStorage"/"state.vscdb"; c=sqlite3.connect(p.as_uri()+"?mode=ro",uri=True); v=c.execute("select value from ItemTable where key=?",("cursorAuth/accessToken",)).fetchone()[0]; print(json.loads(v) if v.startswith("\"") else v,end="")' | Set-Clipboard
+```sh
+./build.sh --doctor
+./build.sh
+./build.sh --release --artifact-suffix local-build
 ```
-
-After pasting into the app, clear the clipboard: `Set-Clipboard -Value $null`. Do not send the token to anyone or commit it to a repository.
-
-## How to get a Codex Access Token
-
-Install Codex CLI and run `codex login`. Credentials are normally stored in `%USERPROFILE%\.codex\auth.json` on Windows or `~/.codex/auth.json` on macOS / Linux. Enter `tokens.access_token` under Settings → Service connections → Token management → Codex in agenT; `tokens.account_id` is optional. Clear the clipboard afterward.
-
----
-
-## Documents
 
 | Document | Contents |
 | --- | --- |
-| [PRIVACY.en.md](PRIVACY.en.md) | Privacy policy |
-| [CHANGELOG.en.md](CHANGELOG.en.md) | Change history |
-| [docs/technical.en.md](docs/technical.en.md) | Build, APIs, and data security |
-| [docs/overview-ring-colors.en.md](docs/overview-ring-colors.en.md) | Overview ring colors |
-| [docs/notification-copy-review.md](docs/notification-copy-review.md) | Notification and island copy (Chinese) |
-| [docs/icon-generation.md](docs/icon-generation.md) | Icon generation notes (Chinese) |
-| [docs/usage-heatmap-feasibility.md](docs/usage-heatmap-feasibility.md) | Usage-heatmap feasibility (not implemented) |
-| [docs/code-audit-2026-10-10.md](docs/code-audit-2026-10-10.md) | 2026-10-10 code audit and the fixes that followed (Chinese) |
-| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Third-party open-source notices |
+| [Documentation index](docs/README.md) | Canonical topic locations (Chinese developer docs) |
+| [Build guide](build.md) | Environment, checks, signing and artifacts |
+| [Architecture](docs/architecture.md) | Files, data flow, endpoints and security |
+| [UI and resources](docs/ui.md) | Back, haptics, rings, icons and JVM review |
+| [Notifications](docs/notifications.md) | Live activities, deduplication, cat-speak and HyperIsland |
+| [Privacy](PRIVACY.en.md) / [Third-party notices](THIRD_PARTY_NOTICES.md) | Data handling, permissions and licenses |
+| [Changelog](CHANGELOG.en.md) | Published history and pending changes |
 
-## License and disclaimer
+## License and contact
 
-- **License**: Open source under the [MIT License](LICENSE).
-- **Disclaimer**: agenT is an unofficial, personally maintained tool and is not affiliated with Cursor (Anysphere) or OpenAI. Use is at your own risk.
-
----
-
-*Build and contributor notes: [docs/technical.en.md](docs/technical.en.md) (canonical Chinese: [docs/technical.md](docs/technical.md)).*
+agenT is an unofficial, personally maintained tool under [MIT](LICENSE), with no affiliation to Cursor (Anysphere) or OpenAI. Use project GitHub issues for questions and suggestions; review the privacy policy and applicable service terms before use.

@@ -7,8 +7,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,18 +36,20 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
     onSubscriptionDay: (Int) -> Unit, onRefresh: () -> Unit,
     onRefreshPublicResets: (Boolean) -> Unit = {}) {
     val zone = LocalDisplayZone.current
-    var period by remember { mutableStateOf(CodexResetPeriod.Week) }
-    var filter by remember { mutableStateOf<CodexResetKind?>(null) }
+    var period by rememberSaveable { mutableStateOf(CodexResetPeriod.Week) }
+    var filter by rememberSaveable { mutableStateOf<CodexResetKind?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
     var recording by remember { mutableStateOf(false) }
     var classifying by remember { mutableStateOf<CodexResetEvent?>(null) }
     var deleting by remember { mutableStateOf<CodexResetEvent?>(null) }
     var configuring by remember { mutableStateOf(false) }
-    var timelineSource by remember { mutableStateOf(CodexResetTimelineSource.All) }
-    var heatmapMonths by remember { mutableIntStateOf(6) }
-    var heatmapEnd by remember(zone) { mutableStateOf(LocalDate.now(zone)) }
-    var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
+    var timelineSource by rememberSaveable { mutableStateOf(CodexResetTimelineSource.All) }
+    var heatmapMonths by rememberSaveable { mutableIntStateOf(6) }
+    var heatmapEnd by rememberSaveable(zone.id) { mutableStateOf(LocalDate.now(zone)) }
+    var selectedDay by rememberSaveable { mutableStateOf<LocalDate?>(null) }
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val feedback = LocalAppFeedback.current
     LaunchedEffect(Unit) { onRefreshPublicResets(false) }
     LaunchedEffect(Unit) { while (true) { delay(60_000); now = Instant.now() } }
     val ledger = state.resetLedger ?: CodexResetLedger()
@@ -54,7 +59,13 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
     val recorded = range != null && ledger.startedAt > 0 && state.resetError == null
     val invalid = state.credential?.let { it.invalid || it.expired } == true
     val usage = state.usage.takeUnless { invalid }
-    AdaptiveTabContent {
+        val chartFrom = heatmapEnd.minusMonths(heatmapMonths.toLong()).plusDays(1)
+        val chartRange = CodexResetRange(chartFrom.atStartOfDay(zone).toEpochSecond(), heatmapEnd.plusDays(1).atStartOfDay(zone).toEpochSecond())
+        val chartEntries = CodexResetTimeline.entries(ledger.events, state.publicResets?.events.orEmpty(), chartRange, timelineSource, filter)
+        val chart = remember(chartEntries, chartFrom, heatmapEnd, zone) { CodexResetHeatmap.build(chartEntries, chartFrom, heatmapEnd, zone) }
+        val dayEntries = selectedDay?.let { day -> chart.days.firstOrNull { it.date == day }?.entries }.orEmpty()
+    AdaptiveLazyTabContent {
+        item(key = "summary") {
         Text(stringResource(R.string.reset_page_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(stringResource(R.string.reset_page_subtitle), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -65,7 +76,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
         state.resetError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CodexResetPeriod.entries.forEach { item ->
-                FilterChip(selected = period == item, onClick = { period = item },
+                FilterChip(selected = period == item, onClick = { if (period != item) { period = item; feedback.selection() } },
                     label = { Text(stringResource(periodLabel(item))) }, modifier = Modifier.weight(1f))
             }
         }
@@ -146,7 +157,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CodexResetTimelineSource.entries.forEach { item ->
                 FilterChip(selected = timelineSource == item,
-                    onClick = { timelineSource = item; filter = null; selectedDay = null }, label = {
+                    onClick = { if (timelineSource != item) { timelineSource = item; filter = null; selectedDay = null; feedback.selection() } }, label = {
                         Text(stringResource(when (item) {
                             CodexResetTimelineSource.All -> R.string.reset_source_all
                             CodexResetTimelineSource.Local -> R.string.reset_source_local
@@ -158,7 +169,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
         if (timelineSource != CodexResetTimelineSource.Public) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(null, CodexResetKind.ManualUse, CodexResetKind.OfficialExtra, CodexResetKind.AutomaticPrimary, CodexResetKind.AutomaticWeekly, CodexResetKind.WindowChanged).forEach { item ->
-                FilterChip(selected = filter == item, onClick = { filter = item; selectedDay = null },
+                FilterChip(selected = filter == item, onClick = { if (filter != item) { filter = item; selectedDay = null; feedback.selection() } },
                     label = { Text(stringResource(item?.let(::resetKindLabel) ?: R.string.reset_filter_all)) })
             }
         }
@@ -166,13 +177,9 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
         val today = now.atZone(zone).toLocalDate()
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(3, 6, 12).forEach { months -> FilterChip(selected = heatmapMonths == months,
-                onClick = { heatmapMonths = months; selectedDay = null },
+                onClick = { if (heatmapMonths != months) { heatmapMonths = months; selectedDay = null; feedback.selection() } },
                 label = { Text(stringResource(R.string.reset_heatmap_months, months)) }) }
         }
-        val chartFrom = heatmapEnd.minusMonths(heatmapMonths.toLong()).plusDays(1)
-        val chartRange = CodexResetRange(chartFrom.atStartOfDay(zone).toEpochSecond(), heatmapEnd.plusDays(1).atStartOfDay(zone).toEpochSecond())
-        val chartEntries = CodexResetTimeline.entries(ledger.events, state.publicResets?.events.orEmpty(), chartRange, timelineSource, filter)
-        val chart = remember(chartEntries, chartFrom, heatmapEnd, zone) { CodexResetHeatmap.build(chartEntries, chartFrom, heatmapEnd, zone) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             TextButton(onClick = { heatmapEnd = heatmapEnd.minusMonths(heatmapMonths.toLong()); selectedDay = null }) {
                 Text(stringResource(R.string.reset_heatmap_earlier))
@@ -188,11 +195,12 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
         if (timelineSource != CodexResetTimelineSource.Local && state.publicResets == null) Text(
             stringResource(if (state.refreshingPublicResets) R.string.action_refreshing else R.string.reset_public_load_error),
             style = MaterialTheme.typography.bodySmall)
-        val dayEntries = selectedDay?.let { day -> chart.days.firstOrNull { it.date == day }?.entries }.orEmpty()
+
         selectedDay?.let { day -> Text(stringResource(R.string.reset_heatmap_selected, day.toString(), dayEntries.size),
             style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium) }
         if (selectedDay != null && dayEntries.isEmpty()) Text(stringResource(R.string.reset_heatmap_empty_day), style = MaterialTheme.typography.bodySmall)
-        dayEntries.forEach { entry ->
+        }
+        items(dayEntries, key = { entry -> if (entry.public != null) "public:${entry.public.id}" else "local:${entry.local!!.id}" }) { entry ->
             if (entry.public != null) PublicResetCard(entry.public, zone)
             else {
             val event = entry.local!!
@@ -213,10 +221,12 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
             }
             }
         }
+        item(key = "boundary") {
         HorizontalDivider()
         Text(stringResource(R.string.reset_data_boundary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (ledger.startedAt > 0) Text(stringResource(R.string.reset_tracking_since, resetStamp(ledger.startedAt, zone)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (ledger.truncated) Text(stringResource(R.string.reset_history_truncated), style = MaterialTheme.typography.bodySmall)
+        }
     }
     if (recording) ResetRecordDialog(classifying, zone, state.resetSaving, state.resetError,
         onDismiss = { recording = false; classifying = null },
@@ -272,7 +282,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
 }
 @Composable private fun ResetRecordDialog(initial: CodexResetEvent?, zone: ZoneId, busy: Boolean, remoteError: String?,
     onDismiss: () -> Unit, onSave: (CodexResetEvent) -> Unit) {
-    val context = LocalContext.current
+    val resources = LocalResources.current
     var kind by remember { mutableStateOf(CodexResetKind.ManualUse) }
     var count by remember { mutableStateOf(initial?.count?.toString() ?: "1") }
     var time by remember { mutableStateOf(resetStamp(initial?.at ?: Instant.now().epochSecond, zone, input = true)) }
@@ -296,7 +306,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onManageTokens: () -> Unit,
             val amount = count.toIntOrNull()
             val at = runCatching { LocalDateTime.parse(time.trim(), INPUT_FORMAT).atZone(zone).toEpochSecond() }.getOrNull()
             if (amount == null || amount !in 1..999 || at == null || at <= 0 || at > Instant.now().epochSecond + 120) {
-                error = context.getString(R.string.reset_invalid_record)
+                error = resources.getString(R.string.reset_invalid_record)
             } else onSave(CodexResetEvent(initial?.id ?: UUID.randomUUID().toString(), kind, CodexResetSource.Registered, at, amount, note.trim(), initial?.before, initial?.after))
         }) { Text(stringResource(R.string.action_save)) } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.action_cancel)) } })

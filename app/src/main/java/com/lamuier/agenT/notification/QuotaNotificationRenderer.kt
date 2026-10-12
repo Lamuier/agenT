@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
-import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.StyleSpan
@@ -97,9 +96,10 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
                 else -> 0xFF587DB4.toInt()
             })
         if (Build.VERSION.SDK_INT >= 36) builder.setShortCriticalText(chip)
-        if (Build.VERSION.SDK_INT >= 36) builder.addExtras(Bundle().apply {
-            putBoolean("android.requestPromotedOngoing", true)
-        })
+        if (Build.VERSION.SDK_INT >= 36) {
+            if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) builder.setRequestPromotedOngoing(true)
+            else builder.addExtras(android.os.Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
+        }
         val notification = builder.build()
         // Ordinary notifications and the island use the same state and actionable details, with no quota values.
         XiaomiHyperIslandAdapter.applyIfSupported(context, notification, title, body,

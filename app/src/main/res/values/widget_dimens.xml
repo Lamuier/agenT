@@ -7,8 +7,6 @@
     <dimen name="widget_4x1_min_height">40dp</dimen>
     <dimen name="widget_4x2_min_width">250dp</dimen>
     <dimen name="widget_4x2_min_height">110dp</dimen>
-    <dimen name="widget_4x4_min_width">250dp</dimen>
-    <dimen name="widget_4x4_min_height">250dp</dimen>
     <dimen name="widget_4x3_min_width">250dp</dimen>
     <dimen name="widget_4x3_min_height">180dp</dimen>
     <dimen name="widget_2x1_min_width">110dp</dimen>

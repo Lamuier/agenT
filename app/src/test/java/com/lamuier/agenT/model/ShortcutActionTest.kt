@@ -21,7 +21,7 @@ class ShortcutActionTest {
         assertNull(ShortcutAction.fromIntentAction(null))
         assertNull(ShortcutAction.fromIntentAction("other.app.action.SHORTCUT_MANAGE_TOKENS"))
     }
-    @Test fun launcherPublishesOneUnifiedTokenEntryAndSettings() {
+    @Test fun launcherPublishesOverviewTasksUnifiedTokenEntryAndSettings() {
         val root = listOf(File("src/main/res"), File("app/src/main/res")).first { it.isDirectory }
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
@@ -33,6 +33,6 @@ class ShortcutActionTest {
             (node.getElementsByTagName("intent").item(0) as Element)
                 .getAttributeNS("http://schemas.android.com/apk/res/android", "action")
         }
-        assertEquals(listOf(ShortcutAction.ManageTokens.intentAction, ShortcutAction.Settings.intentAction), actions)
+        assertEquals(listOf(ShortcutAction.Overview.intentAction, ShortcutAction.Tasks.intentAction, ShortcutAction.ManageTokens.intentAction, ShortcutAction.Settings.intentAction), actions)
     }
 }

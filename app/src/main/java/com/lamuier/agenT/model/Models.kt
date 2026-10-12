@@ -241,7 +241,9 @@ data class AgenTasks(
 /** 长按图标静态 Shortcut 对应的应用内动作。 */
 enum class ShortcutAction(val intentAction: String) {
     ManageTokens(INTENT_ACTION_PREFIX + ".SHORTCUT_MANAGE_TOKENS"),
-    Settings(INTENT_ACTION_PREFIX + ".SHORTCUT_SETTINGS");
+    Settings(INTENT_ACTION_PREFIX + ".SHORTCUT_SETTINGS"),
+    Overview(INTENT_ACTION_PREFIX + ".SHORTCUT_OVERVIEW"),
+    Tasks(INTENT_ACTION_PREFIX + ".SHORTCUT_TASKS");
 
     companion object {
         fun fromIntentAction(action: String?): ShortcutAction? = when (action) {

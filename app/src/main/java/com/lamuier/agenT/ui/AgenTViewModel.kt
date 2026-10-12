@@ -143,11 +143,11 @@ class AgenTViewModel(
         if (includeStatus) refreshStatus(force = force, silent = silent)
     }
 
-    fun refreshTasks(force: Boolean, silent: Boolean) {
+    fun refreshTasks(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) return
-        val accountId = snapshot.selectedAccountId ?: return
-        if (tasksRequestInFlight) return
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
+        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(false); return }
+        if (tasksRequestInFlight) { onResult?.invoke(false); return }
         tasksRequestInFlight = true
 
         _state.update {
@@ -163,6 +163,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val tasks = withContext(Dispatchers.IO) {
                     repository.fetchTasks(accountId, force)
@@ -175,6 +176,7 @@ class AgenTViewModel(
                         )
                     }
                 }
+                succeeded = _state.value.selectedAccountId == accountId && !tasks.fromCache
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -184,6 +186,7 @@ class AgenTViewModel(
                     }
                 }
             } finally {
+                onResult?.invoke(succeeded)
                 tasksRequestInFlight = false
                 if (_state.value.selectedAccountId == accountId) {
                     _state.update { it.copy(loadingTasks = false, refreshingTasks = false) }
@@ -192,10 +195,10 @@ class AgenTViewModel(
         }
     }
 
-    fun refreshStatus(force: Boolean, silent: Boolean) {
+    fun refreshStatus(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) return
-        if (statusRequestInFlight) return
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
+        if (statusRequestInFlight) { onResult?.invoke(false); return }
         statusRequestInFlight = true
 
         _state.update {
@@ -211,6 +214,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val status = withContext(Dispatchers.IO) {
                     statusRepository.fetch(force)
@@ -219,6 +223,7 @@ class AgenTViewModel(
                     it.copy(serviceStatus = status, statusError = null)
                 }
                 syncWidgetsFromCache()
+                succeeded = !status.fromCache && !status.partialComponents && !status.partialHistory
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -227,24 +232,26 @@ class AgenTViewModel(
                         serviceStatus = it.serviceStatus?.copy(fromCache = true))
                 }
             } finally {
+                onResult?.invoke(succeeded)
                 statusRequestInFlight = false
                 _state.update { it.copy(loadingStatus = false, refreshingStatus = false) }
             }
         }
     }
 
-    private fun refreshUsage(force: Boolean, silent: Boolean) {
+    fun refreshUsage(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) return
-        val accountId = snapshot.selectedAccountId ?: return
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
+        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(false); return }
         val revision = try {
             repository.accountRevision(accountId)
         } catch (error: Exception) {
             _state.update { it.copy(error = messageFor(error, R.string.error_read_accounts)) }
+            onResult?.invoke(false)
             return
         }
         val requestKey = UsageRequestKey(accountId, revision)
-        if (!activeUsageRequests.add(requestKey)) return
+        if (!activeUsageRequests.add(requestKey)) { onResult?.invoke(false); return }
 
         _state.update {
             if (it.selectedAccountId != accountId) {
@@ -261,6 +268,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val usage = withContext(Dispatchers.IO) {
                     repository.fetchUsage(accountId, force)
@@ -286,6 +294,7 @@ class AgenTViewModel(
                     AgenTNotificationCoordinator.get(appContext).refresh(usage)
                 }
                 syncWidgetsFromCache()
+                succeeded = !usage.fromCache && !usage.partialData
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -305,6 +314,7 @@ class AgenTViewModel(
                     }
                 }
             } finally {
+                onResult?.invoke(succeeded)
                 activeUsageRequests.remove(requestKey)
                 if (isUsageRequestCurrent(requestKey) && _state.value.selectedAccountId == accountId) {
                     _state.update { it.copy(loadingUsage = false, refreshing = false) }

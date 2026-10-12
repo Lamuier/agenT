@@ -1,6 +1,17 @@
 package com.lamuier.agenT.ui
 
 import android.provider.Settings
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.flow.distinctUntilChanged
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -115,6 +126,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -137,7 +149,6 @@ import androidx.compose.ui.unit.sp
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaUiState
 import com.lamuier.agenT.data.DashboardPreferences
-import com.lamuier.agenT.data.OverviewUsageRingMode
 import com.lamuier.agenT.model.AppUiState
 import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.model.AgenTOverview
@@ -215,12 +226,36 @@ internal fun DashboardScreen(
     onRefreshPublicResets: (Boolean) -> Unit = {},
 ) {
     val uiScope = rememberCoroutineScope()
-    val account = remember(state.accounts, state.selectedAccountId) {
-        state.accounts.firstOrNull { it.id == state.selectedAccountId }
-            ?: state.accounts.firstOrNull()
+    val feedback = LocalAppFeedback.current
+    val tabs = remember(tabOrder) { DashboardTab.resolveOrder(tabOrder.map { it.id }) }
+    var selectedTabId by rememberSaveable { mutableStateOf(pendingOpenTab?.id ?: tabs.first().id) }
+    val selectedTab = DashboardTab.fromId(selectedTabId) ?: tabs.first()
+    val pagerState = rememberPagerState(initialPage = tabs.indexOf(selectedTab).coerceAtLeast(0), pageCount = { tabs.size })
+    val pageStates = rememberSaveableStateHolder()
+    val dragging by pagerState.interactionSource.collectIsDraggedAsState()
+    var userDragged by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging) { if (dragging) userDragged = true }
+    LaunchedEffect(pendingOpenTab, tabs) {
+        val target = pendingOpenTab ?: DashboardTab.fromId(selectedTabId) ?: tabs.first()
+        val index = tabs.indexOf(target).coerceAtLeast(0)
+        selectedTabId = tabs[index].id
+        pagerState.scrollToPage(index)
+        if (pendingOpenTab != null) onOpenTabConsumed()
+    }
+    val currentTabs by rememberUpdatedState(tabs)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.distinctUntilChanged().collect { page ->
+            val id = currentTabs.getOrNull(page)?.id ?: return@collect
+            if (id != selectedTabId) {
+                selectedTabId = id
+                if (userDragged) feedback.selection()
+            }
+            userDragged = false
+        }
     }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val refreshBusy = state.refreshing || state.refreshingStatus || state.refreshingTasks ||
+    val refreshBusy = state.loadingUsage || state.loadingTasks || state.loadingStatus ||
+        state.refreshing || state.refreshingStatus || state.refreshingTasks ||
         codexState.booting || codexState.refreshing || codexState.saving || codexState.refreshingStatus
     val refreshBusyUpdated by rememberUpdatedState(refreshBusy)
     var refreshSource by remember { mutableStateOf<DashboardRefreshSource?>(null) }
@@ -230,165 +265,84 @@ internal fun DashboardScreen(
             onRefresh()
         }
     }
-    LaunchedEffect(refreshBusy) {
-        if (!refreshBusy) refreshSource = null
-    }
+    LaunchedEffect(refreshBusy) { if (!refreshBusy) refreshSource = null }
     LaunchedEffect(refreshSource) {
-        if (refreshSource == null) return@LaunchedEffect
-        delay(400)
-        if (!refreshBusyUpdated) refreshSource = null
+        if (refreshSource != null) { delay(400); if (!refreshBusyUpdated) refreshSource = null }
     }
-
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(stringResource(R.string.dashboard_services_summary,
-                            listOfNotNull(account?.takeUnless { it.tokenExpired },
-                                codexState.credential?.takeUnless { it.expired || it.invalid }).size),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-                actions = {
-                    val refreshDescription = if (refreshBusy || refreshSource != null) {
-                        stringResource(R.string.action_refreshing)
-                    } else {
-                        stringResource(R.string.action_refresh)
-                    }
-                    IconButton(
-                        modifier = Modifier.semantics {
-                            contentDescription = refreshDescription
-                            if (refreshBusy || refreshSource != null) liveRegion = LiveRegionMode.Polite
-                        },
-                        enabled = !state.loadingAccounts && !refreshBusy &&
-                            refreshSource == null && !state.submitting,
-                        onClick = { startRefresh(DashboardRefreshSource.Button) },
-                    ) {
-                        if (refreshSource == DashboardRefreshSource.Button) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(Icons.Outlined.Refresh, contentDescription = null)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    NavigationSuiteScaffold(
+        layoutType = if (maxWidth < 600.dp) NavigationSuiteType.NavigationBar else NavigationSuiteType.NavigationRail,
+        navigationSuiteItems = {
+            tabs.forEachIndexed { index, tab ->
+                item(selected = selectedTabId == tab.id,
+                    icon = { Icon(painterResource(tab.navigationIcon), contentDescription = null) },
+                    label = {
+                        val compactLabels = LocalDensity.current.fontScale > 1.3f && maxWidth < 600.dp
+                        val fullLabel = stringResource(tab.labelRes)
+                        Text(stringResource(if (compactLabels) tab.compactLabel else tab.labelRes), maxLines = 2,
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+                            modifier = Modifier.semantics { contentDescription = fullLabel })
+                    },
+                    onClick = {
+                        if (selectedTabId != tab.id) {
+                            feedback.selection()
+                            userDragged = false
+                            selectedTabId = tab.id
+                            uiScope.launch { pagerState.animateScrollToPage(index) }
                         }
-                    }
-                    IconButton(
-                        enabled = !state.loadingAccounts && !state.submitting,
-                        onClick = onShowSettings,
-                    ) {
-                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.action_settings))
-                    }
-                },
-            )
+                    })
+            }
         },
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(contentPadding),
-        ) {
-            val contentKey = if (state.loadingAccounts) "loading_accounts" else "dashboard"
-            AnimatedContent(
-                targetState = contentKey,
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    (
-                        fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                            scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = 0.97f)
-                        ).togetherWith(
-                        fadeOut(tween(140)) + scaleOut(tween(160), targetScale = 1.01f),
-                    )
-                },
-                label = "dashboard content",
-            ) { key ->
-                if (key == "loading_accounts") {
-                    DashboardState(
-                        icon = null,
-                        title = stringResource(R.string.dashboard_loading_accounts_title),
-                        description = stringResource(R.string.dashboard_loading_accounts_body),
-                        loading = true,
-                    )
-                } else {
-                    val tabs = remember(tabOrder) { DashboardTab.resolveOrder(tabOrder.map { it.id }) }
-                    val startIndex = pendingOpenTab
-                        ?.let { tabs.indexOf(it) }
-                        ?.takeIf { it >= 0 }
-                        ?: 0
-                    val pagerState = rememberPagerState(
-                        initialPage = startIndex,
-                        pageCount = { tabs.size },
-                    )
-                    val pagerScope = rememberCoroutineScope()
-                    var selectedTab by remember { mutableStateOf(tabs.getOrNull(startIndex) ?: tabs.first()) }
-                    LaunchedEffect(pagerState.settledPage, tabs, pendingOpenTab) {
-                        if (pendingOpenTab != null) return@LaunchedEffect
-                        tabs.getOrNull(pagerState.settledPage)?.let { selectedTab = it }
-                    }
-                    LaunchedEffect(tabs, pendingOpenTab) {
-                        if (pendingOpenTab != null) return@LaunchedEffect
-                        val index = tabs.indexOf(selectedTab).takeIf { it >= 0 } ?: 0
-                        if (pagerState.currentPage != index) {
-                            pagerState.scrollToPage(index)
+        containerColor = MaterialTheme.colorScheme.background,
+    ) {
+        Scaffold(
+            contentWindowInsets = WindowInsets.safeDrawing,
+            containerColor = MaterialTheme.colorScheme.background,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(selectedTab.labelRes), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                DashboardTabScopeBadge(selectedTab.scope)
+                            }
                         }
-                    }
-                    LaunchedEffect(pendingOpenTab, tabs, pagerState.currentPage, pagerState.settledPage) {
-                        val tab = pendingOpenTab ?: return@LaunchedEffect
-                        val index = tabs.indexOf(tab)
-                        if (index < 0) {
-                            onOpenTabConsumed()
-                            return@LaunchedEffect
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    scrollBehavior = scrollBehavior,
+                    actions = {
+                        IconButton(enabled = !state.loadingAccounts && !refreshBusy && refreshSource == null && !state.submitting,
+                            onClick = { startRefresh(DashboardRefreshSource.Button) }) {
+                            if (refreshSource == DashboardRefreshSource.Button) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(painterResource(R.drawable.symbol_refresh), stringResource(R.string.action_refresh))
                         }
-                        selectedTab = tab
-                        if (pagerState.currentPage != index) {
-                            pagerState.scrollToPage(index)
-                            return@LaunchedEffect
+                        IconButton(enabled = !state.loadingAccounts && !state.submitting, onClick = { feedback.selection(); onShowSettings() }) {
+                            Icon(painterResource(R.drawable.symbol_settings), stringResource(R.string.action_settings))
                         }
-                        if (pagerState.settledPage == index) {
-                            onOpenTabConsumed()
-                        }
-                    }
-                    val selectedIndex = tabs.indexOf(selectedTab).takeIf { it >= 0 } ?: 0
-
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        DashboardTabPills(
-                            tabs = tabs,
-                            selectedIndex = selectedIndex,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            onSelect = { index ->
-                                tabs.getOrNull(index)?.let { selectedTab = it }
-                                pagerScope.launch { pagerState.animateScrollToPage(index) }
-                            },
-                        )
-                        PullToRefreshBox(
-                            isRefreshing = refreshSource == DashboardRefreshSource.Pull,
-                            onRefresh = { startRefresh(DashboardRefreshSource.Pull) },
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize(),
-                                beyondViewportPageCount = 1,
-                            ) { page ->
+                    },
+                )
+            },
+        ) { padding ->
+            if (state.loadingAccounts) {
+                Box(Modifier.fillMaxSize().padding(padding)) {
+                    DashboardState(icon = null, title = stringResource(R.string.dashboard_loading_accounts_title),
+                        description = stringResource(R.string.dashboard_loading_accounts_body), loading = true)
+                }
+            } else {
+                PullToRefreshBox(isRefreshing = refreshSource == DashboardRefreshSource.Pull,
+                    onRefresh = { startRefresh(DashboardRefreshSource.Pull) },
+                    modifier = Modifier.fillMaxSize().padding(padding).nestedScroll(scrollBehavior.nestedScrollConnection)) {
+                    HorizontalPager(state = pagerState, key = { tabs[it].id }, modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1) { page ->
+                        pageStates.SaveableStateProvider(tabs[page].id) {
                                 when (tabs.getOrNull(page) ?: DashboardTab.Overview) {
                                     DashboardTab.Overview -> UnifiedOverviewTab(
                                         state = state, codex = codexState, onOpenSettings = onShowSettings,
+                                        onManageCursor = onManageAccount, onManageCodex = onManageCodex,
                                     )
                                     DashboardTab.Usage -> UnifiedUsageDependentTab(
                                         state = state,
@@ -445,100 +399,31 @@ internal fun DashboardScreen(
                                         },
                                     )
                                 }
-                            }
                         }
                     }
                 }
             }
         }
     }
+}
 }
 
-@Composable
-private fun DashboardTabPills(
-    tabs: List<DashboardTab>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val screenWidth = LocalConfiguration.current.screenWidthDp
-    val fontScale = LocalDensity.current.fontScale
-    val scrollState = rememberScrollState()
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        BoxWithConstraints {
-            val compactTabs = maxWidth.value / fontScale < tabs.size * 100f
-            Row(
-                modifier = Modifier.padding(4.dp).then(
-                    if (compactTabs) Modifier.horizontalScroll(scrollState).widthIn(min = maxWidth - 8.dp)
-                    else Modifier.fillMaxWidth(),
-                ),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    val active = index == selectedIndex
-                    val requester = remember(tab.id) { BringIntoViewRequester() }
-                    LaunchedEffect(active, compactTabs, screenWidth, fontScale) {
-                        if (active && compactTabs) {
-                            withFrameNanos { }
-                            requester.bringIntoView()
-                        }
-                    }
-                    val container by animateColorAsState(
-                        targetValue = if (active) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            Color.Transparent
-                        },
-                        animationSpec = tween(240, easing = FastOutSlowInEasing),
-                        label = "${tab.id} container",
-                    )
-                    val content by animateColorAsState(
-                        targetValue = if (active) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        animationSpec = tween(240, easing = FastOutSlowInEasing),
-                        label = "${tab.id} content",
-                    )
-                    Surface(
-                        modifier = Modifier
-                            .then(if (compactTabs) Modifier.widthIn(min = 76.dp) else Modifier.weight(1f))
-                            .bringIntoViewRequester(requester)
-                            .semantics {
-                                role = Role.Tab
-                                selected = active
-                            }
-                            .clip(CircleShape)
-                            .clickable { onSelect(index) },
-                        shape = CircleShape,
-                        color = container,
-                        contentColor = content,
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                stringResource(tab.labelRes),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1,
-                                softWrap = false,
-                            )
-                            DashboardTabScopeBadge(tab.scope)
-                        }
-                    }
-                }
-            }
-        }
-    }
+internal val DashboardTab.compactLabel: Int get() = when(this) {
+    DashboardTab.Overview -> R.string.tab_overview_compact
+    DashboardTab.Usage -> R.string.tab_usage_compact
+    DashboardTab.Tasks -> R.string.tab_tasks_compact
+    DashboardTab.Resets -> R.string.tab_resets_compact
+    DashboardTab.Status -> R.string.tab_status_compact
 }
+
+internal val DashboardTab.navigationIcon: Int get() = when(this) {
+    DashboardTab.Overview -> R.drawable.symbol_dashboard
+    DashboardTab.Usage -> R.drawable.symbol_donut_large
+    DashboardTab.Tasks -> R.drawable.symbol_smart_toy
+    DashboardTab.Resets -> R.drawable.symbol_history
+    DashboardTab.Status -> R.drawable.symbol_monitor_heart
+}
+
 
 @Composable
 private fun UnifiedUsageDependentTab(
@@ -1015,10 +900,11 @@ private fun UsageTab(
     AdaptiveTabContent { compact ->
         val chartColors = LocalPulseChartColors.current
         val quota = remember(usage) { UsageCalculations.quotaBreakdown(usage) }
-        var providerFilter by remember { mutableStateOf(0) }
+        var providerFilter by rememberSaveable { mutableStateOf(0) }
+        val feedback = LocalAppFeedback.current
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(stringResource(R.string.usage_all_services), "Cursor", "Codex").forEachIndexed { index, title ->
-                FilterChip(selected = providerFilter == index, onClick = { providerFilter = index }, label = { Text(title) })
+                FilterChip(selected = providerFilter == index, onClick = { if (providerFilter != index) { providerFilter = index; feedback.selection() } }, label = { Text(title) })
             }
         }
         if (providerFilter != 1) {
@@ -1267,9 +1153,9 @@ private fun HistoryUsageSection(
     val chartColors = LocalPulseChartColors.current
     val zone = LocalDisplayZone.current
     val nowMonth = remember(zone) { YearMonth.now(zone) }
-    var mode by remember { mutableStateOf(HistoryQueryMode.CalendarMonth) }
-    var selectedMonth by remember { mutableStateOf(nowMonth) }
-    var cycleOffset by remember { mutableIntStateOf(-1) }
+    var mode by rememberSaveable(usage.accountId) { mutableStateOf(HistoryQueryMode.CalendarMonth) }
+    var selectedMonth by rememberSaveable(usage.accountId) { mutableStateOf(nowMonth) }
+    var cycleOffset by rememberSaveable(usage.accountId) { mutableIntStateOf(-1) }
     val selectedMonthKey = UsageHistoryWindows.yearMonthKey(selectedMonth)
     val cycleStartMs = remember(usage.billingCycle.start) {
         UsageHistoryWindows.parseLocalDateTimeMs(usage.billingCycle.start)
@@ -1603,6 +1489,7 @@ internal fun AdaptiveTabContent(content: @Composable ColumnScope.(compact: Boole
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .widthIn(max = 1200.dp)
                 .graphicsLayer {
                     alpha = enterAlpha
                     translationY = enterOffset
@@ -1617,6 +1504,18 @@ internal fun AdaptiveTabContent(content: @Composable ColumnScope.(compact: Boole
         ) {
             content(compact)
         }
+    }
+}
+
+@Composable
+internal fun AdaptiveLazyTabContent(content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 360.dp || maxHeight < 620.dp || LocalDensity.current.fontScale > 1.15f
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.fillMaxSize().widthIn(max = 1200.dp).align(Alignment.TopCenter),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compact) 12.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
+        ) { content(compact) }
     }
 }
 
@@ -1703,7 +1602,6 @@ internal fun OverviewHeroUsageRing(
     billing: BillingProgress?,
     chartSize: Dp,
     chartColors: PulseChartColors,
-    mode: OverviewUsageRingMode,
 ) {
     val cyclePercent = billing?.percent?.toDouble()
     val cycleColor = MaterialTheme.colorScheme.primary
@@ -1712,24 +1610,14 @@ internal fun OverviewHeroUsageRing(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        when (mode) {
-            OverviewUsageRingMode.Split -> OverviewSplitUsageRing(
-                usage = usage,
-                billing = billing,
-                cyclePercent = cyclePercent,
-                cycleColor = cycleColor,
-                chartSize = chartSize,
-                chartColors = chartColors,
-            )
-            OverviewUsageRingMode.Combined -> OverviewCombinedUsageRing(
-                usage = usage,
-                billing = billing,
-                cyclePercent = cyclePercent,
-                cycleColor = cycleColor,
-                chartSize = chartSize,
-                chartColors = chartColors,
-            )
-        }
+        OverviewSplitUsageRing(
+            usage = usage,
+            billing = billing,
+            cyclePercent = cyclePercent,
+            cycleColor = cycleColor,
+            chartSize = chartSize,
+            chartColors = chartColors,
+        )
     }
 }
 
@@ -1849,79 +1737,6 @@ private fun OverviewSplitUsageRing(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OverviewCombinedUsageRing(
-    usage: AgenTOverview,
-    billing: BillingProgress?,
-    cyclePercent: Double?,
-    cycleColor: Color,
-    chartSize: Dp,
-    chartColors: PulseChartColors,
-) {
-    val total = remember(usage) { UsageCalculations.overviewTotalUsage(usage) }
-    val level = remember(total, cyclePercent) {
-        if (total.known) UsageCalculations.level(total.percent, cyclePercent) else null
-    }
-    val usageColor = level.ringColor(chartColors, MaterialTheme.colorScheme.onSurfaceVariant)
-    val teamSpendPrefix = stringResource(R.string.label_team_spend_prefix, money(usage.usage.totalUsed))
-    val planQuotaUsed = stringResource(R.string.label_plan_quota_used, formatPercent(total.percent))
-    val planQuotaUnknown = stringResource(R.string.label_plan_quota_unknown)
-    val totalUsageLevel = stringResource(
-        R.string.label_total_usage_level,
-        formatPercent(total.percent),
-        if (total.known) {
-            level?.label() ?: stringResource(R.string.usage_level_unknown)
-        } else {
-            stringResource(R.string.usage_level_unknown)
-        },
-    )
-    val cycleRemaining = billing?.let {
-        stringResource(R.string.label_cycle_remaining_clause, formatRemainingLabel(it.remainingMillis))
-    }.orEmpty()
-    val usageDescription = buildString {
-        if (usage.isTeam) {
-            append(teamSpendPrefix)
-            append(if (total.known) planQuotaUsed else planQuotaUnknown)
-        } else if (total.known) {
-            append(totalUsageLevel)
-        }
-        append(cycleRemaining)
-    }
-    UsageRing(
-        ownPercent = total.percent.takeIf { total.known }?.toFloat(),
-        ownColor = usageColor,
-        thirdPartyPercent = null,
-        thirdPartyColor = usageColor,
-        cyclePercent = billing?.percent,
-        cycleColor = cycleColor,
-        centerValue = if (usage.isTeam) money(usage.usage.totalUsed) else formatPercent(total.percent),
-        caption = if (total.known) {
-            level?.label() ?: stringResource(R.string.usage_level_unknown)
-        } else {
-            stringResource(R.string.usage_level_unknown)
-        },
-        captionColor = usageColor,
-        description = usageDescription,
-        size = chartSize,
-    )
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        DotLabel(
-            color = usageColor,
-            text = if (total.known) {
-                stringResource(R.string.label_usage_percent, formatPercent(total.percent))
-            } else {
-                stringResource(R.string.label_usage_placeholder)
-            },
-        )
-        CyclePercentDotLabel(billing = billing, color = cycleColor)
-    }
-}
-
 @Composable
 private fun UsageRing(
     ownPercent: Float?,
@@ -1993,14 +1808,7 @@ private fun UsageRing(
 
 @Composable
 private fun rememberPairedRingAlphas(enabled: Boolean): PairedRingAlphas {
-    val context = LocalContext.current
-    val animationsOn = remember {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) > 0f
-    }
+    val animationsOn = rememberAnimationsEnabled()
     val lifecycleOwner = LocalLifecycleOwner.current
     val phase = remember { Animatable(0f) }
     LaunchedEffect(enabled, animationsOn, lifecycleOwner) {
@@ -2016,6 +1824,7 @@ private fun rememberPairedRingAlphas(enabled: Boolean): PairedRingAlphas {
                     animationSpec = tween(PAIRED_RING_BREATH_MS, easing = LinearEasing),
                 )
                 phase.snapTo(0f)
+                delay(16) // Also yields if the system changes animation scale to zero mid-frame.
             }
         }
     }
@@ -2030,7 +1839,7 @@ private fun rememberRingSweep(percent: Float?, label: String): Float {
     val target = percent?.coerceIn(0f, 100f)?.div(100f)?.times(360f) ?: 0f
     val sweep by animateFloatAsState(
         targetValue = target,
-        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        animationSpec = com.lamuier.agenT.ui.theme.AgenTMotion.content(),
         label = label,
     )
     return sweep

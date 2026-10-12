@@ -23,6 +23,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalResources
+import com.lamuier.agenT.data.InteractionPreferences
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexCredentialInfo
 import com.lamuier.agenT.model.CursorAccount
@@ -47,8 +50,9 @@ internal fun TokenManagementSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         properties = ModalBottomSheetProperties(SecureFlagPolicy.SecureOn, !busy, !busy),
     ) {
-        TokenManagementContent(provider, cursorAccount, codexCredential, busy, error, onProviderChange,
-            onClearError, onDismiss, onSave, onDeleteRequest, onRevealSavedToken)
+        val enabled by InteractionPreferences.get(androidx.compose.ui.platform.LocalContext.current).hapticFeedbackEnabled.collectAsStateWithLifecycle()
+        FeedbackProvider(enabled) { TokenManagementContent(provider, cursorAccount, codexCredential, busy, error, onProviderChange,
+            onClearError, onDismiss, onSave, onDeleteRequest, onRevealSavedToken) }
     }
 }
 
@@ -61,6 +65,8 @@ internal fun TokenManagementContent(
     onDeleteRequest: (TokenProvider) -> Unit, onRevealSavedToken: (TokenProvider) -> String,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val feedback = LocalAppFeedback.current
     val cursor = provider == TokenProvider.Cursor
     val revision = if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
     val existingMetadata = if (cursor) cursorAccount?.alias else codexCredential?.accountId
@@ -91,24 +97,24 @@ internal fun TokenManagementContent(
             TokenFormError.NoChanges -> R.string.account_no_changes
             null -> null
         }
-        if (resource != null) { localError = context.getString(resource); return }
+        if (resource != null) { localError = resources.getString(resource); return }
         onSave(provider, metadata.trim(), token.trim()) {
             token = ""; visible = false; revealed = null; savedVisible = false; copied = false; saved = true
         }
     }
     fun revealSaved() {
         val host = context.tokenActivity()
-        if (host == null) { localError = context.getString(R.string.account_cannot_start_gate); return }
+        if (host == null) { localError = resources.getString(R.string.account_cannot_start_gate); return }
         clearFeedback()
         revealBusy = true
         DeviceCredentialGate.authenticate(
-            host, context.getString(R.string.account_reveal_gate_title),
-            context.getString(R.string.account_reveal_gate_subtitle),
+            host, resources.getString(R.string.account_reveal_gate_title),
+            resources.getString(R.string.account_reveal_gate_subtitle),
             onSuccess = {
                 if (active.get()) {
                     runCatching { onRevealSavedToken(provider) }
                         .onSuccess { revealed = it; savedVisible = false; copied = false }
-                        .onFailure { localError = it.message ?: context.getString(R.string.account_cannot_read_token) }
+                        .onFailure { localError = it.message ?: resources.getString(R.string.account_cannot_read_token) }
                     revealBusy = false
                 }
             },
@@ -134,13 +140,14 @@ internal fun TokenManagementContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onDismiss, enabled = !blocked) {
-                Icon(Icons.Outlined.Close, stringResource(R.string.action_close))
+                Icon(androidx.compose.ui.res.painterResource(R.drawable.symbol_close), stringResource(R.string.action_close))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TokenProvider.entries.forEach { item ->
                 FilterChip(selected = provider == item, onClick = {
                     if (provider != item) {
+                        feedback.selection()
                         token = ""; revealed = null; savedVisible = false; visible = false; copied = false; localError = null; saved = false
                         onClearError(); onProviderChange(item)
                     }
@@ -207,7 +214,7 @@ internal fun TokenManagementContent(
                         stringResource(R.string.codex_toggle_token_visibility))
                 } }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { SensitiveContent.copyToClipboard(context, secret); copied = true }) {
+                TextButton(onClick = { SensitiveContent.copyToClipboard(context, secret); copied = true; feedback.success() }) {
                     Text(stringResource(if (copied) R.string.action_copied else R.string.action_copy))
                 }
                 TextButton(onClick = { revealed = null; savedVisible = false; copied = false }) {

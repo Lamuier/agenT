@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -83,7 +84,7 @@ internal fun TokenHelpContent(onDismiss: () -> Unit, actionLabel: String) {
                 )
             }
             IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.token_help_close))
+                Icon(androidx.compose.ui.res.painterResource(R.drawable.symbol_close), contentDescription = stringResource(R.string.token_help_close))
             }
         }
 
@@ -224,6 +225,8 @@ private fun HelpTimelineStep(
 @Composable
 private fun HelpCommand(title: String, description: String, command: String) {
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val feedback = LocalAppFeedback.current
     var copied by remember(command) { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -244,8 +247,9 @@ private fun HelpCommand(title: String, description: String, command: String) {
                 FilledTonalButton(
                     onClick = {
                         context.getSystemService(ClipboardManager::class.java)
-                            .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.token_help_command_clip_label), command))
+                            .setPrimaryClip(ClipData.newPlainText(resources.getString(R.string.token_help_command_clip_label), command))
                         copied = true
+                        feedback.success()
                     },
                 ) {
                     Text(if (copied) stringResource(R.string.action_copied) else stringResource(R.string.token_help_copy_command))

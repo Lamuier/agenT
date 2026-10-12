@@ -1,12 +1,5 @@
 package com.lamuier.agenT.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -17,13 +10,15 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -36,7 +31,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaViewModel
 import com.lamuier.agenT.data.NotificationSettings
-import com.lamuier.agenT.data.OverviewUsageRingMode
 import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.AppStage
@@ -62,6 +56,8 @@ fun AgenTApp(
     onShortcutActionConsumed: () -> Unit,
     pendingOpenTab: DashboardTab? = null,
     onOpenTabConsumed: () -> Unit = {},
+    hapticFeedbackEnabled: Boolean = true,
+    onHapticFeedbackChange: (Boolean) -> Unit = {},
     onThemeModeChange: (ThemeMode) -> Unit,
     onPaletteChange: (ColorPalette) -> Unit,
     timeZoneId: String,
@@ -75,15 +71,18 @@ fun AgenTApp(
     tabOrder: List<DashboardTab>,
     onTabOrderChange: (List<DashboardTab>) -> Unit,
     onTabOrderReset: () -> Unit,
-    overviewUsageRingMode: OverviewUsageRingMode,
-    onOverviewUsageRingModeChange: (OverviewUsageRingMode) -> Unit,
     onCodexResetRemindersToggle: (Boolean) -> Unit = {},
     onCatLanguageToggle: (Boolean) -> Unit = {},
     codexUsageAutoRefresh: Boolean = true,
     onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
+    onInitialContentReady: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val codexState by codexViewModel.state.collectAsStateWithLifecycle()
+    if (state.stage == AppStage.Dashboard && !codexState.booting) {
+        // 成功组合出本地恢复后的首页，才放行首帧；后续网络刷新不再拦截绘制。
+        SideEffect(onInitialContentReady)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val account = remember(state.accounts, state.selectedAccountId) {
@@ -91,11 +90,13 @@ fun AgenTApp(
             ?: state.accounts.firstOrNull()
     }
 
-    var manageTokens by remember { mutableStateOf(false) }
-    var tokenProvider by remember { mutableStateOf(com.lamuier.agenT.model.TokenProvider.Cursor) }
-    var showTokenHelp by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var returnToSettings by remember { mutableStateOf(false) }
+    var manageTokens by rememberSaveable { mutableStateOf(false) }
+    var tokenProvider by rememberSaveable { mutableStateOf(com.lamuier.agenT.model.TokenProvider.Cursor) }
+    var showTokenHelp by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var returnToSettings by rememberSaveable { mutableStateOf(false) }
+    var settingsSection by rememberSaveable { mutableStateOf<String?>(null) }
+    val dashboardStates = rememberSaveableStateHolder()
     var deleteTarget by remember { mutableStateOf<CursorAccount?>(null) }
     var showCodexDeleteDialog by remember { mutableStateOf(false) }
     val sheetOpen = manageTokens || showTokenHelp || showSettings
@@ -127,6 +128,7 @@ fun AgenTApp(
         deleteTarget = null
         showCodexDeleteDialog = false
         when (action) {
+            ShortcutAction.Overview, ShortcutAction.Tasks -> Unit // Consumed as a tab destination by MainActivity.
             ShortcutAction.ManageTokens -> openTokenManagement()
             ShortcutAction.Settings -> {
                 manageTokens = false
@@ -242,8 +244,8 @@ fun AgenTApp(
 
     CompositionLocalProvider(LocalDisplayZone provides displayZone) {
     when (state.stage) {
-        AppStage.Booting -> BootScreen()
-        AppStage.Dashboard -> DashboardScreen(
+        AppStage.Booting -> Unit
+        AppStage.Dashboard -> if (!showSettings) dashboardStates.SaveableStateProvider("dashboard") { DashboardScreen(
             state = state,
             codexState = codexState,
             snackbarHostState = snackbarHostState,
@@ -252,20 +254,35 @@ fun AgenTApp(
             onOpenTabConsumed = onOpenTabConsumed,
             onLoadHistoryWindow = viewModel::loadHistoryWindow,
             onRefresh = {
-                viewModel.refreshSelected(force = true, silent = true)
-                codexViewModel.refresh(force = true)
-                codexViewModel.refreshStatus(force = true)
+                val cursorConnected = account != null
+                val codexConnected = codexState.credential != null
+                val publicLoaded = codexState.publicResets != null
+                val parts = buildSet {
+                    add("cursor-status"); add("codex-status")
+                    if (cursorConnected) { add("cursor-usage"); add("cursor-tasks") }
+                    if (codexConnected) add("codex-usage")
+                    if (publicLoaded) add("public-resets")
+                }
+                val batch = OperationFeedback.batch(parts)
+                if (cursorConnected) {
+                    viewModel.refreshUsage(true, true) { batch.finish("cursor-usage", it) }
+                    viewModel.refreshTasks(true, true) { batch.finish("cursor-tasks", it) }
+                }
+                viewModel.refreshStatus(true, true) { batch.finish("cursor-status", it) }
+                codexViewModel.refreshStatus(true) { batch.finish("codex-status", it) }
+                if (codexConnected) codexViewModel.refresh(true, { batch.finish("codex-usage", it) }, includePublicResets = false)
+                if (publicLoaded) codexViewModel.refreshPublicResets(true) { batch.finish("public-resets", it) }
             },
-            onRefreshCodex = { codexViewModel.refresh(force = true) },
+            onRefreshCodex = { codexViewModel.refresh(true, { if (it) OperationFeedback.success() }, includePublicResets = false) },
             onManageCodex = { openTokenManagement(preferred = com.lamuier.agenT.model.TokenProvider.Codex) },
             onManageAccount = { openTokenManagement(preferred = com.lamuier.agenT.model.TokenProvider.Cursor) },
             onShowSettings = { showSettings = true },
             onShowTokenHelp = { showTokenHelp = true },
-            onRegisterReset = codexViewModel::registerReset,
-            onDeleteReset = codexViewModel::deleteReset,
-            onSubscriptionDay = codexViewModel::setSubscriptionDay,
-            onRefreshPublicResets = codexViewModel::refreshPublicResets,
-        )
+            onRegisterReset = { event, done -> codexViewModel.registerReset(event) { OperationFeedback.success(); done() } },
+            onDeleteReset = { id -> codexViewModel.deleteReset(id, OperationFeedback::success) },
+            onSubscriptionDay = { day -> codexViewModel.setSubscriptionDay(day, OperationFeedback::success) },
+            onRefreshPublicResets = { force -> codexViewModel.refreshPublicResets(force, if (force) ({ success: Boolean -> if (success) OperationFeedback.success() }) else null) },
+        ) }
     }
 
     if (manageTokens && state.stage == AppStage.Dashboard) {
@@ -287,11 +304,12 @@ fun AgenTApp(
                 if (returnToSettings) { showSettings = true; returnToSettings = false }
             },
             onSave = { provider, metadata, token, done ->
+                val confirmed = { OperationFeedback.success(); done() }
                 if (provider == com.lamuier.agenT.model.TokenProvider.Cursor) {
                     val current = account
-                    if (current == null) viewModel.addAccount(metadata, token, done)
-                    else viewModel.updateAccount(current.id, metadata.takeIf { it != current.alias }, token.ifBlank { null }, done)
-                } else codexViewModel.saveCredential(token, metadata, done)
+                    if (current == null) viewModel.addAccount(metadata, token, confirmed)
+                    else viewModel.updateAccount(current.id, metadata.takeIf { it != current.alias }, token.ifBlank { null }, confirmed)
+                } else codexViewModel.saveCredential(token, metadata, confirmed)
             },
             onDeleteRequest = { provider ->
                 if (provider == com.lamuier.agenT.model.TokenProvider.Cursor) deleteTarget = account
@@ -311,6 +329,10 @@ fun AgenTApp(
 
     if (showSettings) {
         SettingsSheet(
+            sectionId = settingsSection,
+            onSectionChange = { settingsSection = it },
+            hapticFeedbackEnabled = hapticFeedbackEnabled,
+            onHapticFeedbackChange = onHapticFeedbackChange,
             settings = themeSettings,
             notificationSettings = notificationSettings,
             onDismiss = { showSettings = false },
@@ -327,8 +349,6 @@ fun AgenTApp(
             tabOrder = tabOrder,
             onTabOrderChange = onTabOrderChange,
             onTabOrderReset = onTabOrderReset,
-            overviewUsageRingMode = overviewUsageRingMode,
-            onOverviewUsageRingModeChange = onOverviewUsageRingModeChange,
             onManageTokens = { openTokenManagement(fromSettings = true) },
             cursorAccount = account,
             codexState = codexState,
@@ -349,6 +369,7 @@ fun AgenTApp(
                 TextButton(
                     onClick = {
                         codexViewModel.clearCredential {
+                            OperationFeedback.success()
                             showCodexDeleteDialog = false
                         }
                     },
@@ -381,6 +402,7 @@ fun AgenTApp(
                     enabled = !state.submitting,
                     onClick = {
                         viewModel.deleteAccount(target.id) {
+                            OperationFeedback.success()
                             deleteTarget = null
                         }
                     },
@@ -408,42 +430,5 @@ fun AgenTApp(
         )
     }
 
-    }
-}
-
-
-@Composable
-internal fun BootScreen() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.padding(24.dp),
-        ) {
-            Text(
-                stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                stringResource(R.string.boot_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .size(28.dp),
-                strokeWidth = 2.5.dp,
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
     }
 }

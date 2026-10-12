@@ -2,6 +2,7 @@ package com.lamuier.agenT.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -75,16 +78,24 @@ internal fun StatusTab(
     onOpenFailed: (String) -> Unit,
 ) {
     val openUrl = rememberOpenStatusUrl(onOpenFailed)
-    var showCodex by remember { mutableStateOf(false) }
+    val feedback = LocalAppFeedback.current
+    var showCodex by rememberSaveable { mutableStateOf(false) }
     AdaptiveTabContent { compact ->
         Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatusOverviewTile("Cursor", status, loading, Modifier.weight(1f))
-            StatusOverviewTile("Codex / OpenAI", codexState.serviceStatus, codexState.loadingStatus, Modifier.weight(1f))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (com.lamuier.agenT.util.AssistantPresentation.useTwoColumns(maxWidth.value, androidx.compose.ui.platform.LocalDensity.current.fontScale)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatusOverviewTile("Cursor", status, loading, Modifier.weight(1f))
+                    StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.weight(1f))
+                }
+            } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
+                StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !showCodex, onClick = { showCodex = false }, label = { Text("Cursor") })
-            FilterChip(selected = showCodex, onClick = { showCodex = true }, label = { Text("Codex / OpenAI") })
+            FilterChip(selected = !showCodex, onClick = { if (showCodex) { showCodex = false; feedback.selection() } }, label = { Text("Cursor") })
+            FilterChip(selected = showCodex, onClick = { if (!showCodex) { showCodex = true; feedback.selection() } }, label = { Text("Codex / OpenAI") })
         }
         val selectedStatus = if (showCodex) codexState.serviceStatus else status
         val selectedLoading = if (showCodex) codexState.loadingStatus else loading
@@ -254,7 +265,7 @@ private fun OverallStatusHero(
     accent: Color,
     compact: Boolean,
 ) {
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val indicatorLabel = StatusPresentation.indicatorLabel(status.indicator, resources)
     val heroA11y = stringResource(R.string.status_current_a11y, indicatorLabel)
     val heroBrush = Brush.linearGradient(
@@ -515,11 +526,12 @@ private fun openSafeUrl(openUrl: (String) -> Unit, url: String) {
 @Composable
 private fun rememberOpenStatusUrl(onOpenFailed: (String) -> Unit): (String) -> Unit {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toolbarColor = MaterialTheme.colorScheme.surface.toArgb()
-    return remember(context, toolbarColor, onOpenFailed) {
+    return remember(context, resources, toolbarColor, onOpenFailed) {
         { url ->
             if (!CursorCustomTabs.open(context, url, toolbarColor)) {
-                onOpenFailed(context.getString(R.string.tasks_open_page_failed))
+                onOpenFailed(resources.getString(R.string.tasks_open_page_failed))
             }
         }
     }

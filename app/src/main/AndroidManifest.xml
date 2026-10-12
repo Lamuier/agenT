@@ -131,6 +131,12 @@
                 android:resource="@xml/widget_cursor_status_tall_info" />
         </receiver>
 
+        <service android:name=".system.OverviewTileService" android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:icon="@drawable/symbol_dashboard" android:label="@string/tile_overview">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
         <service
             android:name=".widget.AgenTWidgetJobService"
             android:exported="true"

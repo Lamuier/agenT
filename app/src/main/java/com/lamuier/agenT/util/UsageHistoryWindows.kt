@@ -49,7 +49,7 @@ object UsageHistoryWindows {
         nowMs: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): Pair<YearMonth, EpochRange> {
-        val month = YearMonth.from(LocalDate.ofInstant(Instant.ofEpochMilli(nowMs), zone))
+        val month = YearMonth.from(Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate())
         return month to calendarMonth(month, nowMs, zone)
     }
 

@@ -1,6 +1,11 @@
 package com.lamuier.agenT.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -37,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -109,7 +115,7 @@ private fun TasksContent(
     val preferences = remember { DashboardPreferences.get(context) }
     val groupMode by preferences.taskGroupMode.collectAsStateWithLifecycle()
     val zone = LocalDisplayZone.current
-    val resources = context.resources
+    val resources = LocalResources.current
     val visibleTasks = remember(tasks.tasks) { AgentTaskGrouping.visibleTasks(tasks.tasks) }
     val hiddenMergedCount = tasks.tasks.size - visibleTasks.size
     val activeCount = visibleTasks.count {
@@ -119,8 +125,11 @@ private fun TasksContent(
     val groups = remember(visibleTasks, groupMode, zone, resources) {
         AgentTaskGrouping.groups(visibleTasks, groupMode, zone = zone, resources = resources)
     }
-    var collapsed by remember(groupMode, tasks.accountId) { mutableStateOf(emptySet<String>()) }
-    AdaptiveTabContent { compact ->
+    val feedback = LocalAppFeedback.current
+    var collapsed by rememberSaveable(groupMode, tasks.accountId, stateSaver = listSaver<Set<String>, String>(
+        save = { it.toList() }, restore = { it.toSet() })) { mutableStateOf(emptySet<String>()) }
+    AdaptiveLazyTabContent { compact ->
+        item(key = "summary") {
         SectionHeading(
             icon = Icons.Outlined.SmartToy,
             title = stringResource(R.string.tasks_heading),
@@ -156,66 +165,31 @@ private fun TasksContent(
                 )
             }
         } else {
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TaskGroupMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = groupMode == mode,
-                        onClick = { preferences.setTaskGroupMode(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = TaskGroupMode.entries.size,
-                        ),
-                        icon = {},
-                    ) {
-                        Text(stringResource(mode.labelRes), maxLines = 1)
-                    }
-                }
-            }
-            groups.forEach { group ->
-                val expanded = group.key !in collapsed
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
-                ) {
-                    TaskGroupHeader(
-                        title = group.title,
-                        count = group.tasks.size,
-                        activeCount = group.tasks.count {
-                            it.status == AgentTaskStatus.Running ||
-                                it.status == AgentTaskStatus.Creating
-                        },
-                        expanded = expanded,
-                        onToggle = {
-                            collapsed = if (expanded) {
-                                collapsed + group.key
-                            } else {
-                                collapsed - group.key
-                            }
-                        },
-                    )
-                    if (expanded) {
-                        group.tasks.forEach { task ->
-                            TaskCard(task, compact, openUrl, onOpenFailed)
-                        }
-                    }
+                    FilterChip(selected = groupMode == mode,
+                        onClick = { if (groupMode != mode) { preferences.setTaskGroupMode(mode); feedback.selection() } },
+                        label = { Text(stringResource(mode.labelRes)) })
                 }
             }
         }
-
-        TextButton(
-            onClick = { openUrl(AgentTaskPresentation.agentsPageUrl()) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Outlined.OpenInNew,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.size(6.dp))
-            Text(stringResource(R.string.tasks_open_agents))
+        } // summary
+        groups.forEach { group ->
+            val expanded = group.key !in collapsed
+            item(key = "group:${group.key}") {
+                TaskGroupHeader(title = group.title, count = group.tasks.size,
+                    activeCount = group.tasks.count { it.status == AgentTaskStatus.Running || it.status == AgentTaskStatus.Creating },
+                    expanded = expanded, onToggle = {
+                        feedback.selection()
+                        collapsed = if (expanded) collapsed + group.key else collapsed - group.key
+                    })
+            }
+            if (expanded) items(group.tasks, key = { "task:${it.id}" }) { task ->
+                TaskCard(task, compact, openUrl, onOpenFailed)
+            }
         }
-        TasksFreshnessRow(tasks)
     }
+
 }
 
 @Composable
@@ -280,7 +254,7 @@ private fun TaskCard(
     openUrl: (String) -> Unit,
     onOpenFailed: (String) -> Unit,
 ) {
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val displayName = task.name.ifBlank { stringResource(R.string.task_untitled) }
     val statusLabel = AgentTaskPresentation.statusLabel(task.status, resources)
     val conversationA11y = stringResource(R.string.tasks_open_conversation_a11y, displayName, statusLabel)
@@ -504,11 +478,12 @@ internal fun prStatusColor(status: AgentTaskPrStatus): Color {
 @Composable
 private fun rememberOpenCursorUrl(onOpenFailed: (String) -> Unit): (String) -> Unit {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toolbarColor = MaterialTheme.colorScheme.surface.toArgb()
-    return remember(context, toolbarColor, onOpenFailed) {
+    return remember(context, resources, toolbarColor, onOpenFailed) {
         { url ->
             if (!CursorCustomTabs.open(context, url, toolbarColor)) {
-                onOpenFailed(context.getString(R.string.tasks_open_page_failed))
+                onOpenFailed(resources.getString(R.string.tasks_open_page_failed))
             }
         }
     }

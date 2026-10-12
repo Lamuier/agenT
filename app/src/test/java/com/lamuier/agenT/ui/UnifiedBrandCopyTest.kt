@@ -34,8 +34,6 @@ class UnifiedBrandCopyTest {
         val resourceRoot = listOf(File("src/main/res"), File("app/src/main/res"))
             .first { it.isDirectory }
         val sharedDescriptions = listOf(
-            "boot_subtitle",
-            "widget_brand",
             "widget_status_brand",
             "widget_refresh_description",
             "notification_live_channel_description",

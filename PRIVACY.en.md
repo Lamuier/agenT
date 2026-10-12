@@ -21,8 +21,8 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 | Account alias | Local account label | Encrypted with AndroidKeyStore (AES-GCM) | Does not leave the device |
 | Usage summary (quota, percents, Credits, per-model tokens, Grok Bot weekly quota, and similar numbers) | UI, widgets, notifications | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
 | Cloud task summary (name, status, source, branch, PR link, line diffs, and similar) | Tasks tab | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
-| Cursor service status (component names, availability, incident summaries) | Status tab and widgets | Latest successful result cached in plaintext in the app private directory (public information, no token) | Requested only from the official Cursor status page; public status data briefly leaves the device to reach yours |
-| Codex usage summary (plan, percentages, windows, and reset times) | Codex usage UI and offline display | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
+| Cursor / Codex service status (component names, availability, incident summaries) | Status tab and widgets | Latest successful result cached in plaintext in the app private directory (public information, no token) | Requested from the corresponding official public status endpoint without a token or Account ID |
+| Codex usage summary (plan, percentages, windows, and reset times) | Codex overview, usage and offline display | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
 
 ## Where data goes
 
@@ -41,7 +41,7 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 
 ## Data security
 
-- Token and usage cache are written with the system keystore; keys do not leave secure hardware. Public service-status cache has no secrets and is stored in plaintext in the app private directory
+- Token and usage caches are encrypted with non-exportable keys managed by Android Keystore. Hardware protection depends on the device and is not guaranteed on every device. Public service-status caches contain no credentials and are stored in plaintext in the app private directory
 - SharedPreferences that hold credentials are excluded from cloud backup and device transfer (`allowBackup=false`, `fullBackupContent=false`, and `sharedpref` excluded in `data_extraction_rules.xml`). A new phone or cloud restore will not bring your token
 - While a token is shown in plain text, `FLAG_SECURE` is enabled to block screenshots, recording, and Recents thumbnails
 - Copied tokens (Android 13+) are marked sensitive so system clipboard previews show a placeholder
@@ -52,14 +52,16 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 | --- | --- |
 | `INTERNET` | Request official usage, tasks, status, and third-party public reset announcements |
 | `ACCESS_NETWORK_STATE` | Detect connectivity and avoid useless requests |
-| `USE_BIOMETRIC` | Fingerprint / lock-screen verification before showing a token in plain text |
-| `POST_NOTIFICATIONS` | Ongoing assistant status monitor, quota threshold alerts, and Codex window reset reminders |
+| `USE_BIOMETRIC` / `USE_FINGERPRINT` | Fingerprint / lock-screen verification before showing a token in plain text |
+| `POST_NOTIFICATIONS` | Ongoing live activities, quota threshold alerts, and Codex window reset reminders |
 | `RECEIVE_BOOT_COMPLETED` | Restore notification refresh scheduling after boot |
-| `POST_PROMOTED_NOTIFICATIONS` | Android 16+ live notification progress style |
+| `POST_PROMOTED_NOTIFICATIONS` | Request native Live Update promotion on Android 16+; the system decides actual presentation |
+
+AndroidX also merges `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, a signature-level internal broadcast permission that does not read personal data. Haptics use the system feedback API without a vibration permission.
 
 ## Uninstall
 
-Uninstalling the app deletes all local data (accounts, token, caches). Nothing remains.
+Uninstalling removes this app’s local accounts, tokens, caches and records. It does not revoke provider tokens; the system browser’s own login state is managed separately.
 
 ## Changes
 

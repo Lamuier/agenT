@@ -76,7 +76,6 @@ private enum class WidgetKind(
     val hasRefresh: Boolean = false,
     val hasChip: Boolean = false,
     val hasIncident: Boolean = false,
-    val componentSlots: Int = 0,
     val badgeSizeDp: Int = 28,
     val hasDonut: Boolean = false,
     val donutSizeDp: Int = 28,
@@ -152,7 +151,6 @@ private enum class WidgetKind(
         hasRefresh = true,
         hasChip = true,
         hasIncident = true,
-        componentSlots = 6,
         badgeSizeDp = 52,
     ),
 }
@@ -274,7 +272,40 @@ object AgenTWidgetUpdater {
             if (mini) WidgetKind.Mini else WidgetKind.Tall), 0, WidgetSnapshot(
             account = usage?.let { CursorAccount(it.accountId, it.alias, false, it.fetchedAt, it.fetchedAt) },
             usage = usage, status = "", codexUsage = codex, codexUsageLine = "",
-        ), compact = !mini && compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
+        ), compact = !mini && compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale),
+            large = !mini && largeUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
+    internal fun renderStatusPreview(context: Context, cursor: ServiceStatus?, codex: ServiceStatus?,
+        widthDp: Int = 334, heightDp: Int = 252): RemoteViews = renderStatusTall(context,
+        ProviderSpec(TallCursorStatusWidgetProvider::class.java, WidgetKind.StatusTall), 0,
+        WidgetSnapshot(null, null, "", serviceStatus = cursor, codexServiceStatus = codex),
+        compact = compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
+    /** Preview rendering never loads accounts or cached credentials. */
+    internal fun samplePreview(context: Context, provider: Class<*>, widthDp: Int = 334, heightDp: Int = 252): RemoteViews {
+        val spec = providerSpecs.first { it.providerClass == provider }
+        val stamp = "2026-10-12 12:00:00"
+        val sample = com.lamuier.agenT.model.AgenTOverview(1, "Sample", false,
+            com.lamuier.agenT.model.PlanInfo("Pro", "$20", 20.0, "2026-11-01T00:00:00Z"),
+            com.lamuier.agenT.model.BillingCycle("2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"),
+            com.lamuier.agenT.model.UsageMetrics(32.0, com.lamuier.agenT.model.TotalFormat.Percent, 6.4, 6.4, 0.0, 20.0, 13.6, 32.0, 18.0, null, false),
+            com.lamuier.agenT.model.Credits(0.0, 0.0, 0.0), null, com.lamuier.agenT.model.Subscription(null, null),
+            fetchedAt = stamp, fromCache = false, cacheAgeSeconds = 0)
+        val codex = CodexQuotaOverview("plus", com.lamuier.agenT.codex.CodexQuotaWindow(24.0, 18000, 7200, 1791806400),
+            com.lamuier.agenT.codex.CodexQuotaWindow(42.0, 604800, 86400, 1791885600), emptyList(), 1, stamp)
+        fun sampleStatus(names: List<String>) = ServiceStatus("", com.lamuier.agenT.model.StatusIndicator.None, null, "https://status.cursor.com",
+            names.mapIndexed { index, name -> com.lamuier.agenT.model.StatusComponent("sample-$index", name,
+                com.lamuier.agenT.model.ComponentStatus.Operational, index) }, emptyList(), emptyList(), emptyList(), stamp, false)
+        val status = sampleStatus(listOf("Automations", "Review Agents", "CLI", "Cloud Agents", "cursor.com", "IDE", "Origin", "Grok Bot"))
+        val codexStatus = sampleStatus(listOf("Codex Web", "Codex API", "CLI", "Codex in ChatGPT Desktop", "VS Code extension"))
+        val snapshot = WidgetSnapshot(CursorAccount(1, "Sample", false, stamp, stamp), sample, "", serviceStatus = status,
+            codexUsage = codex, codexServiceStatus = codexStatus)
+        val views = if (spec.kind == WidgetKind.StatusTall) renderStatusTall(context, spec, 0, snapshot,
+            compact = compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
+            else if (spec.kind.isStatus) renderStatus(context, spec, 0, snapshot)
+            else renderUsage(context, spec, 0, snapshot, compact = spec.kind.hasUsageDetails && compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale),
+                large = spec.kind.hasUsageDetails && largeUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
+        views.setOnClickPendingIntent(R.id.widget_root, null)
+        return views
+    }
     private val shortScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val refreshMutex = Mutex()
     private val lastManualRefreshAt = AtomicLong(0L)
@@ -483,32 +514,70 @@ object AgenTWidgetUpdater {
         widgetId: Int,
         snapshot: WidgetSnapshot,
     ): RemoteViews {
+        if (spec.kind == WidgetKind.StatusTall) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val fullHeight = fullWidgetHeight(context.resources.configuration.fontScale).toFloat()
+                return RemoteViews(mapOf(
+                    SizeF(250f, 180f) to renderStatusTall(context, spec, widgetId, snapshot, compact = true),
+                    SizeF(250f, fullHeight) to renderStatusTall(context, spec, widgetId, snapshot, compact = false),
+                ))
+            }
+            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+            val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val widthKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
+            val heightKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
+            return renderStatusTall(context, spec, widgetId, snapshot, compact = compactUsageSize(
+                options.getInt(widthKey, spec.kind.fallbackWidthDp),
+                options.getInt(heightKey, spec.kind.fallbackHeightDp), context.resources.configuration.fontScale))
+        }
         if (spec.kind.isStatus) return renderStatus(context, spec, widgetId, snapshot)
         if (!spec.kind.hasUsageDetails) return renderUsage(context, spec, widgetId, snapshot)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Let the launcher select the fitting layout, including after rotation without an app wake-up.
-            val fullHeight = if (context.resources.configuration.fontScale > 1.15f) 250f else 240f
-            return RemoteViews(mapOf(
+            val fullHeight = fullWidgetHeight(context.resources.configuration.fontScale).toFloat()
+            val layouts = linkedMapOf(
                 SizeF(250f, 180f) to renderUsage(context, spec, widgetId, snapshot, compact = true),
-                SizeF(300f, fullHeight) to renderUsage(context, spec, widgetId, snapshot, compact = false),
-            ))
+                SizeF(250f, fullHeight) to renderUsage(context, spec, widgetId, snapshot, compact = false),
+            )
+            if (context.resources.configuration.fontScale <= 1.3f) {
+                layouts[SizeF(330f, largeUsageHeight(context.resources.configuration.fontScale).toFloat())] =
+                    renderUsage(context, spec, widgetId, snapshot, large = true)
+            }
+            return RemoteViews(layouts)
         }
         val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
         val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val widthKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
         val heightKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
-        return renderUsage(context, spec, widgetId, snapshot, compact = compactUsageSize(
-            options.getInt(widthKey, spec.kind.fallbackWidthDp), options.getInt(heightKey, spec.kind.fallbackHeightDp),
-            context.resources.configuration.fontScale))
+        val width = options.getInt(widthKey, spec.kind.fallbackWidthDp)
+        val height = options.getInt(heightKey, spec.kind.fallbackHeightDp)
+        val fontScale = context.resources.configuration.fontScale
+        return renderUsage(context, spec, widgetId, snapshot, compact = compactUsageSize(width, height, fontScale),
+            large = largeUsageSize(width, height, fontScale))
+    }
+
+    private fun fullWidgetHeight(fontScale: Float): Int = when {
+        fontScale > 1.3f -> 320
+        fontScale > 1.15f -> 260
+        else -> 240
     }
 
     private fun compactUsageSize(widthDp: Int, heightDp: Int, fontScale: Float): Boolean =
-        widthDp < 300 || heightDp < if (fontScale > 1.15f) 250 else 240
+        widthDp < 250 || heightDp < fullWidgetHeight(fontScale)
+
+    private fun largeUsageHeight(fontScale: Float): Int = if (fontScale > 1.15f) 300 else 280
+
+    private fun largeUsageSize(widthDp: Int, heightDp: Int, fontScale: Float): Boolean =
+        fontScale <= 1.3f && widthDp >= 330 && heightDp >= largeUsageHeight(fontScale)
 
     private fun renderUsage(context: Context, spec: ProviderSpec, widgetId: Int, snapshot: WidgetSnapshot,
-        compact: Boolean = false): RemoteViews {
+        compact: Boolean = false, large: Boolean = false): RemoteViews {
         val kind = spec.kind
-        val layoutId = if (kind.hasUsageDetails && compact) R.layout.widget_assistants_detail_compact else kind.layoutId
+        val layoutId = when {
+            kind.hasUsageDetails && large -> R.layout.widget_assistants_detail_large
+            kind.hasUsageDetails && compact -> R.layout.widget_assistants_detail_compact
+            else -> kind.layoutId
+        }
         val views = RemoteViews(context.packageName, layoutId)
         val strings = loc(context)
         val colors = WidgetThemeColors.resolve(context)
@@ -560,7 +629,7 @@ object AgenTWidgetUpdater {
             val codexPlan = AssistantPresentation.plan(codex?.planType) ?: connectionLabel(
                 snapshot.codexCredential != null, snapshot.codexCredential?.let { it.expired || it.invalid } == true)
             views.setTextViewText(R.id.widget_brand, strings.getString(R.string.app_name))
-            val largeFont = context.resources.configuration.fontScale > 1.15f
+            val largeFont = context.resources.configuration.fontScale > 1.3f
             views.setTextViewText(R.id.widget_cursor_name, "Cursor")
             views.setTextViewText(R.id.widget_codex_name, "Codex")
             views.setTextViewText(R.id.widget_cursor_plan, cursorPlan)
@@ -572,7 +641,9 @@ object AgenTWidgetUpdater {
                 }
             }
             views.setTextViewText(R.id.widget_cursor_caption, strings.getString(R.string.overview_cycle_used))
-            views.setViewVisibility(R.id.widget_cursor_caption, if (largeFont) android.view.View.GONE else android.view.View.VISIBLE)
+            views.setViewVisibility(R.id.widget_cursor_caption, if (largeFont || compact) android.view.View.GONE else android.view.View.VISIBLE)
+            views.setTextViewText(R.id.widget_codex_primary_label, strings.getString(R.string.quota_five_hour_short))
+            views.setTextViewText(R.id.widget_codex_weekly_label, strings.getString(R.string.quota_weekly_short))
             listOf(R.id.widget_brand, R.id.widget_cursor_caption, R.id.widget_cursor_info,
                 R.id.widget_codex_primary_label, R.id.widget_codex_weekly_label,
                 R.id.widget_codex_primary_reset, R.id.widget_codex_weekly_reset,
@@ -580,16 +651,28 @@ object AgenTWidgetUpdater {
             views.setTextViewText(R.id.widget_codex_week, AssistantPresentation.percent(codex?.secondary?.usedPercent))
             views.setTextColor(R.id.widget_codex_week, colors.onSurface)
             views.setInt(R.id.widget_usage_divider, "setBackgroundColor", colors.surfaceVariant)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !compact) {
+                listOf(R.id.widget_cursor_section to colors.primary, R.id.widget_codex_section to colors.tertiary).forEach { (id, accent) ->
+                    views.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(WidgetAppearance.blend(colors.surface, accent, 0.09f)))
+                }
+            }
             if (largeFont) {
                 fun px(dp: Int) = (dp * context.resources.displayMetrics.density).toInt()
                 views.setViewPadding(R.id.widget_contents, px(if (compact) 8 else 12), px(if (compact) 4 else 10),
                     px(if (compact) 8 else 12), px(if (compact) 4 else 10))
+                views.setTextViewTextSize(R.id.widget_brand, android.util.TypedValue.COMPLEX_UNIT_SP, 9f)
+                listOf(R.id.widget_cursor_name, R.id.widget_codex_name).forEach {
+                    views.setTextViewTextSize(it, android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
+                }
+                listOf(R.id.widget_cursor_info, R.id.widget_codex_primary_reset, R.id.widget_codex_weekly_reset, R.id.widget_updated).forEach {
+                    views.setTextViewTextSize(it, android.util.TypedValue.COMPLEX_UNIT_SP, 8f)
+                }
             }
             val remaining = usage?.let { billingLabel(strings, it) }
             val poolInfo = usage?.let { strings.getString(R.string.widget_pool_summary,
                 AssistantPresentation.percent(it.usage.autoPercentUsed), AssistantPresentation.percent(it.usage.apiPercentUsed)) }
             views.setTextViewText(R.id.widget_cursor_info,
-                listOfNotNull(poolInfo, remaining).joinToString(" · ").ifBlank { snapshot.status })
+                listOfNotNull(poolInfo, remaining).joinToString("\n").ifBlank { snapshot.status })
             fun resetLabel(epoch: Long?): String? = epoch?.let {
                 strings.getString(R.string.codex_resets_at, AssistantPresentation.resetTime(it, zone))
             }
@@ -607,6 +690,93 @@ object AgenTWidgetUpdater {
         views.setContentDescription(R.id.widget_root, listOf("Cursor $cursorValue", snapshot.status,
             "Codex 5h $codexValue", strings.getString(R.string.widget_codex_weekly,
                 AssistantPresentation.percent(codex?.secondary?.usedPercent)), snapshot.codexUsageLine).joinToString(" · "))
+        return views
+    }
+
+    private fun renderStatusTall(context: Context, spec: ProviderSpec, widgetId: Int,
+        snapshot: WidgetSnapshot, compact: Boolean): RemoteViews {
+        val views = RemoteViews(context.packageName, if (compact) R.layout.widget_cursor_status_tall_compact else R.layout.widget_cursor_status_tall)
+        val strings = loc(context)
+        val colors = WidgetThemeColors.resolve(context)
+        val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
+        val indicator = WidgetCalculations.combinedIndicator(snapshot.serviceStatus, snapshot.codexServiceStatus)
+        val accent = indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
+        views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
+        views.setInt(R.id.widget_outline, "setColorFilter", colors.surfaceVariant)
+        views.setTextViewText(R.id.widget_brand, strings.getString(R.string.widget_services_title))
+        views.setTextColor(R.id.widget_brand, colors.onSurfaceVariant)
+        views.setTextViewText(R.id.widget_value, if (indicator == com.lamuier.agenT.model.StatusIndicator.None) strings.getString(R.string.widget_services_healthy)
+            else indicator?.let { StatusPresentation.compactIndicatorLabel(it, strings.resources) } ?: "—")
+        views.setTextColor(R.id.widget_value, accent)
+        views.setImageViewBitmap(R.id.widget_status_badge, WidgetVisuals.statusBadgeBitmap(context, 16, accent, WidgetCalculations.statusBadgeGlyph(indicator)))
+        views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent(context, spec, widgetId))
+        tintRefreshButton(views, colors)
+        views.setImageViewBitmap(R.id.widget_refresh, WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant))
+        views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context, spec, widgetId))
+        val limit = if (compact) 3 else if (context.resources.configuration.fontScale > 1.3f) 5 else 8
+        data class Panel(val name: String, val status: ServiceStatus?, val title: Int, val summary: Int,
+            val body: Int, val overflow: Int, val incident: Int, val surface: Int, val tint: Int)
+        val panels = listOf(
+            Panel("Cursor", snapshot.serviceStatus, R.id.widget_cursor_name, R.id.widget_cursor_summary,
+                R.id.widget_cursor_components, R.id.widget_cursor_overflow, R.id.widget_cursor_incident, R.id.widget_cursor_panel, colors.primary),
+            Panel("Codex", snapshot.codexServiceStatus, R.id.widget_codex_name, R.id.widget_codex_summary,
+                R.id.widget_codex_components, R.id.widget_codex_overflow, R.id.widget_codex_incident, R.id.widget_codex_panel, colors.tertiary),
+        )
+        panels.forEach { panel ->
+            views.setInt(panel.surface, "setColorFilter", WidgetAppearance.blend(colors.surface, panel.tint, 0.055f))
+            views.setTextViewText(panel.title, panel.name)
+            views.setTextColor(panel.title, colors.onSurface)
+            views.setTextViewText(panel.summary, panel.status?.let { WidgetCalculations.summaryChip(it) + if (it.partialComponents) "+" else "" } ?: "—")
+            views.setTextColor(panel.summary, panel.status?.indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant)
+            views.removeAllViews(panel.body)
+            val components = WidgetStatusPresentation.components(panel.status, limit)
+            components.forEach { component ->
+                val row = RemoteViews(context.packageName, R.layout.widget_status_component)
+                val color = if (component.status == com.lamuier.agenT.model.ComponentStatus.Unknown) colors.onSurfaceVariant else WidgetCalculations.componentColor(component.status)
+                row.setImageViewBitmap(R.id.widget_component_dot, WidgetVisuals.chipBitmap(context, color, 6, 6))
+                row.setTextViewText(R.id.widget_component_name, WidgetStatusPresentation.componentName(panel.name, component.name))
+                row.setTextColor(R.id.widget_component_name, colors.onSurface)
+                val state = when (component.status) {
+                    com.lamuier.agenT.model.ComponentStatus.Operational -> null
+                    com.lamuier.agenT.model.ComponentStatus.DegradedPerformance -> R.string.widget_component_degraded_short
+                    com.lamuier.agenT.model.ComponentStatus.PartialOutage, com.lamuier.agenT.model.ComponentStatus.MajorOutage -> R.string.widget_component_outage_short
+                    com.lamuier.agenT.model.ComponentStatus.UnderMaintenance -> R.string.widget_component_maintenance_short
+                    com.lamuier.agenT.model.ComponentStatus.Unknown -> R.string.widget_component_unknown_short
+                }
+                row.setViewVisibility(R.id.widget_component_state, if (state == null) android.view.View.GONE else android.view.View.VISIBLE)
+                state?.let { row.setTextViewText(R.id.widget_component_state, strings.getString(it)) }
+                row.setTextColor(R.id.widget_component_state, color)
+                row.setContentDescription(R.id.widget_component_row,
+                    "${panel.name} · ${component.name} · ${StatusPresentation.componentLabel(component.status, strings.resources)}")
+                views.addView(panel.body, row)
+            }
+            val remaining = (panel.status?.components?.size ?: 0) - components.size
+            views.setViewVisibility(panel.overflow, if (remaining > 0) android.view.View.VISIBLE else android.view.View.GONE)
+            views.setTextViewText(panel.overflow, strings.getString(R.string.widget_status_overflow, remaining.coerceAtLeast(0)))
+            views.setTextColor(panel.overflow, colors.onSurfaceVariant)
+            views.setTextViewText(panel.incident, WidgetStatusPresentation.incident(panel.status, strings.resources, zone, compact))
+            panel.status?.let { views.setContentDescription(panel.incident, WidgetCalculations.incidentHeadline(it, strings.resources, zone)) }
+            views.setTextColor(panel.incident, colors.onSurfaceVariant)
+        }
+        fun clock(status: ServiceStatus?): String {
+            val time = AssistantPresentation.updatedClock(status?.fetchedAt, zone) ?: "—"
+            return if (status?.fromCache == true) strings.getString(R.string.widget_status_cached_clock, time) else time
+        }
+        val transientMessages = listOf(R.string.widget_refreshing, R.string.widget_refresh_later,
+            R.string.widget_cache_offline, R.string.widget_cache_refresh_failed, R.string.widget_refresh_failed).map(strings::getString)
+        val message = listOf(snapshot.serviceStatusLine, snapshot.codexServiceStatusLine).firstOrNull { it in transientMessages }
+        views.setTextViewText(R.id.widget_status, message ?: strings.getString(R.string.widget_status_clocks, clock(snapshot.serviceStatus), clock(snapshot.codexServiceStatus)))
+        views.setTextColor(R.id.widget_status, colors.onSurfaceVariant)
+        if (context.resources.configuration.fontScale > 1.3f) {
+            views.setTextViewText(R.id.widget_brand, strings.getString(R.string.widget_services_title_compact))
+            views.setTextViewTextSize(R.id.widget_brand, android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
+            views.setTextViewTextSize(R.id.widget_value, android.util.TypedValue.COMPLEX_UNIT_SP, 9f)
+            views.setTextViewTextSize(R.id.widget_status, android.util.TypedValue.COMPLEX_UNIT_SP, 8f)
+            panels.forEach { views.setTextViewTextSize(it.incident, android.util.TypedValue.COMPLEX_UNIT_SP, 8f) }
+        }
+        views.setContentDescription(R.id.widget_root, panels.joinToString(" · ") { panel ->
+            panel.name + " · " + (panel.status?.components?.joinToString(" · ") { "${it.name} ${StatusPresentation.componentLabel(it.status, strings.resources)}" } ?: strings.getString(R.string.widget_status_waiting))
+        })
         return views
     }
 
@@ -689,114 +859,7 @@ object AgenTWidgetUpdater {
                     "Codex: ${codexService?.let { WidgetCalculations.incidentHeadline(it, strings.resources, zone) } ?: "—"}",
             )
         }
-        if (kind.componentSlots > 0) {
-            bindStatusComponents(context, views, colors, service, codexService, kind.componentSlots)
-        }
         return views
-    }
-
-    private fun bindStatusComponents(
-        context: Context,
-        views: RemoteViews,
-        colors: WidgetThemeColors,
-        service: ServiceStatus?,
-        codexService: ServiceStatus?,
-        slots: Int,
-    ) {
-        val items = WidgetCalculations.combinedComponents(service, codexService, slots)
-        STATUS_COMPONENT_ROWS.take(slots).forEachIndexed { index, rowId ->
-            val item = items.getOrNull(index)
-            if (item == null) {
-                views.setViewVisibility(rowId, android.view.View.INVISIBLE)
-                return@forEachIndexed
-            }
-            views.setViewVisibility(rowId, android.view.View.VISIBLE)
-            views.setTextViewText(
-                STATUS_COMPONENT_NAMES[index],
-                "${item.first}  ${StatusPresentation.componentLabel(item.second, loc(context).resources)}",
-            )
-            views.setTextColor(STATUS_COMPONENT_NAMES[index], colors.onSurface)
-            views.setImageViewBitmap(
-                STATUS_COMPONENT_DOTS[index],
-                WidgetVisuals.chipBitmap(
-                    context,
-                    WidgetCalculations.componentColor(item.second),
-                    8,
-                    8,
-                ),
-            )
-        }
-    }
-
-    private fun applyWidgetTheme(
-        context: Context,
-        views: RemoteViews,
-        kind: WidgetKind,
-        widgetId: Int,
-        colors: WidgetThemeColors,
-        totalPercent: Double?,
-    ) {
-        val fallbackW = kind.fallbackWidthDp
-        val fallbackH = kind.fallbackHeightDp
-        // Root must stay transparent — a solid color here fills the bitmap's
-        // transparent corners and makes the widget look completely square.
-        views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.TRANSPARENT)
-        views.setImageViewBitmap(
-            R.id.widget_surface,
-            WidgetVisuals.surfaceBitmap(
-                context,
-                widgetId,
-                WidgetVisuals.glassSurface(colors.surface),
-                fallbackW,
-                fallbackH,
-            ),
-        )
-        views.setTextColor(R.id.widget_brand, colors.onSurfaceVariant)
-        views.setTextColor(R.id.widget_title, colors.onSurfaceVariant)
-        views.setTextColor(R.id.widget_status, colors.onSurfaceVariant)
-        views.setTextColor(R.id.widget_value, colors.onSurface)
-
-        if (kind.hasDonut) {
-            views.setImageViewBitmap(
-                R.id.widget_donut,
-                WidgetVisuals.donutBitmap(
-                    context = context,
-                    sizeDp = kind.donutSizeDp,
-                    progress = WidgetCalculations.progress(totalPercent),
-                    progressColor = colors.primary,
-                    trackColor = colors.progressTrack,
-                    strokeDp = kind.donutStrokeDp,
-                ),
-            )
-        }
-        if (kind.hasRefresh) {
-            tintRefreshButton(views, colors)
-            views.setImageViewBitmap(
-                R.id.widget_refresh,
-                WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant),
-            )
-        }
-        if (kind.hasUsageDetails) {
-            views.setImageViewBitmap(
-                R.id.widget_auto_dot,
-                WidgetVisuals.chipBitmap(context, colors.primary, 8, 8),
-            )
-            views.setImageViewBitmap(
-                R.id.widget_api_dot,
-                WidgetVisuals.chipBitmap(context, colors.tertiary, 8, 8),
-            )
-            tintChipBackground(views, R.id.widget_plan, colors.surfaceContainer)
-            tintChipBackground(views, R.id.widget_credits, colors.surfaceContainer)
-            tintChipBackground(views, R.id.widget_billing, colors.surfaceContainer)
-            views.setTextColor(R.id.widget_plan, colors.onSurfaceVariant)
-            views.setTextColor(R.id.widget_auto_value, colors.onSurface)
-            views.setTextColor(R.id.widget_api_value, colors.onSurface)
-            views.setTextColor(R.id.widget_credits, colors.onSurface)
-            views.setTextColor(R.id.widget_billing, colors.onSurfaceVariant)
-            tintProgress(views, R.id.widget_progress, colors)
-            tintProgress(views, R.id.widget_auto_progress, colors)
-            tintProgress(views, R.id.widget_api_progress, colors, secondary = true)
-        }
     }
 
     private fun applyStatusWidgetTheme(
@@ -870,46 +933,6 @@ object AgenTWidgetUpdater {
         }
     }
 
-    private fun tintProgress(
-        views: RemoteViews,
-        progressId: Int,
-        colors: WidgetThemeColors,
-        secondary: Boolean = false,
-    ) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        val tint = if (secondary) colors.secondary else colors.primary
-        views.setColorStateList(
-            progressId,
-            "setProgressTintList",
-            android.content.res.ColorStateList.valueOf(tint),
-        )
-        views.setColorStateList(
-            progressId,
-            "setProgressBackgroundTintList",
-            android.content.res.ColorStateList.valueOf(colors.progressTrack),
-        )
-    }
-
-    private fun bindModeProgress(
-        views: RemoteViews,
-        labelId: Int,
-        progressId: Int,
-        label: String,
-        value: Double?,
-        strings: Context,
-    ) {
-        views.setTextViewText(labelId, WidgetCalculations.modeLabel(label, value))
-        views.setProgressBar(progressId, 100, WidgetCalculations.progress(value), false)
-        views.setContentDescription(
-            progressId,
-            strings.getString(
-                R.string.pool_progress_description,
-                label,
-                value?.let(WidgetCalculations::percent) ?: strings.getString(R.string.no_data),
-            ),
-        )
-    }
-
     private fun billingLabel(strings: Context, usage: AgenTOverview): String {
         val billing = UsageCalculations.billingProgress(
             usage.billingCycle.start,
@@ -979,30 +1002,6 @@ object AgenTWidgetUpdater {
             .appendPath(widgetId.toString())
             .build()
 
-    private val STATUS_COMPONENT_ROWS = intArrayOf(
-        R.id.widget_status_row_1,
-        R.id.widget_status_row_2,
-        R.id.widget_status_row_3,
-        R.id.widget_status_row_4,
-        R.id.widget_status_row_5,
-        R.id.widget_status_row_6,
-    )
-    private val STATUS_COMPONENT_DOTS = intArrayOf(
-        R.id.widget_status_dot_1,
-        R.id.widget_status_dot_2,
-        R.id.widget_status_dot_3,
-        R.id.widget_status_dot_4,
-        R.id.widget_status_dot_5,
-        R.id.widget_status_dot_6,
-    )
-    private val STATUS_COMPONENT_NAMES = intArrayOf(
-        R.id.widget_status_name_1,
-        R.id.widget_status_name_2,
-        R.id.widget_status_name_3,
-        R.id.widget_status_name_4,
-        R.id.widget_status_name_5,
-        R.id.widget_status_name_6,
-    )
 }
 
 class AgenTWidgetJobService : JobService() {

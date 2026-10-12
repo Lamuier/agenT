@@ -21,9 +21,9 @@ class IslandMonitorStateTest {
         assertFalse(strings.values.any { it.contains("服务检修") })
     }
 
-    @Test fun runningCopyUsesTheTerritoryPatrolTheme() {
+    @Test fun runningCopyUsesMonitoringByDefaultAndPatrolOnlyForCatStyle() {
         val root = listOf(File("src/main"), File("app/src/main")).first { it.isDirectory }
-        for ((locale, expected) in mapOf("values" to "领地巡视", "values-en" to "Patrol")) {
+        for ((locale, expected) in mapOf("values" to "正在监控", "values-en" to "Monitor")) {
             val items = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(File(root, "res/$locale/strings.xml")).getElementsByTagName("string")
             val strings = (0 until items.length).associate { index ->
@@ -31,6 +31,11 @@ class IslandMonitorStateTest {
                 item.attributes.getNamedItem("name").nodeValue to item.textContent
             }
             assertEquals(expected, strings["island_monitor_running"])
+            assertEquals(if (locale == "values") "领地巡视" else "Patrol", strings["island_monitor_running_cat"])
+            assertEquals(if (locale == "values") "正在监控" else "Watch", strings["notification_multi_running_chip"])
+            assertEquals(if (locale == "values") "领地巡视" else "Prowl", strings["notification_multi_running_chip_cat"])
+            assertFalse(strings.getValue("notification_monitor_running").contains("巡视"))
+            assertFalse(strings.getValue("notification_monitor_running").contains("Patrol"))
             assertTrue(strings.getValue("notification_monitor_running").contains("%1\$s"))
             assertFalse(strings.values.any { it.contains("助手巡航") || it.contains("On duty") })
         }
@@ -56,7 +61,7 @@ class IslandMonitorStateTest {
         "", indicator, null, "", emptyList(), emptyList(), emptyList(), emptyList(), "", false,
         cacheAgeSeconds = age, partialComponents = partial)
 
-    @Test fun healthyMonitoringIsPatrollingAndThresholdsUseUsedQuota() {
+    @Test fun healthyMonitoringIsRunningAndThresholdsUseUsedQuota() {
         assertEquals(IslandMonitorState.Running, IslandMonitorState.select(listOf(79.9), listOf(status(StatusIndicator.None)), true))
         assertEquals(IslandMonitorState.LowQuota, IslandMonitorState.select(listOf(10.0, 80.0), emptyList(), true))
         assertEquals(IslandMonitorState.EmptyQuota, IslandMonitorState.select(listOf(100.0), emptyList(), true))

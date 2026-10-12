@@ -34,12 +34,10 @@ import com.lamuier.agenT.data.EncryptedAccountStore
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.*
 import com.lamuier.agenT.ui.DashboardScreen
-import com.lamuier.agenT.ui.BootScreen
 import com.lamuier.agenT.ui.TokenManagementContent
 import com.lamuier.agenT.ui.SettingsSheet
 import com.lamuier.agenT.data.NotificationSettings
 import com.lamuier.agenT.data.PercentDisplayMode
-import com.lamuier.agenT.data.OverviewUsageRingMode
 import com.lamuier.agenT.ui.theme.AgenTTheme
 import com.lamuier.agenT.ui.theme.LocalDisplayZone
 import com.lamuier.agenT.ui.theme.ThemeMode
@@ -114,10 +112,6 @@ class UiReviewActivity : FragmentActivity() {
             CompositionLocalProvider(LocalContext provides wrapped,
                 LocalConfiguration provides wrapped.resources.configuration, LocalDisplayZone provides zone) {
                 AgenTTheme(theme) {
-                    if (intent.getStringExtra("mode") == "boot") {
-                        BootScreen()
-                        return@AgenTTheme
-                    }
                     var settingsOpen by remember { mutableStateOf(intent.getStringExtra("mode") == "settings") }
                     var pendingTab by remember { mutableStateOf<DashboardTab?>(requestedTab) }
                     var resetLedger by remember { mutableStateOf(fixture.codex.resetLedger!!) }
@@ -165,7 +159,6 @@ class UiReviewActivity : FragmentActivity() {
                         language = language, onLanguageChange = {}, onLiveUpdatesToggle = {}, onThresholdRemindersToggle = {},
                         percentDisplayMode = PercentDisplayMode.Used, onPercentDisplayModeChange = {},
                         tabOrder = DashboardTab.DEFAULT_ORDER, onTabOrderChange = {}, onTabOrderReset = {},
-                        overviewUsageRingMode = OverviewUsageRingMode.Split, onOverviewUsageRingModeChange = {},
                         onManageTokens = { settingsOpen = false; tokensOpen = true },
                         cursorAccount = fixture.cursor.accounts.first(), codexState = fixture.codex,
                     )
@@ -425,10 +418,9 @@ class UiReviewActivity : FragmentActivity() {
     }
 }
 
-private data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaUiState) {
+internal data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaUiState) {
     companion object {
-        fun create(zone: ZoneId): ReviewFixture {
-            val now = Instant.now()
+        fun create(zone: ZoneId, now: Instant = Instant.now()): ReviewFixture {
             val stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(zone).format(now)
             val end = now.plusSeconds(2 * 86400 + 20 * 3600)
             val usage = AgenTOverview(
@@ -453,6 +445,13 @@ private data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaUi
             val account = CursorAccount(1, "Personal", false, stamp, stamp)
             return ReviewFixture(
                 AppUiState(stage = AppStage.Dashboard, accounts = listOf(account), selectedAccountId = 1,
+                    tasks = com.lamuier.agenT.model.AgenTasks(1, (1..3).map { index ->
+                        com.lamuier.agenT.model.AgentTask("bc_fixture_$index", listOf("Improve adaptive navigation", "Polish quota cards", "Review accessibility")[index - 1],
+                            if (index == 1) com.lamuier.agenT.model.AgentTaskStatus.Running else com.lamuier.agenT.model.AgentTaskStatus.Finished,
+                            "https://github.com/Lamuier/agenT", "ui-review", null, null, 36, 8, 3, "default", false,
+                            now.minusSeconds(3600L * index).toEpochMilli(), now.toEpochMilli(), null,
+                            com.lamuier.agenT.model.AgentTaskSource.Api)
+                    }, stamp, false),
                     usage = usage, serviceStatus = status(false)),
                 CodexQuotaUiState(credential = CodexCredentialInfo(false, false, stamp),
                     usage = CodexQuotaOverview("plus",

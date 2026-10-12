@@ -1,5 +1,24 @@
 package com.lamuier.agenT.ui
 
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Widgets
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDivider
+import kotlinx.coroutines.CancellationException
+
 import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -69,7 +88,6 @@ import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.data.NotificationSettings
 import com.lamuier.agenT.notification.IslandMonitorState
 import com.lamuier.agenT.notification.NotificationCopy
-import com.lamuier.agenT.data.OverviewUsageRingMode
 import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.DashboardTab
@@ -79,6 +97,14 @@ import com.lamuier.agenT.util.AppLanguage
 import com.lamuier.agenT.util.DisplayTime
 import com.lamuier.agenT.util.DisplayTimeZones
 import java.time.Instant
+
+internal enum class SettingsSection(val title: Int, val icon: ImageVector) {
+    Connections(R.string.settings_connections_title, Icons.Outlined.Key),
+    Appearance(R.string.appearance_title, Icons.Outlined.DarkMode),
+    Notifications(R.string.notification_section_title, Icons.Outlined.Notifications),
+    SystemEntries(R.string.settings_system_entries, Icons.Outlined.Widgets),
+    General(R.string.settings_general, Icons.Outlined.Tune),
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,49 +125,84 @@ internal fun SettingsSheet(
     tabOrder: List<DashboardTab>,
     onTabOrderChange: (List<DashboardTab>) -> Unit,
     onTabOrderReset: () -> Unit,
-    overviewUsageRingMode: OverviewUsageRingMode,
-    onOverviewUsageRingModeChange: (OverviewUsageRingMode) -> Unit,
     onManageTokens: () -> Unit,
     cursorAccount: CursorAccount?,
     codexState: CodexQuotaUiState,
     onCodexResetRemindersToggle: (Boolean) -> Unit = {},
     onCatLanguageToggle: (Boolean) -> Unit = {},
+    sectionId: String? = null,
+    onSectionChange: ((String?) -> Unit)? = null,
+    hapticFeedbackEnabled: Boolean = true,
+    onHapticFeedbackChange: (Boolean) -> Unit = {},
     codexUsageAutoRefresh: Boolean = true,
     onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
 ) {
-    val systemPaletteAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        stringResource(R.string.settings_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.settings_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+    val systemPaletteAvailable = Build.VERSION.SDK_INT >= 31
+    var localSection by rememberSaveable { mutableStateOf<String?>(null) }
+    val currentId = if (onSectionChange != null) sectionId else localSection
+    val feedback = LocalAppFeedback.current
+    var previousHaptics by remember { mutableStateOf(hapticFeedbackEnabled) }
+    LaunchedEffect(hapticFeedbackEnabled) {
+        if (hapticFeedbackEnabled && !previousHaptics) feedback.toggle(true)
+        previousHaptics = hapticFeedbackEnabled
+    }
+    fun select(id: String?) {
+        if (onSectionChange != null) onSectionChange(id) else localSection = id
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 840.dp && androidx.compose.ui.platform.LocalDensity.current.fontScale <= 1.5f
+        val current = SettingsSection.entries.firstOrNull { it.name == currentId }
+            ?: if (wide) SettingsSection.Connections else null
+        fun back() { if (!wide && current != null) select(null) else onDismiss() }
+        var backProgress by remember { mutableFloatStateOf(0f) }
+        PredictiveBackHandler { events ->
+            try { events.collect { backProgress = it.progress }; back() }
+            catch (_: CancellationException) { /* Canceled gesture leaves the route intact. */ }
+            finally { backProgress = 0f }
+        }
+        val paneWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        Scaffold(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                translationX = paneWidthPx * 0.08f * backProgress
+                scaleX = 1f - 0.02f * backProgress
+                scaleY = scaleX
+            },
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(if (wide || current == null) R.string.settings_title else current.title)) },
+                    navigationIcon = { IconButton(onClick = ::back) {
+                        Icon(androidx.compose.ui.res.painterResource(R.drawable.symbol_arrow_back), stringResource(R.string.action_back))
+                    } },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            },
+        ) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding)) {
+                if (wide || current == null) {
+                    Column(Modifier.widthIn(max = if (wide) 280.dp else 640.dp)
+                        .then(if (wide) Modifier.width(280.dp) else Modifier.weight(1f))
+                        .verticalScroll(rememberScrollState()).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(stringResource(R.string.settings_description), style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+                        SettingsSection.entries.forEach { item ->
+                            SettingNavRow(stringResource(item.title), stringResource(when(item) {
+                                SettingsSection.Connections -> R.string.settings_connections_description
+                                SettingsSection.Appearance -> R.string.appearance_description
+                                SettingsSection.Notifications -> R.string.settings_notifications_summary
+                                SettingsSection.SystemEntries -> R.string.settings_system_entries_summary
+                                SettingsSection.General -> R.string.settings_general_summary
+                            }), item.icon, selected = current == item, onClick = { if (current != item) { feedback.selection(); select(item.name) } })
+                        }
+                    }
                 }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_settings))
-                }
-            }
-
+                if (wide) VerticalDivider()
+                if (current != null) {
+                    Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
+                        .imePadding().padding(20.dp).widthIn(max = 800.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        when (current) {
+                            SettingsSection.Connections -> {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.settings_connections_title))
                 Text(
@@ -172,9 +233,8 @@ internal fun SettingsSheet(
                     onCheckedChange = onCodexUsageAutoRefreshChange,
                 )
             }
-            HorizontalDivider()
-
-            // ---- 外观 ----
+                            }
+                            SettingsSection.Appearance -> {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.appearance_title))
                 Text(
@@ -182,9 +242,11 @@ internal fun SettingsSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
+                    maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 3,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     ThemeModeOption(
                         modifier = Modifier.weight(1f),
@@ -232,53 +294,6 @@ internal fun SettingsSheet(
                     }
                 }
             }
-
-            HorizontalDivider()
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle(stringResource(R.string.language_section_title))
-                Text(
-                    stringResource(R.string.language_section_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                AppLanguage.entries.forEach { option ->
-                    LanguageOption(
-                        option = option,
-                        selected = language == option,
-                        onClick = { onLanguageChange(option) },
-                    )
-                }
-            }
-
-            HorizontalDivider()
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle(stringResource(R.string.timezone_section_title))
-                Text(
-                    stringResource(R.string.timezone_section_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val previewZone = DisplayTimeZones.resolve(timeZoneId)
-                Text(
-                    stringResource(
-                        R.string.timezone_preview,
-                        DisplayTime.formatDateTime(Instant.now(), previewZone, withYear = true),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                )
-                TimeZonePicker(
-                    timeZoneId = timeZoneId,
-                    onTimeZoneChange = onTimeZoneChange,
-                )
-            }
-
-            HorizontalDivider()
-
-            // ---- 页签顺序 ----
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.tab_order_section_title))
                 Text(
@@ -301,25 +316,8 @@ internal fun SettingsSheet(
                     Text(stringResource(R.string.tab_order_reset))
                 }
             }
-
-            HorizontalDivider()
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle(stringResource(R.string.overview_ring_section_title))
-                Text(
-                    stringResource(R.string.overview_ring_section_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OverviewUsageRingModeSelector(
-                    selected = overviewUsageRingMode,
-                    onSelected = onOverviewUsageRingModeChange,
-                )
-            }
-
-            HorizontalDivider()
-
-            // ---- 通知 ----
+                            }
+                            SettingsSection.Notifications -> {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.notification_section_title))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,7 +360,56 @@ internal fun SettingsSheet(
                     )
                 }
             }
-
+                        NotificationSystemSettings(notificationSettings)
+                            }
+                            SettingsSection.SystemEntries -> {
+                        SystemEntriesContent()
+                            }
+                            SettingsSection.General -> {
+                        SettingToggleRow(stringResource(R.string.haptic_feedback_title), stringResource(R.string.haptic_feedback_description),
+                            hapticFeedbackEnabled, onHapticFeedbackChange, provideFeedback = false)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.language_section_title))
+                Text(
+                    stringResource(R.string.language_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AppLanguage.entries.forEach { option ->
+                    LanguageOption(
+                        option = option,
+                        selected = language == option,
+                        onClick = { onLanguageChange(option) },
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle(stringResource(R.string.timezone_section_title))
+                Text(
+                    stringResource(R.string.timezone_section_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val previewZone = DisplayTimeZones.resolve(timeZoneId)
+                Text(
+                    stringResource(
+                        R.string.timezone_preview,
+                        DisplayTime.formatDateTime(Instant.now(), previewZone, withYear = true),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                )
+                TimeZonePicker(
+                    timeZoneId = timeZoneId,
+                    onTimeZoneChange = onTimeZoneChange,
+                )
+            }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -403,32 +450,15 @@ private fun TabOrderRow(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                "$position",
-                modifier = Modifier.width(20.dp),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                tabLabel,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            DashboardTabScopeBadge(tab.scope)
-            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = moveUpDescription)
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("$position", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(tabLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                DashboardTabScopeBadge(tab.scope)
             }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = moveDownDescription)
+            Row(Modifier.align(Alignment.End)) {
+                IconButton(onClick = onMoveUp, enabled = canMoveUp) { Icon(Icons.Outlined.KeyboardArrowUp, moveUpDescription) }
+                IconButton(onClick = onMoveDown, enabled = canMoveDown) { Icon(Icons.Outlined.KeyboardArrowDown, moveDownDescription) }
             }
         }
     }
@@ -460,6 +490,7 @@ private fun SettingNavRow(
     description: String,
     icon: ImageVector,
     onClick: () -> Unit,
+    selected: Boolean = false,
 ) {
     Surface(
         modifier = Modifier
@@ -467,7 +498,7 @@ private fun SettingNavRow(
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
             modifier = Modifier
@@ -531,36 +562,13 @@ private fun PercentDisplayModeSelector(
 }
 
 @Composable
-private fun OverviewUsageRingModeSelector(
-    selected: OverviewUsageRingMode,
-    onSelected: (OverviewUsageRingMode) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        OverviewUsageRingMode.entries.forEach { mode ->
-            val label = when (mode) {
-                OverviewUsageRingMode.Split -> stringResource(R.string.overview_ring_mode_split)
-                OverviewUsageRingMode.Combined -> stringResource(R.string.overview_ring_mode_combined)
-            }
-            PercentModeOption(
-                modifier = Modifier.weight(1f),
-                label = label,
-                selected = selected == mode,
-                onClick = { onSelected(mode) },
-            )
-        }
-    }
-}
-
-@Composable
 private fun PercentModeOption(
     modifier: Modifier = Modifier,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val feedback = LocalAppFeedback.current
     val border = if (selected) {
         BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
     } else {
@@ -574,7 +582,7 @@ private fun PercentModeOption(
                 contentDescription = label
             }
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            .clickable { if (!selected) { feedback.selection(); onClick() } },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
@@ -609,7 +617,9 @@ private fun SettingToggleRow(
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    provideFeedback: Boolean = true,
 ) {
+    val feedback = LocalAppFeedback.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -637,7 +647,9 @@ private fun SettingToggleRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(checked = checked, onCheckedChange = { value ->
+                if (value != checked) { onCheckedChange(value); if (provideFeedback) feedback.toggle(value) }
+            })
         }
     }
 }
@@ -647,11 +659,11 @@ private fun TimeZonePicker(
     timeZoneId: String,
     onTimeZoneChange: (String) -> Unit,
 ) {
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val focusManager = LocalFocusManager.current
     var query by remember { mutableStateOf("") }
     val selectedOption = DisplayTimeZones.option(timeZoneId)
-    val matches = remember(query, timeZoneId) {
+    val matches = remember(query, timeZoneId, resources) {
         DisplayTimeZones.search(query) { option ->
             resources.getString(option.labelRes)
         }.filter { it.id != timeZoneId }
@@ -731,6 +743,7 @@ private fun TimeZoneOption(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val feedback = LocalAppFeedback.current
     val zone = DisplayTimeZones.resolve(id)
     val offset = DisplayTime.offsetLabel(zone)
     val supporting = if (id == DisplayTimeZones.SYSTEM_ID) {
@@ -752,7 +765,7 @@ private fun TimeZoneOption(
                 contentDescription = "$label，$supporting"
             }
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            .clickable { if (!selected) { feedback.selection(); onClick() } },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
             MaterialTheme.colorScheme.surfaceContainerHigh
@@ -806,6 +819,7 @@ private fun LanguageOption(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val feedback = LocalAppFeedback.current
     val label = stringResource(option.labelRes)
     val border = if (selected) {
         BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
@@ -821,7 +835,7 @@ private fun LanguageOption(
                 contentDescription = label
             }
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            .clickable { if (!selected) { feedback.selection(); onClick() } },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
             MaterialTheme.colorScheme.surfaceContainerHigh
@@ -871,6 +885,7 @@ private fun ThemeModeOption(
     description: String,
     onClick: () -> Unit,
 ) {
+    val feedback = LocalAppFeedback.current
     val border = if (selected) {
         BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
     } else {
@@ -884,7 +899,7 @@ private fun ThemeModeOption(
                 contentDescription = "$label，$description"
             }
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            .clickable { if (!selected) { feedback.selection(); onClick() } },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
@@ -931,6 +946,7 @@ private fun PaletteOption(
     supporting: String?,
     onClick: () -> Unit,
 ) {
+    val feedback = LocalAppFeedback.current
     val paletteName = stringResource(palette.displayNameRes)
     val unavailable = stringResource(R.string.palette_unavailable)
     val optionDescription = stringResource(R.string.palette_option_description, paletteName)
@@ -952,7 +968,7 @@ private fun PaletteOption(
                 contentDescription = paletteDescription
             }
             .clip(MaterialTheme.shapes.medium)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled) { if (!selected) { feedback.selection(); onClick() } },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
             MaterialTheme.colorScheme.surfaceContainerHigh

@@ -63,7 +63,7 @@ data class PoolPercents(
     val thirdPartyDollars: Double,
 )
 
-/** 概览「合并总用量」圆环用的套餐总用量百分比。团队账号在额度未知时 [known] 为 false。 */
+/** 概览和小组件使用的套餐总用量百分比。团队账号在额度未知时 [known] 为 false。 */
 data class OverviewTotalUsage(
     val percent: Double,
     val known: Boolean,
@@ -95,7 +95,7 @@ object UsageCalculations {
         }.coerceAtLeast(0.0)
     }
 
-    /** 合并显示时的总用量：个人用官方总百分比；团队用计入额度的消费 / 套餐额度。 */
+    /** 周期汇总用量：个人用官方总百分比；团队用计入额度的消费 / 套餐额度。 */
     fun overviewTotalUsage(overview: AgenTOverview): OverviewTotalUsage {
         val limit = effectiveLimit(overview)
         val known = !overview.isTeam || limit > 0.0

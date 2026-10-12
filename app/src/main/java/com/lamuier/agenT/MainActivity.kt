@@ -26,9 +26,12 @@ import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.data.NotificationPreferences
 import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemePreferences
+import com.lamuier.agenT.data.InteractionPreferences
+import com.lamuier.agenT.ui.FeedbackProvider
 import com.lamuier.agenT.model.DashboardTab
 import com.lamuier.agenT.model.ShortcutAction
 import com.lamuier.agenT.notification.AgenTNotificationCoordinator
+import com.lamuier.agenT.system.StartupDrawGate
 import com.lamuier.agenT.ui.AgenTApp
 import com.lamuier.agenT.ui.AgenTViewModel
 import com.lamuier.agenT.ui.theme.AgenTTheme
@@ -40,6 +43,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
+    private var startupDrawGate: StartupDrawGate? = null
+
     /** 长按图标 Shortcut 带来的待执行动作，由 UI 层消费后清空。 */
     private var pendingShortcutAction by mutableStateOf<ShortcutAction?>(null)
 
@@ -59,15 +64,18 @@ class MainActivity : FragmentActivity() {
         val notificationPreferences = NotificationPreferences.get(applicationContext)
         val dashboardPreferences = DashboardPreferences.get(applicationContext)
 
+        startupDrawGate = StartupDrawGate(window.decorView)
         setContent {
             val themeSettings by themePreferences.settings.collectAsStateWithLifecycle()
             val notificationSettings by notificationPreferences.settings.collectAsStateWithLifecycle()
             val tabOrder by dashboardPreferences.order.collectAsStateWithLifecycle()
             val timeZoneId by dashboardPreferences.timeZoneId.collectAsStateWithLifecycle()
             val language by dashboardPreferences.language.collectAsStateWithLifecycle()
-            val overviewUsageRingMode by dashboardPreferences.overviewUsageRingMode.collectAsStateWithLifecycle()
             val codexUsageAutoRefresh by dashboardPreferences.codexUsageAutoRefresh.collectAsStateWithLifecycle()
+            val interactions = remember { InteractionPreferences.get(applicationContext) }
+            val haptics by interactions.hapticFeedbackEnabled.collectAsStateWithLifecycle()
             AgenTTheme(settings = themeSettings) {
+            FeedbackProvider(haptics) {
                 val cursorViewModel = remember {
                     ViewModelProvider(
                         this@MainActivity,
@@ -81,6 +89,9 @@ class MainActivity : FragmentActivity() {
                     )[CodexQuotaViewModel::class.java]
                 }
                 AgenTApp(
+                    onInitialContentReady = { startupDrawGate?.release() },
+                    hapticFeedbackEnabled = haptics,
+                    onHapticFeedbackChange = interactions::setHapticFeedbackEnabled,
                     viewModel = cursorViewModel,
                     codexViewModel = codexViewModel,
                     themeSettings = themeSettings,
@@ -107,7 +118,7 @@ class MainActivity : FragmentActivity() {
                         if (selected != dashboardPreferences.readLanguage()) {
                             dashboardPreferences.setLanguage(selected)
                             AgenTWidgetUpdater.requestUpdate(applicationContext)
-                            recreate()
+                            if (Build.VERSION.SDK_INT < 33) recreate()
                         }
                     },
                     onLiveUpdatesToggle = { enabled ->
@@ -152,9 +163,8 @@ class MainActivity : FragmentActivity() {
                     tabOrder = tabOrder,
                     onTabOrderChange = dashboardPreferences::setOrder,
                     onTabOrderReset = dashboardPreferences::resetOrder,
-                    overviewUsageRingMode = overviewUsageRingMode,
-                    onOverviewUsageRingModeChange = dashboardPreferences::setOverviewUsageRingMode,
                 )
+            }
             }
         }
     }
@@ -166,8 +176,14 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun applyLaunchIntent(intent: Intent?) {
-        pendingShortcutAction = ShortcutAction.fromIntentAction(intent?.action)
-        pendingOpenTab = DashboardTab.fromWidgetLaunch(
+        val shortcut = ShortcutAction.fromIntentAction(intent?.action)
+        pendingShortcutAction = shortcut?.takeUnless { it == ShortcutAction.Overview || it == ShortcutAction.Tasks }
+        val shortcutTab = when (shortcut) {
+            ShortcutAction.Overview -> DashboardTab.Overview
+            ShortcutAction.Tasks -> DashboardTab.Tasks
+            else -> null
+        }
+        pendingOpenTab = shortcutTab ?: DashboardTab.fromWidgetLaunch(
             tabId = intent?.getStringExtra(EXTRA_WIDGET_OPEN_TAB),
             widgetKind = intent?.data?.pathSegments?.getOrNull(1),
         )
@@ -210,6 +226,12 @@ class MainActivity : FragmentActivity() {
     override fun onPause() {
         clearRefreshRatePreference()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        startupDrawGate?.release()
+        startupDrawGate = null
+        super.onDestroy()
     }
 
     override fun onStop() {

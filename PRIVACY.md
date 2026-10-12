@@ -19,8 +19,8 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 | 账号别名 | 本地标识账号 | AndroidKeyStore（AES-GCM）加密存储 | 不离开设备 |
 | 用量摘要（额度、百分比、Credits、按模型 Token、Grok Bot 周额度等数字） | 界面展示、小组件、通知 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
 | 云端任务摘要（任务名、状态、来源、分支、PR 链接、增删行数等） | 「任务」页展示 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
-| Cursor 服务状态（组件名、可用状态、事件摘要） | 「状态」页与桌面小组件展示 | 应用私有目录明文缓存最近一次成功结果（公开信息，不含 Token） | 仅向 Cursor 官方状态页请求；响应中的公开状态数据会短暂离开设备到达本机 |
-| Codex 用量摘要（套餐、百分比、窗口与重置时间） | Codex 用量页与离线回显 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
+| Cursor / Codex 服务状态（组件名、可用状态、事件摘要） | 「状态」页与桌面小组件展示 | 应用私有目录明文缓存最近一次成功结果（公开信息，不含 Token） | 仅请求相应官方公开状态接口，不携带 Token 或 Account ID |
+| Codex 用量摘要（套餐、百分比、窗口与重置时间） | Codex 概览、用量与离线回显 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
 
 ## 数据去向
 
@@ -39,7 +39,7 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 
 ## 数据安全
 
-- Token 与用量缓存经系统密钥库加密后落盘，密钥不出安全硬件；公开的服务状态缓存不含敏感信息，明文保存在应用私有目录
+- Token 与用量缓存经 Android Keystore 管理的不可导出密钥加密后落盘；硬件保护取决于设备，不保证所有设备使用硬件密钥。公开服务状态缓存不含凭据，明文保存在应用私有目录
 - 凭据所在的 SharedPreferences 不参与云备份和设备迁移（`allowBackup=false`，`fullBackupContent=false`，并在 `data_extraction_rules.xml` 中排除 `sharedpref`）。换机或云恢复不会带走 Token
 - Token 明文展示期间自动启用 `FLAG_SECURE`，阻止截屏 / 录屏 / 最近任务缩略图捕获
 - 复制 Token 时（Android 13+）剪贴板标记为敏感内容，系统预览仅显示占位
@@ -50,14 +50,16 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 | --- | --- |
 | `INTERNET` | 请求官方用量、任务、服务状态以及第三方公开重置公告 |
 | `ACCESS_NETWORK_STATE` | 判断网络可用性，避免无效请求 |
-| `USE_BIOMETRIC` | 查看明文 Token 前的指纹 / 锁屏验证 |
-| `POST_NOTIFICATIONS` | 助手状态监控常驻通知、用量阈值与 Codex 窗口重置提醒 |
+| `USE_BIOMETRIC` / `USE_FINGERPRINT` | 查看明文 Token 前的指纹 / 锁屏验证 |
+| `POST_NOTIFICATIONS` | 实时活动常驻通知、用量阈值与 Codex 窗口重置提醒 |
 | `RECEIVE_BOOT_COMPLETED` | 开机后恢复通知刷新调度 |
-| `POST_PROMOTED_NOTIFICATIONS` | Android 16+ 实时通知进度样式 |
+| `POST_PROMOTED_NOTIFICATIONS` | 申请 Android 16+ 原生实况提升，实际展示由系统判断 |
+
+AndroidX 另合并 `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`，这是签名级内部广播权限，不用于读取个人数据。触感通过系统反馈 API 实现，不申请震动权限。
 
 ## 卸载
 
-卸载应用即删除全部本地数据（账号、Token、缓存），无任何残留。
+卸载会删除本应用的本地账号、Token、缓存与记录，不自动撤销官方服务上的 Token；系统浏览器自身的登录态需在浏览器中管理。
 
 ## 变更
 

@@ -6,6 +6,27 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unreleased
 
+No pending changes.
+
+## 1.1.0 — 2026-10-12
+
+> Version decision: 1.0.1 → 1.1.0, with `versionCode` increased to 3. This batch adds settings, system entry points and interaction features, and also changes the signing identity. The signing migration would normally require a major compatibility change; publish as 1.1.0 at the user's explicit request and retain `com.lamuier.agenT`.
+
+**Signing migration:** Release builds now use `release.keystore` (alias `release`, certificate SHA-256 `5342F38CB24B950ED3B7112EC82C151B98A7ACBE67A1FA2EA3D0AA9F79C36FF3`). Installations signed with the former independent agenT certificate cannot be updated in place. Test builds already signed with the shared certificate can upgrade normally. Save any needed tokens and local records before migrating; uninstalling clears on-device data.
+
+- Update Material 3 Expressive styling, adaptive navigation, saved page state, categorized settings, wide layouts and predictive back while retaining secure token management.
+- Add optional haptics, enabled by default, with confirmation only after successful manual operations and complete batch refreshes; respect system preferences.
+- Add dynamic colors for new Android 12+ installations, Android 13+ system app-language synchronization, large-font support and safe fold regions.
+- Add the overview Quick Settings tile, overview / tasks shortcuts, widget previews and pinning, plus clearer notification and live-update permission states; retain all seven widget providers.
+- Always show Cursor's own-model and other-model quota pools separately; remove the combined-display setting and retire its stored preference.
+- Restore local accounts and both providers' caches before showing the first content frame. Remove the app loading screen and spinner; preserve refresh scheduling and recover to an actionable page after local restore errors.
+- Rework 4×3 usage widgets with grouped cards, parallel Codex windows, reset / update times and content regions that fill available height. Use larger type on larger launchers and compact layouts where needed.
+- Rework 4×3 status widgets with provider columns, independent incident summaries, issue priority and explicit remaining counts; remove repeated prefixes and the oversized badge.
+- Use monitoring wording by default and territory patrol wording for cat-speak throughout ongoing notifications, native live activities and HyperIsland, with matching localized body and short copy.
+- Use lazy task / reset details, accessible date selection, configuration-aware resources and Android 8-compatible date handling.
+- Add shared macOS / Linux build tooling and portable Windows signing paths, preflight and artifact checks for certificate / private key, package, permissions, CRC and 16 KiB alignment; preserve historical artifacts.
+- Consolidate documentation and legacy resources, refresh privacy / attribution information, and add documentation, native UI / RemoteViews and first-frame regression checks.
+
 ## 1.0.1 — 2026-10-11
 
 > Version decision: 1.0.0 → 1.0.1. This batch adds user-visible capabilities and would normally be a minor release under SemVer. Release as 1.0.1 at the user's explicit request, increment `versionCode` to 2, and retain the package ID and signing identity.

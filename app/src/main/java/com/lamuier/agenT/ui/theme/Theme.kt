@@ -62,7 +62,7 @@ fun AgenTTheme(
 
     val animatedBackground by animateColorAsState(
         targetValue = colorScheme.background,
-        animationSpec = tween(280),
+        animationSpec = AgenTMotion.content(),
         label = "theme background",
     )
 
@@ -87,7 +87,7 @@ fun AgenTTheme(
                     .fillMaxSize()
                     .background(animatedBackground),
             ) {
-                content()
+                com.lamuier.agenT.ui.HingeSafeLayout { content() }
             }
         }
     }

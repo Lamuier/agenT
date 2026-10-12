@@ -10,26 +10,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * 概览英雄卡外环样式。默认分列自有 / 三方；[Combined] 为改版前的总用量单环。
- */
-enum class OverviewUsageRingMode(val storageKey: String) {
-    Split("split"),
-    Combined("combined");
-
-    companion object {
-        fun fromStorage(value: String?): OverviewUsageRingMode {
-            val raw = value?.trim().orEmpty()
-            if (raw.isEmpty()) return Split
-            return entries.firstOrNull { it.storageKey.equals(raw, ignoreCase = true) } ?: Split
-        }
-    }
-}
-
-/** 主界面功能页签顺序、概览圆环样式、任务分组方式、展示时区与界面语言，保存在本机 SharedPreferences。 */
-class DashboardPreferences(context: Context) {
+/** 主界面功能页签顺序、任务分组方式、展示时区与界面语言，保存在本机 SharedPreferences。 */
+class DashboardPreferences(private val context: Context) {
     private val preferences = context.applicationContext
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    init {
+        // 额度固定分列两池，清理旧显示模式；保留其他设置。
+        if (preferences.contains(LEGACY_OVERVIEW_USAGE_RING)) {
+            preferences.edit().remove(LEGACY_OVERVIEW_USAGE_RING).apply()
+        }
+    }
 
     private val _order = MutableStateFlow(read())
     val order: StateFlow<List<DashboardTab>> = _order.asStateFlow()
@@ -42,9 +33,6 @@ class DashboardPreferences(context: Context) {
 
     private val _language = MutableStateFlow(readLanguage())
     val language: StateFlow<AppLanguage> = _language.asStateFlow()
-
-    private val _overviewUsageRingMode = MutableStateFlow(readOverviewUsageRingMode())
-    val overviewUsageRingMode: StateFlow<OverviewUsageRingMode> = _overviewUsageRingMode.asStateFlow()
 
     private val _codexUsageAutoRefresh = MutableStateFlow(readCodexUsageAutoRefresh())
     val codexUsageAutoRefresh: StateFlow<Boolean> = _codexUsageAutoRefresh.asStateFlow()
@@ -81,20 +69,14 @@ class DashboardPreferences(context: Context) {
     }
 
     fun readLanguage(): AppLanguage =
-        AppLanguage.fromStorage(preferences.getString(AppLocale.KEY_LANGUAGE, null))
+        AppLocale.stored(context)
 
     fun setLanguage(language: AppLanguage) {
-        preferences.edit().putString(AppLocale.KEY_LANGUAGE, language.storageKey).apply()
+        AppLocale.setLanguage(context, language)
         _language.value = language
     }
 
-    fun readOverviewUsageRingMode(): OverviewUsageRingMode =
-        OverviewUsageRingMode.fromStorage(preferences.getString(KEY_OVERVIEW_USAGE_RING, null))
-
-    fun setOverviewUsageRingMode(mode: OverviewUsageRingMode) {
-        preferences.edit().putString(KEY_OVERVIEW_USAGE_RING, mode.storageKey).apply()
-        _overviewUsageRingMode.value = mode
-    }
+    fun syncLanguage() { _language.value = readLanguage() }
 
     /** 默认开启。关闭后前台轮询、后台任务和用量小组件周期刷新都不再请求 Codex 用量。 */
     fun readCodexUsageAutoRefresh(): Boolean =
@@ -110,7 +92,7 @@ class DashboardPreferences(context: Context) {
         private const val KEY_TAB_ORDER = "tab_order"
         private const val KEY_TASK_GROUP_MODE = "task_group_mode"
         private const val KEY_TIME_ZONE = "time_zone"
-        private const val KEY_OVERVIEW_USAGE_RING = "overview_usage_ring"
+        private const val LEGACY_OVERVIEW_USAGE_RING = "overview_usage_ring"
         private const val KEY_CODEX_USAGE_AUTO_REFRESH = "codex_usage_auto_refresh"
 
         @Volatile

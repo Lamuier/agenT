@@ -4,6 +4,7 @@
 .idea/
 .kotlin/
 .workbuddy/
+.impeccable/
 local.properties
 /build/
 /app/build/
@@ -15,6 +16,7 @@ local.properties
 release-signing.json
 .signing/
 /dist/
+__pycache__/
 
 # 本地调试/产物（不入库）
 *.log

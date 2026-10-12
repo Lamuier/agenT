@@ -15,7 +15,7 @@ class WidgetLayoutTest {
         listOf(File("src/main/res/layout"), File("app/src/main/res/layout")).first { it.isDirectory }, "$name.xml"))
 
     @Test fun detailWidgetStacksCursorAboveCodexAndKeepsAllThreeMeters() {
-        for (name in listOf("widget_assistants_detail", "widget_assistants_detail_compact")) {
+        for (name in listOf("widget_assistants_detail", "widget_assistants_detail_compact", "widget_assistants_detail_large")) {
             val document = layout(name)
             val elements = document.getElementsByTagName("*")
             val byId = (0 until elements.length).map { elements.item(it) as Element }

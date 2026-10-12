@@ -1,6 +1,8 @@
 package com.lamuier.agenT.util
 
 import android.content.Context
+import android.app.LocaleManager
+import android.os.Build
 import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.annotation.StringRes
@@ -29,10 +31,39 @@ object AppLocale {
 
     fun stored(context: Context): AppLanguage {
         val holder = runCatching { context.applicationContext }.getOrNull() ?: context
+        if (Build.VERSION.SDK_INT >= 33) {
+            val locales = context.getSystemService(LocaleManager::class.java).applicationLocales
+            if (!locales.isEmpty) return if (locales[0].language == "en") AppLanguage.English else AppLanguage.Chinese
+            if (holder.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE).getBoolean("system_locale_migrated", false))
+                return AppLanguage.System
+        }
         return AppLanguage.fromStorage(
             holder.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
                 .getString(KEY_LANGUAGE, AppLanguage.System.storageKey),
         )
+    }
+
+    fun migrate(context: Context) {
+        if (Build.VERSION.SDK_INT < 33) return
+        val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        if (preferences.getBoolean("system_locale_migrated", false)) return
+        val manager = context.getSystemService(LocaleManager::class.java)
+        val legacy = AppLanguage.fromStorage(preferences.getString(KEY_LANGUAGE, null))
+        if (manager.applicationLocales.isEmpty && legacy != AppLanguage.System) {
+            manager.applicationLocales = LocaleList.forLanguageTags(if (legacy == AppLanguage.English) "en" else "zh-Hans")
+        }
+        preferences.edit().putBoolean("system_locale_migrated", true).apply()
+    }
+
+    fun setLanguage(context: Context, language: AppLanguage) {
+        context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE).edit().putString(KEY_LANGUAGE, language.storageKey).apply()
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.getSystemService(LocaleManager::class.java).applicationLocales = when (language) {
+                AppLanguage.System -> LocaleList.getEmptyLocaleList()
+                AppLanguage.English -> LocaleList.forLanguageTags("en")
+                AppLanguage.Chinese -> LocaleList.forLanguageTags("zh-Hans")
+            }
+        }
     }
 
     fun wrap(context: Context): Context {

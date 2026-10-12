@@ -32,11 +32,12 @@ class CodexQuotaViewModel(
     private val publicResetRepository = CodexPublicResetRepository(appContext)
     private var publicResetRequestInFlight = false
 
-    fun refreshPublicResets(force: Boolean = false) {
-        if (publicResetRequestInFlight) return
+    fun refreshPublicResets(force: Boolean = false, onResult: ((Boolean) -> Unit)? = null) {
+        if (publicResetRequestInFlight) { onResult?.invoke(false); return }
         publicResetRequestInFlight = true
         _state.update { it.copy(refreshingPublicResets = true, publicResetsError = null) }
         viewModelScope.launch {
+            var succeeded = false
             try {
                 if (_state.value.publicResets == null) {
                     val cached = withContext(Dispatchers.IO) { publicResetRepository.cached() }
@@ -44,11 +45,13 @@ class CodexQuotaViewModel(
                 }
                 val snapshot = withContext(Dispatchers.IO) { publicResetRepository.fetch(force) }
                 _state.update { it.copy(publicResets = snapshot) }
+                succeeded = !snapshot.fromCache
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
                 _state.update { it.copy(publicResetsError = error.message ?: appContext.getString(R.string.reset_public_load_error),
                     publicResets = it.publicResets?.copy(fromCache = true)) }
             } finally {
+                onResult?.invoke(succeeded)
                 publicResetRequestInFlight = false
                 _state.update { it.copy(refreshingPublicResets = false) }
             }
@@ -64,41 +67,45 @@ class CodexQuotaViewModel(
         }
     }
 
-    fun refreshStatus(force: Boolean = true) {
-        if (statusRequestInFlight) return
+    fun refreshStatus(force: Boolean = true, onResult: ((Boolean) -> Unit)? = null) {
+        if (statusRequestInFlight) { onResult?.invoke(false); return }
         statusRequestInFlight = true
         _state.update {
             it.copy(loadingStatus = it.serviceStatus == null, refreshingStatus = true, statusError = null)
         }
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val status = statusRepository.fetch(force)
                 _state.update { it.copy(serviceStatus = status, statusError = null) }
+                succeeded = !status.fromCache && !status.partialComponents && !status.partialHistory
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 _state.update { it.copy(statusError = error.message ?: appContext.getString(R.string.error_load_status),
                     serviceStatus = it.serviceStatus?.copy(fromCache = true)) }
             } finally {
+                onResult?.invoke(succeeded)
                 statusRequestInFlight = false
                 _state.update { it.copy(loadingStatus = false, refreshingStatus = false) }
             }
         }
     }
 
-    fun refresh(force: Boolean = true) {
-        if (_state.value.publicResets != null) refreshPublicResets(force)
-        if (!force && !DashboardPreferences.get(appContext).readCodexUsageAutoRefresh()) return
-        val credential = _state.value.credential ?: return
-        if (requestInFlight) { if (force) refreshQueued = true; return }
-        if ((credential.expired || credential.invalid) && !force) return
+    fun refresh(force: Boolean = true, onResult: ((Boolean) -> Unit)? = null, includePublicResets: Boolean = true) {
+        if (includePublicResets && _state.value.publicResets != null) refreshPublicResets(force)
+        if (!force && !DashboardPreferences.get(appContext).readCodexUsageAutoRefresh()) { onResult?.invoke(false); return }
+        val credential = _state.value.credential ?: run { onResult?.invoke(false); return }
+        if (requestInFlight) { if (force) refreshQueued = true; onResult?.invoke(false); return }
+        if ((credential.expired || credential.invalid) && !force) { onResult?.invoke(false); return }
         val elapsedAge = lastSuccessfulElapsed?.let { ((android.os.SystemClock.elapsedRealtime() - it).coerceAtLeast(0) / 1000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
         val snapshot = _state.value.usage?.let { it.copy(cacheAgeSeconds = maxOf(it.cacheAgeSeconds, elapsedAge ?: 0)) }
-        if (!force && !CodexRefreshPolicy.shouldFetch(snapshot, System.currentTimeMillis() / 1000, 60)) return
+        if (!force && !CodexRefreshPolicy.shouldFetch(snapshot, System.currentTimeMillis() / 1000, 60)) { onResult?.invoke(false); return }
         requestInFlight = true
         val revision = repository.tokenRevision()
         _state.update { it.copy(refreshing = true, error = null) }
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val usage = withContext(Dispatchers.IO) { repository.fetchUsage(revision) }
                 if (repository.tokenRevision() == revision) {
@@ -111,6 +118,7 @@ class CodexQuotaViewModel(
                         )
                     }
                     reloadResetHistory()
+                succeeded = repository.tokenRevision() == revision && !usage.fromCache
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -126,6 +134,7 @@ class CodexQuotaViewModel(
                     }
                 }
             } finally {
+                onResult?.invoke(succeeded)
                 requestInFlight = false
                 _state.update { it.copy(refreshing = false, booting = false) }
                 if (refreshQueued) {
@@ -197,8 +206,8 @@ class CodexQuotaViewModel(
 
     fun registerReset(event: CodexResetEvent, onSuccess: () -> Unit = {}) =
         mutateResetHistory({ revision -> repository.registerReset(revision, event) }, onSuccess)
-    fun deleteReset(id: String) = mutateResetHistory({ revision -> repository.deleteReset(revision, id) })
-    fun setSubscriptionDay(day: Int) = mutateResetHistory({ revision -> repository.setSubscriptionDay(revision, day) })
+    fun deleteReset(id: String, onSuccess: () -> Unit = {}) = mutateResetHistory({ revision -> repository.deleteReset(revision, id) }, onSuccess)
+    fun setSubscriptionDay(day: Int, onSuccess: () -> Unit = {}) = mutateResetHistory({ revision -> repository.setSubscriptionDay(revision, day) }, onSuccess)
 
     private fun mutateResetHistory(change: (Long) -> CodexResetLedger, done: () -> Unit = {}) {
         if (_state.value.saving || _state.value.resetSaving || _state.value.credential == null) return
@@ -235,18 +244,26 @@ class CodexQuotaViewModel(
 
     private fun bootstrap() {
         viewModelScope.launch {
-            val credential = withContext(Dispatchers.IO) {
-                runCatching { repository.credentialInfo() }.getOrNull()
+            try {
+                val (credential, cached) = withContext(Dispatchers.IO) {
+                    val credential = runCatching { repository.credentialInfo() }.getOrNull()
+                    val revision = repository.tokenRevision()
+                    val cached = if (credential != null && !credential.expired) {
+                        runCatching { repository.cachedUsage(revision) }.getOrNull()
+                    } else {
+                        null
+                    }
+                    credential to cached
+                }
+                _state.update { it.copy(credential = credential, usage = cached, booting = false) }
+                reloadResetHistory()
+                if (credential != null && !credential.expired) refresh(force = false)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // 本地恢复失败也要进入可操作页面，不能一直停留在系统启动画面。
+                _state.update { it.copy(booting = false, error = messageFor(error)) }
             }
-            val revision = repository.tokenRevision()
-            val cached = if (credential != null && !credential.expired) {
-                withContext(Dispatchers.IO) { runCatching { repository.cachedUsage(revision) }.getOrNull() }
-            } else {
-                null
-            }
-            _state.update { it.copy(credential = credential, usage = cached, booting = false) }
-            reloadResetHistory()
-            if (credential != null && !credential.expired) refresh(force = false)
         }
     }
 

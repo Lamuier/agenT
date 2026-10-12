@@ -20,6 +20,19 @@ internal object WidgetVisuals {
     private const val GLASS_ALPHA_DARK = 0xE3
     private const val GLASS_ALPHA_LIGHT = 0xF2
 
+    internal fun boundedSurfaceSize(width: Int, height: Int, pixelBudget: Long): Pair<Int, Int> {
+        val w = width.coerceAtLeast(1)
+        val h = height.coerceAtLeast(1)
+        val scale = kotlin.math.sqrt((pixelBudget.coerceAtLeast(1).toDouble() / (w.toLong() * h)).coerceAtMost(1.0))
+        var boundedWidth = (w * scale).toInt().coerceAtLeast(1)
+        var boundedHeight = (h * scale).toInt().coerceAtLeast(1)
+        if (boundedWidth.toLong() * boundedHeight > pixelBudget.coerceAtLeast(1)) {
+            if (boundedWidth >= boundedHeight) boundedWidth = (pixelBudget.coerceAtLeast(1) / boundedHeight).toInt().coerceAtLeast(1)
+            else boundedHeight = (pixelBudget.coerceAtLeast(1) / boundedWidth).toInt().coerceAtLeast(1)
+        }
+        return boundedWidth to boundedHeight
+    }
+
     fun glassSurface(color: Int): Int {
         val luminance =
             (0.299f * android.graphics.Color.red(color) +
@@ -42,7 +55,11 @@ internal object WidgetVisuals {
         fallbackHeightDp: Int,
     ): Bitmap {
         val (widthPx, heightPx) = widgetSizePx(context, widgetId, fallbackWidthDp, fallbackHeightDp)
-        return roundRectBitmap(widthPx, heightPx, color, dp(context, CORNER_RADIUS_DP))
+        val metrics = context.resources.displayMetrics
+        val budget = (metrics.widthPixels.toLong() * metrics.heightPixels / 4).coerceIn(1, 262144)
+        val (width, height) = boundedSurfaceSize(widthPx, heightPx, budget)
+        val scale = width.toFloat() / widthPx.coerceAtLeast(1)
+        return roundRectBitmap(width, height, color, dp(context, CORNER_RADIUS_DP) * scale)
     }
 
     fun donutBitmap(
@@ -53,7 +70,7 @@ internal object WidgetVisuals {
         trackColor: Int,
         strokeDp: Float = DONUT_STROKE_DP,
     ): Bitmap {
-        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceAtLeast(1)
+        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceIn(1, 256)
         val stroke = dp(context, strokeDp)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -86,7 +103,7 @@ internal object WidgetVisuals {
         color: Int,
         glyph: StatusBadgeGlyph,
     ): Bitmap {
-        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceAtLeast(1)
+        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceIn(1, 256)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val cx = size / 2f
@@ -125,8 +142,8 @@ internal object WidgetVisuals {
         widthDp: Int,
         heightDp: Int,
     ): Bitmap {
-        val width = dp(context, widthDp.toFloat()).roundToInt().coerceAtLeast(1)
-        val height = dp(context, heightDp.toFloat()).roundToInt().coerceAtLeast(1)
+        val width = dp(context, widthDp.toFloat()).roundToInt().coerceIn(1, 256)
+        val height = dp(context, heightDp.toFloat()).roundToInt().coerceIn(1, 256)
         return roundRectBitmap(width, height, color, dp(context, CHIP_RADIUS_DP))
     }
 
@@ -135,7 +152,7 @@ internal object WidgetVisuals {
         color: Int,
         sizeDp: Int = 18,
     ): Bitmap {
-        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceAtLeast(1)
+        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceIn(1, 256)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

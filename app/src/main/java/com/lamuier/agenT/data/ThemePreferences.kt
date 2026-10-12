@@ -16,6 +16,17 @@ class ThemePreferences(context: Context) {
     private val preferences = context.applicationContext
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    init {
+        if (!preferences.contains(KEY_COLOR_PALETTE)) {
+            val freshInstall = runCatching {
+                val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                packageInfo.firstInstallTime == packageInfo.lastUpdateTime
+            }.getOrDefault(false)
+            val palette = if (freshInstall && android.os.Build.VERSION.SDK_INT >= 31) ColorPalette.System else ColorPalette.Pulse
+            preferences.edit().putString(KEY_COLOR_PALETTE, palette.storageKey).apply()
+        }
+    }
+
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<ThemeSettings> = _settings.asStateFlow()
 

@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="overview" android:enabled="true" android:icon="@drawable/symbol_dashboard"
+        android:shortcutShortLabel="@string/tab_overview" android:shortcutLongLabel="@string/tab_overview">
+        <intent android:action="com.lamuier.agenT.action.SHORTCUT_OVERVIEW" android:targetPackage="com.lamuier.agenT" android:targetClass="com.lamuier.agenT.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="tasks" android:enabled="true" android:icon="@drawable/symbol_smart_toy"
+        android:shortcutShortLabel="@string/tab_tasks" android:shortcutLongLabel="@string/tab_tasks">
+        <intent android:action="com.lamuier.agenT.action.SHORTCUT_TASKS" android:targetPackage="com.lamuier.agenT" android:targetClass="com.lamuier.agenT.MainActivity" />
+    </shortcut>
     <shortcut
         android:shortcutId="reveal_token"
         android:enabled="true"

@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -37,11 +39,29 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.floor
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, onSelect: (LocalDate) -> Unit) {
     val context = LocalContext.current
-    val locale = context.resources.configuration.locales[0]
+    val resources = LocalResources.current
+    val locale = LocalConfiguration.current.locales[0]
+    var choosingDate by remember { mutableStateOf(false) }
+    val datePicker = key(data.from, data.to) { rememberDatePickerState(initialSelectedDateMillis = (selectedDate ?: data.to)
+        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(), selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                val date = java.time.Instant.ofEpochMilli(utcTimeMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                return date >= data.from && date <= data.to
+            }
+            override fun isSelectableYear(year: Int) = year in data.from.year..data.to.year
+        }) }
+    if (choosingDate) DatePickerDialog(onDismissRequest = { choosingDate = false },
+        confirmButton = { TextButton(enabled = datePicker.selectedDateMillis != null, onClick = {
+            val date = java.time.Instant.ofEpochMilli(datePicker.selectedDateMillis!!).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+            if (data.days.any { it.date == date }) { onSelect(date); choosingDate = false }
+        }) { Text(stringResource(R.string.action_save)) } },
+        dismissButton = { TextButton(onClick = { choosingDate = false }) { Text(stringResource(R.string.action_cancel)) } }) {
+            DatePicker(state = datePicker)
+        }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val colors = mapOf(
         ResetHeatmapKind.Regular to Color(if (dark) 0xFFFF906F else 0xFFEF7655),
@@ -74,6 +94,9 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                     HeatmapLegend(colors.getValue(kind), stringResource(label))
                 }
                 HeatmapLegend(empty, stringResource(R.string.reset_heatmap_no_record))
+            }
+            OutlinedButton(onClick = { choosingDate = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.heatmap_select_date))
             }
             Row(Modifier.fillMaxWidth()) {
                 Column(Modifier.width(40.dp).padding(top = header), verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -124,7 +147,7 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                                 previousMonth = month
                             }
                             week.forEachIndexed { row, day -> if (day.inRange) {
-                                val description = context.getString(R.string.reset_heatmap_day_accessibility,
+                                val description = resources.getString(R.string.reset_heatmap_day_accessibility,
                                     day.date.toString(), day.entries.size)
                                 // Virtual cells provide TalkBack actions; pointer hit testing stays exact on the dense grid.
                                 Box(Modifier.offset(x = step * column, y = header + step * row).size(cell).semantics {
