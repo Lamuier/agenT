@@ -18,7 +18,9 @@ internal class CodexPublicResetRepository(context: Context) {
     fun fetch(force: Boolean): CodexPublicResetSnapshot {
         val now = System.currentTimeMillis()
         val previous = cached()
-        if (!force && previous != null && now - previous.fetchedAt in 0 until 15 * 60_000L) return previous
+        // Older caches may have discarded banked grants; fetch the full response before reusing their ETag.
+        val currentCache = CodexPublicResetJson.isCurrentCache(cache.getString("snapshot", null))
+        if (!force && previous != null && currentCache && now - previous.fetchedAt in 0 until 15 * 60_000L) return previous
         if (now < cache.getLong("retry_at", 0)) throw IOException(context.getString(R.string.reset_public_retry_later))
         val rows = mutableListOf<CodexPublicReset>()
         val seenCursors = mutableSetOf<String>()
@@ -34,7 +36,7 @@ internal class CodexPublicResetRepository(context: Context) {
                 connection.instanceFollowRedirects = false; connection.useCaches = false
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("User-Agent", "agenTAndroid/${BuildConfig.VERSION_NAME}")
-                if (pageIndex == 0 && previous != null) {
+                if (pageIndex == 0 && previous != null && currentCache) {
                     val storedEtag = cache.getString("etag", null)
                     val etagHeader = acceptableEtag(storedEtag)
                     if (etagHeader != null) {
@@ -44,7 +46,7 @@ internal class CodexPublicResetRepository(context: Context) {
                     }
                 }
                 val code = connection.responseCode
-                if (code == 304 && pageIndex == 0 && previous != null) {
+                if (code == 304 && pageIndex == 0 && previous != null && currentCache) {
                     return save(previous.copy(fetchedAt = now, fromCache = false), cache.getString("etag", null))
                 }
                 if (code == 429) {

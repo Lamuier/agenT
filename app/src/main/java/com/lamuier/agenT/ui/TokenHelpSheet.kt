@@ -52,11 +52,15 @@ private val CodeOnSurface = Color(0xFFD7E0EA)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TokenHelpSheet(onDismiss: () -> Unit) {
+    if (LocalWindowFolds.current.isNotEmpty()) FoldSafeModal(onDismiss) {
+        TokenHelpContent(onDismiss, stringResource(R.string.token_help_got_it))
+    } else {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         TokenHelpContent(onDismiss = onDismiss, actionLabel = stringResource(R.string.token_help_got_it))
+    }
     }
 }
 

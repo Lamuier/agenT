@@ -9,6 +9,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -64,6 +67,10 @@ class UiRenderTest(private val profile: String, private val scene: String) {
             CompositionLocalProvider(LocalConfiguration provides configuration, LocalResources provides translated,
                 LocalDensity provides Density(density.density, spec.fontScale), LocalDisplayZone provides ZoneId.of("UTC")) {
                 AgenTTheme(ThemeSettings(if(spec.dark) ThemeMode.Dark else ThemeMode.Light, ColorPalette.Pulse)) {
+                    val scale = LocalDensity.current.density
+                    CompositionLocalProvider(LocalWindowFolds provides spec.folds.map {
+                        androidx.compose.ui.geometry.Rect(it.left * scale, it.top * scale, it.right * scale, it.bottom * scale)
+                    }) {
                     Box(Modifier.fillMaxSize()) {
                         when {
                             scene == "token" -> TokenManagementContent(TokenProvider.Cursor, fixture.cursor.accounts.first(), fixture.codex.credential,
@@ -90,15 +97,23 @@ class UiRenderTest(private val profile: String, private val scene: String) {
                     }
                 }
             }
+            }
         }
         compose.mainClock.advanceTimeBy(1000)
         compose.waitForIdle()
         val output = File("build/reports/ui-review/$profile-$scene.png").apply { parentFile?.mkdirs() }
         compose.onRoot().captureRoboImage(output.absolutePath, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
         check(output.isFile && output.length() > 1000) { "No rendered UI: $output" }
+        if (scene == "resets") {
+            compose.onAllNodes(hasScrollToIndexAction()).onLast().performScrollToKey("timeline")
+            compose.waitForIdle()
+            val timeline = File("build/reports/ui-review/$profile-resets-timeline.png")
+            compose.onRoot().captureRoboImage(timeline.absolutePath, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
+            check(timeline.isFile && timeline.length() > 1000) { "No rendered reset timeline: $timeline" }
+        }
     }
 
-    data class Profile(val width: Int, val height: Int, val language: String, val dark: Boolean, val fontScale: Float)
+    data class Profile(val width: Int, val height: Int, val language: String, val dark: Boolean, val fontScale: Float, val folds: List<androidx.compose.ui.geometry.Rect> = emptyList())
     companion object {
         val profiles = linkedMapOf(
             "phone_zh_light" to Profile(360, 800, "zh", false, 1f),
@@ -108,6 +123,14 @@ class UiRenderTest(private val profile: String, private val scene: String) {
             "largefont_zh" to Profile(320, 800, "zh", false, 2f),
             "medium_zh" to Profile(600, 960, "zh", false, 1f),
             "wide_en" to Profile(840, 1000, "en", true, 1f),
+            "tablet_portrait_zh" to Profile(800, 1280, "zh", false, 1f),
+            "tablet_landscape_en" to Profile(1280, 800, "en", false, 1f),
+            "tablet_wide_zh" to Profile(1600, 1000, "zh", true, 1f),
+            "book_zh" to Profile(1000, 900, "zh", false, 1f, listOf(androidx.compose.ui.geometry.Rect(500f, 0f, 500f, 900f))),
+            "tabletop_en" to Profile(840, 900, "en", true, 1f, listOf(androidx.compose.ui.geometry.Rect(0f, 440f, 840f, 460f))),
+            "flip_zh" to Profile(393, 840, "zh", false, 1f, listOf(androidx.compose.ui.geometry.Rect(0f, 420f, 393f, 420f))),
+            "fold_largefont_en" to Profile(1000, 900, "en", false, 2f, listOf(androidx.compose.ui.geometry.Rect(480f, 0f, 500f, 900f))),
+            "landscape_en" to Profile(840, 360, "en", false, 1f),
         )
         @JvmStatic @Parameters(name = "{0}-{1}") fun scenarios(): List<Array<String>> = (if (System.getenv("AGENT_UI_REVIEW_SMOKE") == "1") profiles.keys.take(1) else profiles.keys).flatMap { profile ->
             (if (System.getenv("AGENT_UI_REVIEW_SMOKE") == "1") listOf("overview") else listOf("overview", "usage", "tasks", "resets", "status", "settings", "settings-appearance", "settings-general", "settings-system", "token"))

@@ -31,29 +31,25 @@ class CodexResetTest {
         assertEquals(ledger, CodexResetTracker.observe(ledger, quota(now + 18000), now))
         assertEquals(ledger, CodexResetTracker.observe(ledger, quota(now + 18000), now - 1))
     }
-    @Test fun earlyWindowChangeIsUnclassifiedNotAnOfficialOrManualReset() {
+    @Test fun earlyWindowChangeDoesNotCreateAnyHistory() {
         val ledger = CodexResetTracker.observe(baseline(), quota(now + 18000, used = 0.0), now + 30)
-        val row = ledger.events.single()
-        assertEquals(CodexResetKind.WindowChanged, row.kind)
-        assertEquals(CodexResetSource.Observed, row.source)
-        assertEquals(now + 30, row.at)
-        assertEquals(80.0, row.before!!, 0.01)
-        assertEquals(0.0, row.after!!, 0.01)
+        assertTrue(ledger.events.isEmpty())
+        assertEquals(now + 18000, ledger.previous?.primary?.resetAtEpochSeconds)
     }
-    @Test fun expiredWindowRecordsOnlyOneObservedTransitionEvenAfterLongGap() {
+    @Test fun expiredWindowDoesNotCreateHistoryEvenAfterLongGap() {
         val ledger = CodexResetTracker.observe(baseline(), quota(now + 10 * 18000, used = 0.0), now + 9 * 18000)
-        assertEquals(1, ledger.events.size)
-        assertEquals(CodexResetKind.AutomaticPrimary, ledger.events.single().kind)
-        assertEquals(now + 1000, ledger.events.single().at)
+        assertTrue(ledger.events.isEmpty())
         assertEquals(ledger.events, CodexResetTracker.observe(ledger, quota(now + 10 * 18000), now + 9 * 18000 + 1).events)
     }
-    @Test fun weeklyAndPrimaryAreSeparateObservations() {
+    @Test fun weeklyAndPrimaryRenewalsAreSnapshotsOnly() {
         val first = quota(now + 100).copy(secondary = CodexQuotaWindow(90.0, 604800, null, now + 100))
         val old = CodexResetTracker.observe(CodexResetLedger(), first, now)
         val next = first.copy(primary = first.primary!!.copy(resetAtEpochSeconds = now + 18100),
             secondary = first.secondary!!.copy(resetAtEpochSeconds = now + 604900))
-        val kinds = CodexResetTracker.observe(old, next, now + 101).events.map { it.kind }.toSet()
-        assertEquals(setOf(CodexResetKind.AutomaticPrimary, CodexResetKind.AutomaticWeekly), kinds)
+        val ledger = CodexResetTracker.observe(old, next, now + 101)
+        assertTrue(ledger.events.isEmpty())
+        assertEquals(next.primary, ledger.previous?.primary)
+        assertEquals(next.secondary, ledger.previous?.weekly)
     }
     @Test fun noEventForUsageDropOrChangedDurationOrTinyClockShift() {
         val old = baseline()
@@ -76,21 +72,21 @@ class CodexResetTest {
     }
     @Test fun balanceDecreaseIsNotCountedAsResetConsumption() {
         val ledger = CodexResetTracker.observe(baseline(), quota(count = 2), now + 10)
-        assertEquals(CodexResetKind.BalanceChanged, ledger.events.single().kind)
-        assertEquals(CodexResetSource.Observed, ledger.events.single().source)
+        assertTrue(ledger.events.isEmpty())
+        assertEquals(2, ledger.previous?.available)
     }
-    @Test fun explicitCreditTimestampsDeduplicateAndMissingRedemptionTimeIsUnknown() {
+    @Test fun creditTimestampsDoNotCreateAnyHistory() {
         val rows = listOf(CodexResetCredit("available", "available", now - 100, now + 100, null),
             CodexResetCredit("expired", "expired", null, now - 50, null),
             CodexResetCredit("used", "used", null, null, null, now - 20),
             CodexResetCredit("unknown", "redeemed", null, null, null))
         val old = CodexResetTracker.observe(CodexResetLedger(), quota(credits = rows), now)
-        assertEquals(setOf(CodexResetKind.CreditGranted, CodexResetKind.CreditExpired, CodexResetKind.ManualUse), old.events.map { it.kind }.toSet())
-        assertTrue(old.events.all { it.source == CodexResetSource.Official })
+        assertTrue(old.events.isEmpty())
+        assertEquals(rows, old.previous?.credits)
         assertEquals(old.events, CodexResetTracker.observe(old, quota(credits = rows), now + 1).events)
     }
     @Test fun manualRecordsCanClassifyUnknownEventsWithoutDoublingCount() {
-        val unknown = CodexResetTracker.observe(baseline(), quota(now + 18000), now + 1).events.single()
+        val unknown = event(kind = CodexResetKind.WindowChanged, source = CodexResetSource.Observed)
         val ledger = CodexResetLedger(events = listOf(unknown))
         val next = CodexResetTracker.register(ledger, unknown.copy(kind = CodexResetKind.ManualUse, source = CodexResetSource.Registered), now + 1)
         assertEquals(1, next.events.size)
@@ -102,7 +98,9 @@ class CodexResetTest {
         assertRejected { CodexResetTracker.register(CodexResetLedger(), event(at = now + 121), now) }
         assertRejected { CodexResetTracker.register(CodexResetLedger(), event(at = 0), now) }
         assertRejected { CodexResetTracker.register(CodexResetLedger(), event(source = CodexResetSource.Official), now) }
-        assertRejected { CodexResetTracker.register(CodexResetLedger(), event(kind = CodexResetKind.BalanceChanged), now) }
+        listOf(CodexResetKind.BalanceChanged, CodexResetKind.AutomaticPrimary, CodexResetKind.AutomaticWeekly).forEach { kind ->
+            assertRejected { CodexResetTracker.register(CodexResetLedger(), event(kind = kind), now) }
+        }
         assertRejected { CodexResetTracker.register(CodexResetLedger(), event().copy(note = "x".repeat(257)), now) }
         assertRejected { CodexResetTracker.register(CodexResetLedger(), event(id = ""), now) }
     }

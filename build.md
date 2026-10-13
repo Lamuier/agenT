@@ -100,11 +100,11 @@ chmod 600 ../release-password.txt
 
 ```sh
 ./build.sh --release --doctor    # 先检查 SDK / JDK 与原签名，不执行构建
-./build.sh --release             # 默认离线，单元测试 → Release Vital Lint → 签名 APK
+./build.sh --release             # 默认离线，测试 → Vital Lint → 签名、校验、时间戳包
 ./build.sh --release --online    # 首次构建或缺少缓存时允许下载依赖
 
-# 同一版本再次打包，指定标识，保留旧包
-./build.sh --release --artifact-suffix uiux-20261012
+# 用户明确正式发版时：文件名只保留当前版本
+./build.sh --release --official-release
 ```
 
 默认执行 `:app:testDebugUnitTest`、`:app:lintVitalRelease`、`:app:assembleRelease`，开启 R8 与资源压缩。**Release Vital Lint 与完整 Debug Lint 是不同检查**；打包通过不能代替完整 Debug Lint，功能修改后应先完成第 2 节流程。
@@ -115,12 +115,14 @@ chmod 600 ../release-password.txt
 
 | 文件 | 用途 |
 | --- | --- |
-| `agenT-v<版本>[-标识]-release.apk` | 原签名 Release 安装包 |
-| `agenT-v<版本>[-标识]-release.sha256` | APK SHA-256 校验文件 |
-| `agenT-v<版本>[-标识]-mapping.txt` | 本次 R8 混淆映射 |
-| `agenT-v<版本>[-标识]-build.json` | 包信息、指纹、校验结果、时间与联网模式；不含密码 |
+| `<版本>_YYYYMMDD_HHMMSS.apk` / 正式 `<版本>.apk` | 原签名 Release 安装包 |
+| `<产物名>.sha256` | APK SHA-256 校验文件 |
+| `<产物名>-mapping.txt` | 本次 R8 混淆映射 |
+| `<产物名>-build.json` | 包信息、指纹、校验结果、时间与联网模式；不含密码 |
 
-同名产物已存在时会在构建前停止，使用新的 `--artifact-suffix` 即可再次打包。脚本保留历史产物，不自动清理 `dist/`。打包本身不升版本、不归档变更、不提交、不创建 tag、不推送。
+普通 Release 文件名按编译启动时刻生成，时间为北京时间（Asia/Shanghai，UTC+08:00），例如 `1.1.0_20261012_203000.apk`。正式发版使用 `--official-release` / `-OfficialRelease`，例如 `1.1.0.apk`；这只是命名开关，不授权升版本、归档、提交或推送。
+
+同次构建的 APK、校验文件、R8 映射和构建报告共用一个产物名；报告记录启动 / 完成时间和命名模式。两端均保留历史包、拒绝同名覆盖、不自动清理 `dist/`。普通包同秒冲突时稍后重试，或用 `--artifact-suffix` / `-ArtifactSuffix` 在时间戳后追加标识；正式包不接受附加标识。同名正式包存在时须先保留已有文件。
 
 ## 5. 参数与 Windows 对照
 
@@ -133,25 +135,25 @@ chmod 600 ../release-password.txt
 | `--skip-checks` | `-SkipChecks` | 显式跳过测试和 Lint，仍校验 APK |
 | `--signing-root <目录>` | `-SigningRoot <目录>` | 指定签名元数据位置 |
 | `--java-home <目录>` / `--sdk <目录>` | Windows 脚本内 JBR / SDK 配置 | 指定本机工具路径 |
-| `--doctor` / `--artifact-suffix <标识>` | 无对应参数 | Unix 环境自检 / 保留同版本的多次打包 |
+| `--official-release`（须与 `--release` 同用） | `-OfficialRelease`（须与 `-Release` 同用） | 正式发版命名，不带编译日期时间 |
+| `--artifact-suffix <标识>` | `-ArtifactSuffix <标识>` | 普通包时间戳之后追加标识，正式包禁用 |
+| `--doctor` | 无对应参数 | Unix 环境自检 |
 
-Windows 使用 `build.ps1 -SetupSigning` 配置共享 `release.keystore` 与私有密码文件，同样核验固定证书和私钥签名；不再生成独立密钥、使用 Windows clixml 或自动绑定 Debug 密钥。Windows Release 仍默认覆盖同名包并清理旧版本产物，需先另存历史包。助手不得默认重绑签名或使用 `-Install` 操作实体手机。
+Windows 使用 `build.ps1 -SetupSigning` 配置共享 `release.keystore` 与私有密码文件，同样核验固定证书和私钥签名；不再生成独立密钥、使用 Windows clixml 或自动绑定 Debug 密钥。Windows Release 与 Unix 使用同一命名和历史保留规则。助手不得默认重绑签名或使用 `-Install` 操作实体手机。
 
 `--offline` 控制 Gradle 的依赖解析，不代替首次准备：Wrapper 本体与 Robolectric 的测试 SDK 也须提前缓存。遇到缓存缺失时显式使用 `--online` 准备，再离线重试；不通过跳过检查来掩盖构建失败。
 
 需代理时，在用户自己的 `~/.gradle/gradle.properties`（Windows 为 `%USERPROFILE%\.gradle\gradle.properties`）设置 `systemProp.https.proxyHost` / `proxyPort` 等属性，不把密码或代理私密信息写进仓库。工具路径缺失先用 `--doctor` 检查，不手工改 Gradle Wrapper 版本或绕过证书校验。
 
-## 6. 助手执行约定
+## 6. 构建工具的回归检查
 
-助手先读 `AGENTS.md`、`README.md` 与本文，按所在平台使用标准入口。默认保留测试和 Lint；仅在用户明确允许或已有适用授权时使用跳过参数，并在交付中说明。标准入口报错时先修复配置或脚本；如确需底层命令诊断，说明原因，修复后仍以标准入口验证和导出。
+工作流程、每次修改后的 Release 交付、设备验证和版本 / Git 边界统一见本地 `AGENTS.md`。本文维护构建入口与检查命令；不在不同文档重复扩写执行约定。
 
-文档或目录变更后执行 `python3 scripts/check_docs.py`（Windows 可用 `python`），检查所有维护文档的内部链接、锚点、源码位置与版本 / 平台声明。该检查不依赖网络、SDK 或签名，不代替 Android 测试和 Lint；功能文案、权限和数据边界仍需对照实现核实。
-
-脚本自身修改后执行以下独立回归检查，再通过标准入口验证实际构建：
+构建脚本修改后先完成独立回归，再按标准入口验证实际构建与导出：
 
 ```sh
 bash -n build.sh
 python3 -B -m unittest discover -s scripts/tests -v
 ```
 
-报告应区分单元测试、完整 Debug Lint、Release Vital Lint 和 APK 校验结果，并提供实际产物路径。Android 验证默认不启动模拟器，不操作实体手机。版本归档、SemVer 判级、签名变更与 Git 操作继续遵守 `AGENTS.md`，不可用构建脚本绕过。
+文档或目录调整后运行 `python3 scripts/check_docs.py`（Windows 可用 `python`），核对链接、锚点、源码引用、版本和平台声明。检查结果只能证明覆盖的范围，不能代替应用行为验证或 Android 测试、Lint。

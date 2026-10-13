@@ -44,16 +44,27 @@ internal fun TokenManagementSheet(
     onDismiss: () -> Unit, onSave: (TokenProvider, String, String, () -> Unit) -> Unit,
     onDeleteRequest: (TokenProvider) -> Unit, onRevealSavedToken: (TokenProvider) -> String,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = { if (!busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
-        properties = ModalBottomSheetProperties(SecureFlagPolicy.SecureOn, !busy, !busy),
-    ) {
-        val enabled by InteractionPreferences.get(androidx.compose.ui.platform.LocalContext.current).hapticFeedbackEnabled.collectAsStateWithLifecycle()
-        FeedbackProvider(enabled) { TokenManagementContent(provider, cursorAccount, codexCredential, busy, error, onProviderChange,
-            onClearError, onDismiss, onSave, onDeleteRequest, onRevealSavedToken) }
+    val activity = LocalContext.current.tokenActivity()
+    val draft = remember(activity) { activity?.let { androidx.lifecycle.ViewModelProvider(it)[TokenDraftViewModel::class.java] } }
+    DisposableEffect(draft, activity) {
+        onDispose { if (activity?.isChangingConfigurations != true) draft?.clear() }
     }
+    val body: @Composable () -> Unit = {
+        val enabled by InteractionPreferences.get(LocalContext.current).hapticFeedbackEnabled.collectAsStateWithLifecycle()
+        FeedbackProvider(enabled) { TokenManagementContent(provider, cursorAccount, codexCredential, busy, error, onProviderChange,
+            onClearError, { draft?.clear(); onDismiss() }, onSave, onDeleteRequest, onRevealSavedToken) }
+    }
+    if (LocalWindowFolds.current.isNotEmpty()) {
+        FoldSafeModal(onDismissRequest = { if (!busy) { draft?.clear(); onDismiss() } },
+            secure = true, dismissible = !busy, content = body)
+    } else {
+        ModalBottomSheet(
+            onDismissRequest = { if (!busy) { draft?.clear(); onDismiss() } },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            properties = ModalBottomSheetProperties(SecureFlagPolicy.SecureOn, !busy, !busy), content = { body() })
+    }
+
 }
 
 /** Also rendered by the Debug fixture activity with empty inputs and inert callbacks. */
@@ -71,8 +82,12 @@ internal fun TokenManagementContent(
     val revision = if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
     val existingMetadata = if (cursor) cursorAccount?.alias else codexCredential?.accountId
     val hasCredential = if (cursor) cursorAccount != null else codexCredential != null
-    var metadata by remember(provider, revision) { mutableStateOf(existingMetadata.orEmpty()) }
-    var token by remember(provider, revision) { mutableStateOf("") }
+    val activity = context.tokenActivity()
+    val draft = remember(activity) { activity?.let { androidx.lifecycle.ViewModelProvider(it)[TokenDraftViewModel::class.java] }
+        ?: TokenDraftViewModel() }
+    SideEffect { draft.activate(provider, revision, existingMetadata.orEmpty()) }
+    var metadata by draft.metadata
+    var token by draft.token
     var visible by remember(provider, revision) { mutableStateOf(false) }
     var revealed by remember(provider, revision) { mutableStateOf<String?>(null) }
     var savedVisible by remember(provider, revision) { mutableStateOf(false) }
@@ -127,6 +142,7 @@ internal fun TokenManagementContent(
         TokenHelpContent(onDismiss = { help = false }, actionLabel = stringResource(R.string.token_management_back))
         return
     }
+    HingeSafeLayout {
     Column(
         Modifier.fillMaxWidth().navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp).padding(bottom = 24.dp),
@@ -231,6 +247,7 @@ internal fun TokenManagementContent(
         }
         Text(stringResource(R.string.token_management_security), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     }
 }
 

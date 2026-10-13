@@ -8,6 +8,24 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 No pending changes.
 
+## 1.2.0 — 2026-10-13
+
+> Version decision: 1.1.0 → 1.2.0, with `versionCode` increased to 4. Tablet information grids, full task details and foldable interactions add compatible user-visible capabilities. Keep the package ID, signing identity and existing data compatible.
+
+- Display API regular resets (`regular`) and reset credit grants (`banked`) on the reset page, Overview and heatmap, with separate counts and colors; exclude legacy local history. Remove registration, credit details and renewal statistics, and stop appending inferred 5-hour / weekly renewal events. Preserve independent window reminders and legacy private storage compatibility; improve spacing and narrow / large-text period wrapping, with a cache upgrade and full refetch for legacy caches that may lack grants, plus API pagination, cache migration and UI regression coverage.
+
+- Fix widget meter proportions diverging from their numeric quotas. Render independent Cursor, Codex 5-hour and weekly bar images, preserving fractional percentages and quota colors; add pixel-proportion and RemoteViews reapply regression checks.
+
+- Reorganize local agent guidance around project facts, engineering boundaries, validation, delivery and version / Git decisions. Consolidate duplicate rules and sync reusable conventions to the APK template with generator validation.
+
+- Use version + Beijing-time build timestamps for regular Release APKs and version-only names for official packages. Align Windows history retention and collision rejection, with naming and export consistency regression tests.
+
+- Reorganize tablet screens around their content: a three-column Overview grid with quotas, tasks, resets and service health; full task metadata; component grids; wider usage / calendar panes; and a roughly 280dp settings sidebar. Add portrait, landscape and wide-window rendering and interaction checks.
+
+- Adapt foldables and large screens using official Android, Xiaomi, vivo, OPPO and Samsung guidance: book and tabletop regions, dual service panes, task list/details, reset overview/calendar and settings categories/content, with a safe single-pane fallback.
+- Correct hinge coordinates after navigation and app bars; handle zero-width folds, opaque hinges, short windows and large fonts. Keep Token and confirmation dialogs clear of folds, retaining secure windows and in-memory editing drafts.
+- Add posture, resizing, state restoration and rendered UI regression coverage; document official sources and validation limits.
+
 ## 1.1.0 — 2026-10-12
 
 > Version decision: 1.0.1 → 1.1.0, with `versionCode` increased to 3. This batch adds settings, system entry points and interaction features, and also changes the signing identity. The signing migration would normally require a major compatibility change; publish as 1.1.0 at the user's explicit request and retain `com.lamuier.agenT`.

@@ -278,8 +278,6 @@ fun AgenTApp(
             onManageAccount = { openTokenManagement(preferred = com.lamuier.agenT.model.TokenProvider.Cursor) },
             onShowSettings = { showSettings = true },
             onShowTokenHelp = { showTokenHelp = true },
-            onRegisterReset = { event, done -> codexViewModel.registerReset(event) { OperationFeedback.success(); done() } },
-            onDeleteReset = { id -> codexViewModel.deleteReset(id, OperationFeedback::success) },
             onSubscriptionDay = { day -> codexViewModel.setSubscriptionDay(day, OperationFeedback::success) },
             onRefreshPublicResets = { force -> codexViewModel.refreshPublicResets(force, if (force) ({ success: Boolean -> if (success) OperationFeedback.success() }) else null) },
         ) }
@@ -361,7 +359,7 @@ fun AgenTApp(
 
 
     if (showCodexDeleteDialog) {
-        AlertDialog(
+        FoldSafeAlertDialog(
             onDismissRequest = { if (!codexState.saving) showCodexDeleteDialog = false },
             title = { Text(stringResource(R.string.codex_delete_token_title)) },
             text = { Text(stringResource(R.string.codex_delete_token_description)) },
@@ -386,7 +384,7 @@ fun AgenTApp(
     }
 
     deleteTarget?.let { target ->
-        AlertDialog(
+        FoldSafeAlertDialog(
             onDismissRequest = { if (!state.submitting) deleteTarget = null },
             title = {
                 Text(

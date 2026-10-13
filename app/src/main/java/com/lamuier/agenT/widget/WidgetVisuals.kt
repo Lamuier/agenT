@@ -96,6 +96,24 @@ internal object WidgetVisuals {
         return bitmap
     }
 
+    /** Bake track and fill into one image so each RemoteViews meter has independent geometry. */
+    fun quotaBarBitmap(percent: Double?, fillColor: Int, trackColor: Int): Bitmap {
+        val width = 512
+        val height = 8
+        val fraction = percent?.takeIf { it.isFinite() }?.coerceIn(0.0, 100.0)?.div(100.0) ?: 0.0
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val radius = height / 2f
+        paint.color = trackColor
+        canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), radius, radius, paint)
+        if (fraction > 0.0) {
+            paint.color = fillColor
+            canvas.drawRoundRect(0f, 0f, (width * fraction).toFloat(), height.toFloat(), radius, radius, paint)
+        }
+        return bitmap
+    }
+
     /** Status-page style lamp: tinted disc plus a glanceable glyph, not a progress ring. */
     fun statusBadgeBitmap(
         context: Context,

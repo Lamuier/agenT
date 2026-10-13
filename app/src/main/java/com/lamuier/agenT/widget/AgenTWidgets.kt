@@ -610,13 +610,9 @@ object AgenTWidgetUpdater {
         }
         val darkSurface = ((colors.surface ushr 16) and 255) < 128
         meters.forEach { (id, value, normal) ->
-            views.setProgressBar(id, 100, WidgetCalculations.progress(value), false)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val accent = WidgetAppearance.accent(value, normal, colors.onSurfaceVariant, darkSurface)
-                views.setColorStateList(id, "setProgressTintList", ColorStateList.valueOf(accent))
-                views.setColorStateList(id, "setProgressBackgroundTintList",
-                    ColorStateList.valueOf(WidgetAppearance.blend(colors.surface, normal, 0.10f)))
-            }
+            val accent = WidgetAppearance.accent(value, normal, colors.onSurfaceVariant, darkSurface)
+            val track = WidgetAppearance.blend(colors.surface, normal, 0.10f)
+            views.setImageViewBitmap(id, WidgetVisuals.quotaBarBitmap(value, accent, track))
         }
         if (!kind.hasUsageDetails) views.setInt(R.id.widget_mini_divider, "setBackgroundColor", colors.surfaceVariant)
         if (kind.hasUsageDetails) {

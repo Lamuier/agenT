@@ -139,15 +139,6 @@ class UiReviewActivity : FragmentActivity() {
                         onLoadHistoryWindow = { _, _, _, _ -> }, onRefresh = {}, onRefreshCodex = {},
                         onManageCodex = { settingsOpen = true }, onManageAccount = { settingsOpen = true },
                         onShowSettings = { settingsOpen = true }, onShowTokenHelp = {},
-                        onRegisterReset = { event, done ->
-                            resetLedger = CodexResetTracker.register(resetLedger, event, Instant.now().epochSecond)
-                            Log.i("AgenTUiQa", "Reset fixture registered kind=${event.kind} count=${event.count}; no network requests")
-                            done()
-                        },
-                        onDeleteReset = { id ->
-                            resetLedger = resetLedger.copy(events = resetLedger.events.filterNot { it.id == id })
-                            Log.i("AgenTUiQa", "Reset fixture deletion verified; no network requests")
-                        },
                         onSubscriptionDay = { day ->
                             resetLedger = resetLedger.copy(subscriptionDay = day)
                             Log.i("AgenTUiQa", "Reset fixture subscription day=$day; no network requests")

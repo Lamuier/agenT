@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Standard-library implementation of build.sh; keep signing secrets out of argv/logs."""
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -295,29 +295,39 @@ def verify_apk(root, apk, tools, env, config, release, certificate):
     return verify_archive(apk, release)
 
 
-def artifact_base(config, suffix):
+def artifact_base(config, suffix="", official_release=False, started_at=None):
+    version = config["versionName"]
+    require(re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version), "版本号不符合安全的 SemVer 文件命名规则")
     require(not suffix or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", suffix), "--artifact-suffix 仅允许字母、数字、点、下划线与短横线")
-    return "agenT-v" + config["versionName"] + ("-" + suffix if suffix else "")
+    require(not official_release or not suffix, "正式包不接受 --artifact-suffix；文件名只使用当前版本")
+    if official_release:
+        return version
+    started_at = started_at or datetime.now(timezone.utc)
+    timestamp = started_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y%m%d_%H%M%S")
+    return version + "_" + timestamp + ("_" + suffix if suffix else "")
 
 
 def ensure_destination(root, base):
-    paths = [root / "dist" / (base + tail) for tail in ("-release.apk", "-release.sha256", "-mapping.txt", "-build.json")]
-    require(not any(path.exists() for path in paths), "dist/ 已有同名产物；请用 --artifact-suffix 指定新的构建标识（保留历史包）")
+    paths = [root / "dist" / (base + tail) for tail in (".apk", ".sha256", "-mapping.txt", "-build.json")]
+    require(not any(path.exists() for path in paths), "dist/ 已有同名产物，拒绝覆盖；普通包稍后重试或添加 --artifact-suffix，正式包请先保留已有产物")
 
 
-def export_release(root, apk, config, certificate, base, elf, checks, offline):
+def export_release(root, apk, config, certificate, base, elf, checks, offline,
+                   started_at=None, official_release=False):
     mapping = root / "app/build/outputs/mapping/release/mapping.txt"
     require(mapping.is_file(), "缺少 R8 mapping.txt，无法完成 Release 导出")
     ensure_destination(root, base)
     dist = root / "dist"
     dist.mkdir(exist_ok=True)
     sha = hashlib.sha256(apk.read_bytes()).hexdigest().upper()
-    destination = dist / (base + "-release.apk")
+    destination = dist / (base + ".apk")
     report = {
         "packageName": config["applicationId"], "versionCode": config["versionCode"],
         "versionName": config["versionName"], "apk": str(destination), "apkSha256": sha,
         "bytes": apk.stat().st_size, "certificateSha256": certificate,
         "builtAt": datetime.now(timezone.utc).isoformat(), "variant": "release",
+        "buildStartedAt": (started_at or datetime.now(timezone.utc)).isoformat(),
+        "officialRelease": official_release, "artifactTimeZone": "Asia/Shanghai",
         "minSdk": config["minSdk"], "targetSdk": config["targetSdk"],
         "platform": platform.system(), "offline": offline,
         "checks": {"unitTests": checks, "lintVitalRelease": checks, "signature": True,
@@ -329,7 +339,7 @@ def export_release(root, apk, config, certificate, base, elf, checks, offline):
         stage = Path(staging)
         shutil.copy2(apk, stage / destination.name)
         shutil.copy2(mapping, stage / (base + "-mapping.txt"))
-        (stage / (base + "-release.sha256")).write_text(sha + "  " + destination.name + "\n", encoding="ascii")
+        (stage / (base + ".sha256")).write_text(sha + "  " + destination.name + "\n", encoding="ascii")
         (stage / (base + "-build.json")).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         for path in stage.iterdir():
             path.replace(dist / path.name)
@@ -342,6 +352,7 @@ def parser():
     mode = result.add_mutually_exclusive_group()
     mode.add_argument("--debug", action="store_true", help="Debug 构建（默认）")
     mode.add_argument("--release", action="store_true", help="签名 Release 构建、校验与导出")
+    result.add_argument("--official-release", action="store_true", help="正式发版命名：仅版本号，不带日期时间；须同时使用 --release")
     network = result.add_mutually_exclusive_group()
     network.add_argument("--offline", action="store_true", help="离线依赖解析")
     network.add_argument("--online", action="store_true", help="允许下载依赖（Debug 默认；Release 需显式启用）")
@@ -351,7 +362,7 @@ def parser():
     result.add_argument("--java-home", help="指定 JDK 17+ 根目录")
     result.add_argument("--sdk", help="指定 Android SDK 根目录（须与 local.properties 一致）")
     result.add_argument("--signing-root", default=".signing", help="签名元数据目录；默认 .signing")
-    result.add_argument("--artifact-suffix", default="", help="Release 产物名附加标识，例如 uiux-20261012")
+    result.add_argument("--artifact-suffix", default="", help="普通 Release 的时间戳后追加标识；正式包不支持")
     return result
 
 
@@ -361,8 +372,10 @@ def main(argv=None, root=ROOT):
     host = platform.system()
     require(host in ("Darwin", "Linux"), "build.sh 支持 macOS / Linux；Windows 请使用 build.ps1")
     require(args.release or not args.artifact_suffix, "--artifact-suffix 仅用于 --release")
+    require(args.release or not args.official_release, "--official-release 须同时使用 --release")
     config = app_config(root)
-    base = artifact_base(config, args.artifact_suffix)
+    started_at = datetime.now(timezone.utc)
+    base = artifact_base(config, args.artifact_suffix, args.official_release, started_at) if args.release else None
     env = os.environ.copy()
     # Always use the selected metadata; partial/stale caller signing env must not affect Debug.
     for key in SIGNING_KEYS:
@@ -406,7 +419,8 @@ def main(argv=None, root=ROOT):
         apk = root / "app/build/outputs/apk" / variant / ("app-" + variant + ".apk")
         elf = verify_apk(root, apk, tools, env, config, args.release, certificate)
         if args.release:
-            export_release(root, apk, config, certificate, base, elf, not args.skip_checks, offline)
+            export_release(root, apk, config, certificate, base, elf, not args.skip_checks, offline,
+                           started_at, args.official_release)
         else:
             print("Debug 构建与 APK 校验通过：" + str(apk), flush=True)
         return 0

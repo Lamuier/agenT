@@ -60,6 +60,7 @@ class CodexQuotaViewModel(
 
     init {
         bootstrap()
+        refreshPublicResets(force = false)
         viewModelScope.launch {
             val cached = withContext(Dispatchers.IO) { statusRepository.cached() }
             _state.update { it.copy(serviceStatus = cached, loadingStatus = cached == null) }
@@ -204,9 +205,6 @@ class CodexQuotaViewModel(
     fun revealToken(): String = repository.revealToken()
     fun nextRefreshDelayMillis(): Long = CodexRefreshPolicy.foregroundDelay(_state.value.usage, System.currentTimeMillis() / 1000)
 
-    fun registerReset(event: CodexResetEvent, onSuccess: () -> Unit = {}) =
-        mutateResetHistory({ revision -> repository.registerReset(revision, event) }, onSuccess)
-    fun deleteReset(id: String, onSuccess: () -> Unit = {}) = mutateResetHistory({ revision -> repository.deleteReset(revision, id) }, onSuccess)
     fun setSubscriptionDay(day: Int, onSuccess: () -> Unit = {}) = mutateResetHistory({ revision -> repository.setSubscriptionDay(revision, day) }, onSuccess)
 
     private fun mutateResetHistory(change: (Long) -> CodexResetLedger, done: () -> Unit = {}) {

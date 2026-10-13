@@ -87,7 +87,7 @@ fun AgenTTheme(
                     .fillMaxSize()
                     .background(animatedBackground),
             ) {
-                com.lamuier.agenT.ui.HingeSafeLayout { content() }
+                com.lamuier.agenT.ui.FoldAwareWindow { content() }
             }
         }
     }

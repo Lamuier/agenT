@@ -90,7 +90,7 @@ internal object CodexResetIdentity {
         .joinToString("") { "%02x".format(it.toInt() and 255) }
 }
 
-/** Only fresh, monotonic snapshots are observed. A balance decrease never proves a reset was used. */
+/** Keep only the latest fresh quota snapshot for reminders; never append local reset history. */
 internal object CodexResetTracker {
     const val MAX_EVENTS = 500
     fun observe(ledger: CodexResetLedger, usage: CodexQuotaOverview, at: Long): CodexResetLedger {
@@ -101,56 +101,16 @@ internal object CodexResetTracker {
         }
         val primary = timed(usage.primary)
         val weekly = timed(usage.secondary)
-        val incoming = mutableListOf<CodexResetEvent>()
-        fun window(kind: CodexResetKind, before: CodexQuotaWindow?, after: CodexQuotaWindow?) {
-            val prior = before?.resetAtEpochSeconds ?: return
-            val next = after?.resetAtEpochSeconds ?: return
-            if (before.limitWindowSeconds != after.limitWindowSeconds || next <= prior + 60) return
-            val passed = at >= prior
-            incoming += CodexResetEvent(
-                id = CodexResetIdentity.hash("$kind|$prior|$next"),
-                kind = if (passed) kind else CodexResetKind.WindowChanged,
-                source = CodexResetSource.Observed, at = if (passed) prior else at,
-                before = before.usedPercent, after = after.usedPercent,
-            )
-        }
-        window(CodexResetKind.AutomaticPrimary, old?.primary, primary)
-        window(CodexResetKind.AutomaticWeekly, old?.weekly, weekly)
-        if (old?.available != null && usage.resetCreditsAvailable != null && old.available != usage.resetCreditsAvailable) {
-            incoming += CodexResetEvent(CodexResetIdentity.hash("balance|$at|${old.available}|${usage.resetCreditsAvailable}"),
-                CodexResetKind.BalanceChanged, CodexResetSource.Observed, at,
-                before = old.available.toDouble(), after = usage.resetCreditsAvailable.toDouble())
-        }
-        val supplied = usage.resetCredits?.details.orEmpty()
-        for (credit in supplied) {
-            credit.grantedAt?.takeIf { it in 1..at }?.let { time ->
-                incoming += CodexResetEvent(CodexResetIdentity.hash("grant|${credit.id}|$time"),
-                    CodexResetKind.CreditGranted, CodexResetSource.Official, time)
-            }
-            if (credit.status.equals("expired", true)) credit.expiresAt?.takeIf { it in 1..at }?.let { time ->
-                incoming += CodexResetEvent(CodexResetIdentity.hash("expired|${credit.id}|$time"),
-                    CodexResetKind.CreditExpired, CodexResetSource.Official, time)
-            }
-            // No timestamp means no attribution to a calendar or subscription cycle.
-            if (credit.status.lowercase() in listOf("redeemed", "used")) credit.redeemedAt?.takeIf { it in 1..at }?.let { time ->
-                incoming += CodexResetEvent(CodexResetIdentity.hash("used|${credit.id}|$time"),
-                    CodexResetKind.ManualUse, CodexResetSource.Official, time)
-            }
-        }
-        val all = (ledger.events + incoming).distinctBy { it.id }.sortedByDescending { it.at }
-        val known = (old?.credits.orEmpty() + supplied).associateBy { it.id }.values.toList().takeLast(500)
         return ledger.copy(
             startedAt = ledger.startedAt.takeIf { it > 0 } ?: at,
             previous = CodexResetObservation(at, primary ?: old?.primary, weekly ?: old?.weekly,
-                usage.resetCreditsAvailable ?: old?.available, known),
-            events = all.take(MAX_EVENTS), truncated = ledger.truncated || all.size > MAX_EVENTS,
+                usage.resetCreditsAvailable ?: old?.available, usage.resetCredits?.details ?: old?.credits.orEmpty()),
         )
     }
     fun register(ledger: CodexResetLedger, event: CodexResetEvent, now: Long): CodexResetLedger {
         require(event.source == CodexResetSource.Registered)
         require(event.id.isNotBlank() && event.id.length <= 128)
-        require(event.kind in listOf(CodexResetKind.ManualUse, CodexResetKind.OfficialExtra,
-            CodexResetKind.AutomaticPrimary, CodexResetKind.AutomaticWeekly))
+        require(event.kind in listOf(CodexResetKind.ManualUse, CodexResetKind.OfficialExtra))
         require(event.at in 1..(now + 120) && event.count in 1..999 && event.note.length <= 256)
         val events = (ledger.events.filterNot { it.id == event.id } + event).sortedByDescending { it.at }
         return ledger.copy(startedAt = ledger.startedAt.takeIf { it > 0 } ?: now,

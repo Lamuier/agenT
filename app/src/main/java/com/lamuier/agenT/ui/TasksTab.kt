@@ -2,7 +2,6 @@ package com.lamuier.agenT.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
@@ -48,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -128,7 +128,12 @@ private fun TasksContent(
     val feedback = LocalAppFeedback.current
     var collapsed by rememberSaveable(groupMode, tasks.accountId, stateSaver = listSaver<Set<String>, String>(
         save = { it.toList() }, restore = { it.toSet() })) { mutableStateOf(emptySet<String>()) }
-    AdaptiveLazyTabContent { compact ->
+    var selectedId by rememberSaveable(tasks.accountId) { mutableStateOf<String?>(null) }
+    val selected = visibleTasks.firstOrNull { it.id == selectedId } ?: visibleTasks.firstOrNull()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val detailScroll = androidx.compose.foundation.rememberScrollState()
+    val list: @Composable (Boolean) -> Unit = { paired ->
+    AdaptiveLazyTabContent(state = listState) { compact ->
         item(key = "summary") {
         SectionHeading(
             icon = Icons.Outlined.SmartToy,
@@ -185,11 +190,22 @@ private fun TasksContent(
                     })
             }
             if (expanded) items(group.tasks, key = { "task:${it.id}" }) { task ->
-                TaskCard(task, compact, openUrl, onOpenFailed)
+                TaskCard(task, compact, openUrl, onOpenFailed,
+                    onSelect = if (paired) ({ selectedId = task.id; feedback.selection() }) else null,
+                    selected = paired && selected?.id == task.id)
             }
         }
     }
-
+    }
+    AdaptivePaneLayout(allowPair = visibleTasks.isNotEmpty(), primaryFraction = 0.4f, maxContentWidthDp = 1440f,
+        single = { list(false) }, primary = { list(true) }, secondary = {
+            AdaptiveTabContent(scrollState = detailScroll) { compact ->
+                Text(stringResource(R.string.tasks_detail_title), style = MaterialTheme.typography.headlineSmall)
+                selected?.let { task ->
+                    TaskDetails(task, openUrl, onOpenFailed)
+                }
+            }
+        })
 }
 
 @Composable
@@ -253,11 +269,14 @@ private fun TaskCard(
     compact: Boolean,
     openUrl: (String) -> Unit,
     onOpenFailed: (String) -> Unit,
+    onSelect: (() -> Unit)? = null,
+    selected: Boolean = false,
 ) {
     val resources = LocalResources.current
     val displayName = task.name.ifBlank { stringResource(R.string.task_untitled) }
     val statusLabel = AgentTaskPresentation.statusLabel(task.status, resources)
-    val conversationA11y = stringResource(R.string.tasks_open_conversation_a11y, displayName, statusLabel)
+    val conversationA11y = stringResource(if (onSelect == null) R.string.tasks_open_conversation_a11y
+        else R.string.tasks_show_detail_a11y, displayName, statusLabel)
     val prUrl = task.prUrl?.takeIf(AgentTaskPresentation::isSafeAgentUrl)
     val statusColor = taskStatusColor(task.status)
     Surface(
@@ -266,17 +285,20 @@ private fun TaskCard(
             .semantics {
                 role = Role.Button
                 contentDescription = conversationA11y
+                this.selected = selected
             }
             .clickable {
+                if (onSelect != null) onSelect() else {
                 val url = AgentTaskPresentation.agentConversationUrl(task.id)
                 if (url == null) {
                     onOpenFailed(resources.getString(R.string.tasks_invalid_id))
                 } else {
                     openUrl(url)
                 }
+                }
             },
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         shadowElevation = 1.dp,
     ) {
         Column(
@@ -484,6 +506,58 @@ private fun rememberOpenCursorUrl(onOpenFailed: (String) -> Unit): (String) -> U
         { url ->
             if (!CursorCustomTabs.open(context, url, toolbarColor)) {
                 onOpenFailed(resources.getString(R.string.tasks_open_page_failed))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TaskDetails(task: AgentTask, openUrl: (String) -> Unit, onOpenFailed: (String) -> Unit) {
+    val resources = LocalResources.current
+    val zone = LocalDisplayZone.current
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TaskChip(AgentTaskPresentation.statusLabel(task.status, resources), taskStatusColor(task.status))
+                if (task.source != AgentTaskSource.Unknown) TaskChip(AgentTaskPresentation.sourceLabel(task.source, resources), MaterialTheme.colorScheme.tertiary)
+                task.prStatus?.let { TaskChip(AgentTaskPresentation.prStatusLabel(it, resources), prStatusColor(it)) }
+            }
+            Text(task.name.ifBlank { stringResource(R.string.task_untitled) }, style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold)
+            val fields = listOf(
+                R.string.tasks_field_repository to AgentTaskPresentation.repoDisplayName(task.repoUrl),
+                R.string.tasks_field_branch to task.branchName,
+                R.string.tasks_field_model to AgentTaskPresentation.displayModel(task.modelName, task.maxMode),
+                R.string.tasks_field_changes to stringResource(R.string.tasks_detail_changes, task.filesChanged, task.linesAdded, task.linesRemoved),
+                R.string.tasks_field_created to DisplayTime.formatEpoch(task.createdAtMs, zone, withYear = true),
+                R.string.tasks_field_updated to DisplayTime.formatEpoch(task.latestTimeMs, zone, withYear = true),
+            )
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val columns = if (maxWidth >= (480 * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp) 2 else 1
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    fields.chunked(columns).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            row.forEach { (label, value) ->
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(stringResource(label), style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(value?.takeIf { it.isNotBlank() } ?: "—", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.FilledTonalButton(onClick = {
+                    AgentTaskPresentation.agentConversationUrl(task.id)?.let(openUrl)
+                        ?: onOpenFailed(resources.getString(R.string.tasks_invalid_id))
+                }) { Text(stringResource(R.string.tasks_view_conversation)) }
+                task.prUrl?.takeIf(AgentTaskPresentation::isSafeAgentUrl)?.let { url ->
+                    TextButton(onClick = { openUrl(url) }) { Text(stringResource(R.string.tasks_view_pr)) }
+                }
             }
         }
     }

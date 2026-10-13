@@ -5,7 +5,8 @@
 .DESCRIPTION
     .\build.ps1                 # Debug 构建
     .\build.ps1 -Install        # Debug 构建 + adb 安装
-    .\build.ps1 -Release        # Release 签名打包到 dist/
+    .\build.ps1 -Release        # Release 时间戳包到 dist/
+    .\build.ps1 -Release -OfficialRelease  # 正式包，仅当前版本号
     .\build.ps1 -SetupSigning   # 配置/重绑 Release 签名
 
 .PARAMETER Clean
@@ -27,6 +28,8 @@
 param(
     [switch]$Install,
     [switch]$Release,
+    [switch]$OfficialRelease,
+    [string]$ArtifactSuffix = "",
     [switch]$SetupSigning,
     [switch]$Clean,
     [switch]$Offline,
@@ -502,10 +505,38 @@ function Invoke-InstallDebug {
     Write-Host "已安装: $apk" -ForegroundColor Green
 }
 
+function Get-ReleaseArtifactBase([string]$VersionName, [DateTimeOffset]$StartedAt) {
+    if ($VersionName -notmatch '^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$') {
+        throw "版本号不符合安全的 SemVer 文件命名规则"
+    }
+    if ($ArtifactSuffix -and $ArtifactSuffix -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw "-ArtifactSuffix 仅允许字母、数字、点、下划线与短横线"
+    }
+    if ($OfficialRelease) {
+        if ($ArtifactSuffix) { throw "正式包不接受 -ArtifactSuffix；文件名只使用当前版本" }
+        return $VersionName
+    }
+    $timestamp = $StartedAt.ToOffset([TimeSpan]::FromHours(8)).ToString("yyyyMMdd_HHmmss", [Globalization.CultureInfo]::InvariantCulture)
+    $base = "${VersionName}_${timestamp}"
+    if ($ArtifactSuffix) { $base += "_${ArtifactSuffix}" }
+    return $base
+}
+
+function Test-ReleaseDestination([string]$Dist, [string]$Base) {
+    foreach ($tail in @(".apk", ".sha256", "-mapping.txt", "-build.json")) {
+        if (Test-Path -LiteralPath (Join-Path $Dist "$Base$tail")) {
+            throw "dist/ 已有同名产物，拒绝覆盖；普通包稍后重试或添加 -ArtifactSuffix，正式包请先保留已有产物"
+        }
+    }
+}
+
 function Invoke-ReleasePackage {
     $version = Get-AppVersion
     $sdk = Resolve-AndroidSdk
-    $artifactBaseName = "agenT-v$($version.VersionName)"
+    $releaseBuildStartedAt = [DateTimeOffset]::UtcNow
+    $artifactBaseName = Get-ReleaseArtifactBase -VersionName $version.VersionName -StartedAt $releaseBuildStartedAt
+    $dist = Join-Path $ProjectRoot "dist"
+    Test-ReleaseDestination -Dist $dist -Base $artifactBaseName
 
     Write-Host "agenT Release 打包"
     Write-Host "  versionName : $($version.VersionName)"
@@ -554,20 +585,20 @@ function Invoke-ReleasePackage {
             -Sdk $sdk
 
         Write-Step "导出产物到 dist/"
-        $dist = Join-Path $ProjectRoot "dist"
+        Test-ReleaseDestination -Dist $dist -Base $artifactBaseName
         New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
-        $destination = Join-Path $dist "$artifactBaseName-release.apk"
-        Copy-Item -LiteralPath $apk -Destination $destination -Force
+        $destination = Join-Path $dist "$artifactBaseName.apk"
+        Copy-Item -LiteralPath $apk -Destination $destination
 
         $mapping = Join-Path $ProjectRoot "app\build\outputs\mapping\release\mapping.txt"
         if (Test-Path -LiteralPath $mapping) {
-            Copy-Item -LiteralPath $mapping -Destination (Join-Path $dist "$artifactBaseName-mapping.txt") -Force
+            Copy-Item -LiteralPath $mapping -Destination (Join-Path $dist "$artifactBaseName-mapping.txt")
         }
 
         $hash = Get-FileHash -LiteralPath $destination -Algorithm SHA256
         "$($hash.Hash)  $([IO.Path]::GetFileName($destination))" |
-            Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-release.sha256") -Encoding ascii
+            Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName.sha256") -Encoding ascii
 
         [ordered]@{
             packageName = "com.lamuier.agenT"
@@ -576,17 +607,11 @@ function Invoke-ReleasePackage {
             apk = $destination
             apkSha256 = $hash.Hash
             certificateSha256 = [string]$signing.Metadata.certificateSha256
-            builtAt = (Get-Date).ToString("o")
+            builtAt = ([DateTimeOffset]::UtcNow).ToString("o")
+            buildStartedAt = $releaseBuildStartedAt.ToString("o")
+            officialRelease = [bool]$OfficialRelease
+            artifactTimeZone = "Asia/Shanghai"
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-build.json") -Encoding utf8
-
-        # dist 只保留最新版本：删除旧版本产物（仅匹配本项目命名模式，不触碰其他文件）
-        $artifactPattern = '^(CursorUsage|agenT|QuotaT|AgentT)-v\S+-(release\.apk|mapping\.txt|release\.sha256|build\.json)$'
-        $staleFiles = Get-ChildItem -LiteralPath $dist -File |
-            Where-Object { $_.Name -match $artifactPattern -and $_.Name -notlike "$artifactBaseName-*" }
-        foreach ($stale in $staleFiles) {
-            Remove-Item -LiteralPath $stale.FullName -Force
-            Write-Host "  清理旧产物: $($stale.Name)" -ForegroundColor DarkGray
-        }
 
         Write-Host ""
         Write-Host "打包完成" -ForegroundColor Green
@@ -604,6 +629,9 @@ function Invoke-ReleasePackage {
 
 # --- dispatch ---
 
+if (($OfficialRelease -or $ArtifactSuffix) -and -not $Release) {
+    throw "-OfficialRelease / -ArtifactSuffix 须同时使用 -Release"
+}
 $modeCount = (@($Install, $Release, $SetupSigning) | Where-Object { $_ }).Count
 if ($modeCount -gt 1) {
     throw "-Install、-Release、-SetupSigning 只能选其一"

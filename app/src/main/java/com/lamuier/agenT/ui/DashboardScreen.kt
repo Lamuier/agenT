@@ -220,8 +220,6 @@ internal fun DashboardScreen(
     onManageAccount: () -> Unit,
     onShowSettings: () -> Unit,
     onShowTokenHelp: () -> Unit,
-    onRegisterReset: (com.lamuier.agenT.codex.CodexResetEvent, () -> Unit) -> Unit = { _, _ -> },
-    onDeleteReset: (String) -> Unit = {},
     onSubscriptionDay: (Int) -> Unit = {},
     onRefreshPublicResets: (Boolean) -> Unit = {},
 ) {
@@ -271,7 +269,7 @@ internal fun DashboardScreen(
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
     NavigationSuiteScaffold(
-        layoutType = if (maxWidth < 600.dp) NavigationSuiteType.NavigationBar else NavigationSuiteType.NavigationRail,
+        layoutType = if (maxWidth < 600.dp || maxHeight < 480.dp || LocalWindowFolds.current.any { it.width > it.height || it.left < with(LocalDensity.current) { 80.dp.toPx() } }) NavigationSuiteType.NavigationBar else NavigationSuiteType.NavigationRail,
         navigationSuiteItems = {
             tabs.forEachIndexed { index, tab ->
                 item(selected = selectedTabId == tab.id,
@@ -300,7 +298,9 @@ internal fun DashboardScreen(
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
+                FoldSafeAppBar {
                 TopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     title = {
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -325,6 +325,7 @@ internal fun DashboardScreen(
                         }
                     },
                 )
+                }
             },
         ) { padding ->
             if (state.loadingAccounts) {
@@ -343,6 +344,12 @@ internal fun DashboardScreen(
                                     DashboardTab.Overview -> UnifiedOverviewTab(
                                         state = state, codex = codexState, onOpenSettings = onShowSettings,
                                         onManageCursor = onManageAccount, onManageCodex = onManageCodex,
+                                        onOpenTab = { target ->
+                                            if (selectedTabId != target.id) {
+                                                feedback.selection(); userDragged = false; selectedTabId = target.id
+                                                uiScope.launch { pagerState.animateScrollToPage(tabs.indexOf(target)) }
+                                            }
+                                        },
                                     )
                                     DashboardTab.Usage -> UnifiedUsageDependentTab(
                                         state = state,
@@ -383,8 +390,7 @@ internal fun DashboardScreen(
                                             },
                                         )
                                     }
-                                    DashboardTab.Resets -> CodexResetTab(codexState, onManageCodex,
-                                        onRegisterReset, onDeleteReset, onSubscriptionDay, onRefreshCodex, onRefreshPublicResets)
+                                    DashboardTab.Resets -> CodexResetTab(codexState, onSubscriptionDay, onRefreshPublicResets)
                                     DashboardTab.Status -> StatusTab(
                                         status = state.serviceStatus,
                                         loading = state.loadingStatus,
@@ -443,7 +449,7 @@ private fun UnifiedUsageDependentTab(
         content(state.usage!!)
         return
     }
-    AdaptiveTabContent {
+    AdaptiveServiceContent(primary = {
         SectionHeading(
             icon = Icons.Outlined.Code,
             title = stringResource(R.string.agent_service_cursor_title),
@@ -485,12 +491,13 @@ private fun UnifiedUsageDependentTab(
                 onSecondaryAction = onManageAccount,
             )
         }
+    }, secondary = {
         CodexQuotaSection(
             state = codexState,
             onManageCredential = onManageCodex,
             onRefresh = onRefreshCodex,
         )
-    }
+    })
 }
 
 @Composable
@@ -657,10 +664,11 @@ internal fun DashboardState(
     secondaryActionLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
 ) {
+    HingeSafeLayout {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(28.dp),
+            .verticalScroll(rememberScrollState()).padding(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -727,6 +735,7 @@ internal fun DashboardState(
                 }
             }
         }
+    }
     }
 }
 
@@ -897,20 +906,25 @@ private fun UsageTab(
     onRefreshCodex: () -> Unit,
     onManageCodex: () -> Unit,
 ) {
-    AdaptiveTabContent { compact ->
-        val chartColors = LocalPulseChartColors.current
-        val quota = remember(usage) { UsageCalculations.quotaBreakdown(usage) }
-        var providerFilter by rememberSaveable { mutableStateOf(0) }
-        val feedback = LocalAppFeedback.current
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(stringResource(R.string.usage_all_services), "Cursor", "Codex").forEachIndexed { index, title ->
-                FilterChip(selected = providerFilter == index, onClick = { if (providerFilter != index) { providerFilter = index; feedback.selection() } }, label = { Text(title) })
+    var providerFilter by rememberSaveable { mutableStateOf(0) }
+    val feedback = LocalAppFeedback.current
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().height(56.dp)) { HingeSafeLayout {
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(stringResource(R.string.usage_all_services), "Cursor", "Codex").forEachIndexed { index, title ->
+                    FilterChip(selected = providerFilter == index,
+                        onClick = { if (providerFilter != index) { providerFilter = index; feedback.selection() } },
+                        label = { Text(title) })
+                }
             }
-        }
-        if (providerFilter != 1) {
-            CodexQuotaSection(state = codexState, onManageCredential = onManageCodex, onRefresh = onRefreshCodex)
-        }
-        if (providerFilter != 2) {
+        } }
+        Box(Modifier.weight(1f)) {
+            AdaptiveServiceContent(allowPair = providerFilter == 0, secondaryFirst = true,
+                primaryFraction = 0.65f, maxContentWidthDp = 1440f,
+                primary = { compact ->
+                    if (providerFilter != 2) {
+                        val chartColors = LocalPulseChartColors.current
+                        val quota = remember(usage) { UsageCalculations.quotaBreakdown(usage) }
         val includedUsageLabel = stringResource(R.string.label_included_usage)
         val bonusLabel = stringResource(R.string.label_bonus)
         val remainingQuotaLabel = stringResource(R.string.label_remaining_quota)
@@ -1087,6 +1101,11 @@ private fun UsageTab(
             onLoadHistoryWindow = onLoadHistoryWindow,
             compact = compact,
         )
+                    }
+                }, secondary = {
+                    if (providerFilter != 1) CodexQuotaSection(state = codexState,
+                        onManageCredential = onManageCodex, onRefresh = onRefreshCodex)
+                })
         }
     }
 }
@@ -1469,11 +1488,11 @@ private fun ModelTokenRow(
 }
 
 @Composable
-internal fun AdaptiveTabContent(content: @Composable ColumnScope.(compact: Boolean) -> Unit) {
+internal fun AdaptiveTabContent(scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    content: @Composable ColumnScope.(compact: Boolean) -> Unit) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale
         val compact = maxHeight < 620.dp || maxWidth < 360.dp || fontScale > 1.15f
-        val scrollState = rememberScrollState()
         var entered by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { entered = true }
         val enterAlpha by animateFloatAsState(
@@ -1488,8 +1507,9 @@ internal fun AdaptiveTabContent(content: @Composable ColumnScope.(compact: Boole
         )
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .widthIn(max = 1200.dp)
+                .fillMaxSize()
+                .align(Alignment.TopCenter)
                 .graphicsLayer {
                     alpha = enterAlpha
                     translationY = enterOffset
@@ -1508,11 +1528,13 @@ internal fun AdaptiveTabContent(content: @Composable ColumnScope.(compact: Boole
 }
 
 @Composable
-internal fun AdaptiveLazyTabContent(content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit) {
+internal fun AdaptiveLazyTabContent(state: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+    content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 360.dp || maxHeight < 620.dp || LocalDensity.current.fontScale > 1.15f
         androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier.fillMaxSize().widthIn(max = 1200.dp).align(Alignment.TopCenter),
+            state = state,
+            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().align(Alignment.TopCenter),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compact) 12.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
         ) { content(compact) }

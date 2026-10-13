@@ -80,31 +80,40 @@ internal fun StatusTab(
     val openUrl = rememberOpenStatusUrl(onOpenFailed)
     val feedback = LocalAppFeedback.current
     var showCodex by rememberSaveable { mutableStateOf(false) }
-    AdaptiveTabContent { compact ->
-        Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (com.lamuier.agenT.util.AssistantPresentation.useTwoColumns(maxWidth.value, androidx.compose.ui.platform.LocalDensity.current.fontScale)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatusOverviewTile("Cursor", status, loading, Modifier.weight(1f))
-                    StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.weight(1f))
-                }
-            } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
-                StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
+    val cursorScroll = androidx.compose.foundation.rememberScrollState()
+    val codexScroll = androidx.compose.foundation.rememberScrollState()
+    val cursorPane: @Composable () -> Unit = { AdaptiveTabContent(scrollState = cursorScroll) { compact ->
+        StatusProviderPane(false, status, loading, refreshing, error, compact, onRetry, openUrl)
+    } }
+    val codexPane: @Composable () -> Unit = { AdaptiveTabContent(scrollState = codexScroll) { compact ->
+        StatusProviderPane(true, codexState.serviceStatus, codexState.loadingStatus,
+            codexState.refreshingStatus, codexState.statusError, compact, onRetry, openUrl)
+    } }
+    AdaptivePaneLayout(primary = cursorPane, secondary = codexPane, single = {
+        AdaptiveTabContent(scrollState = if (showCodex) codexScroll else cursorScroll) { compact ->
+            Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
+            StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
+            StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !showCodex, onClick = { if (showCodex) { showCodex = false; feedback.selection() } }, label = { Text("Cursor") })
+                FilterChip(selected = showCodex, onClick = { if (!showCodex) { showCodex = true; feedback.selection() } }, label = { Text("Codex / OpenAI") })
             }
+            StatusProviderPane(showCodex, if (showCodex) codexState.serviceStatus else status,
+                if (showCodex) codexState.loadingStatus else loading,
+                if (showCodex) codexState.refreshingStatus else refreshing,
+                if (showCodex) codexState.statusError else error, compact, onRetry, openUrl)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !showCodex, onClick = { if (showCodex) { showCodex = false; feedback.selection() } }, label = { Text("Cursor") })
-            FilterChip(selected = showCodex, onClick = { if (!showCodex) { showCodex = true; feedback.selection() } }, label = { Text("Codex / OpenAI") })
-        }
-        val selectedStatus = if (showCodex) codexState.serviceStatus else status
-        val selectedLoading = if (showCodex) codexState.loadingStatus else loading
-        val selectedRefreshing = if (showCodex) codexState.refreshingStatus else refreshing
-        val selectedError = if (showCodex) codexState.statusError else error
+    })
+}
+
+@Composable
+private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, selectedLoading: Boolean,
+    selectedRefreshing: Boolean, selectedError: String?, compact: Boolean,
+    onRetry: () -> Unit, openUrl: (String) -> Unit) {
         SectionHeading(
             icon = Icons.Outlined.Code,
-            title = stringResource(if (showCodex) R.string.codex_official_status_title else R.string.agent_service_cursor_title),
-            supporting = stringResource(if (showCodex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
+            title = stringResource(if (codex) R.string.codex_official_status_title else R.string.agent_service_cursor_title),
+            supporting = stringResource(if (codex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
         )
         when {
             selectedStatus == null && selectedLoading -> ProviderStateCard(
@@ -127,7 +136,6 @@ internal fun StatusTab(
                 compact = compact,
             )
         }
-    }
 }
 
 @Composable
@@ -179,17 +187,20 @@ private fun ServiceStatusContent(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             shadowElevation = 1.dp,
         ) {
-            Column(modifier = Modifier.padding(if (compact) 6.dp else 8.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(if (compact) 6.dp else 8.dp)) {
                 val components = status.components.sortedBy {
                     if (it.name.contains("Codex", true) || it.name == "CLI" || it.name == "VS Code extension") 0 else 1
                 }
-                components.forEachIndexed { index, component ->
-                    ComponentRow(
-                        name = component.name,
-                        status = component.status,
-                    )
-                    if (index < components.lastIndex) {
-                        Spacer(Modifier.height(2.dp))
+                val columns = if (maxWidth >= (480 * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp) 2 else 1
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    components.chunked(columns).forEach { row ->
+                        if (columns == 1) ComponentRow(row.first().name, row.first().status)
+                        else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { component ->
+                                ComponentTile(component.name, component.status, Modifier.weight(1f))
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -532,6 +543,22 @@ private fun rememberOpenStatusUrl(onOpenFailed: (String) -> Unit): (String) -> U
         { url ->
             if (!CursorCustomTabs.open(context, url, toolbarColor)) {
                 onOpenFailed(resources.getString(R.string.tasks_open_page_failed))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComponentTile(name: String, status: ComponentStatus, modifier: Modifier) {
+    val color = componentColor(status)
+    val label = StatusPresentation.componentLabel(status, androidx.compose.ui.platform.LocalResources.current)
+    Surface(modifier.semantics { contentDescription = "$name $label" }, shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+                Text(label, style = MaterialTheme.typography.labelMedium, color = color)
             }
         }
     }

@@ -1,4 +1,5 @@
 """Build safety and portability checks; no Android SDK or signing assets needed."""
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -154,13 +155,68 @@ class BuildSupportTest(unittest.TestCase):
 
     def test_existing_artifacts_and_traversal_suffix_are_rejected(self):
         (self.root / "dist").mkdir()
-        existing = self.root / "dist/agenT-v1.0.1-release.apk"
+        existing = self.root / "dist/1.0.1.apk"
         existing.write_bytes(b"original published APK")
         with self.assertRaises(build.BuildError):
-            build.ensure_destination(self.root, "agenT-v1.0.1")
+            build.ensure_destination(self.root, "1.0.1")
         self.assertEqual(existing.read_bytes(), b"original published APK")
         with self.assertRaises(build.BuildError):
             build.artifact_base({"versionName": "1.0.1"}, "../../outside")
+
+    def test_timestamped_and_official_names_use_current_version_and_beijing_time(self):
+        instant = datetime(2026, 10, 12, 20, 14, 15, tzinfo=timezone.utc)
+        config = {"versionName": "1.1.0"}
+        self.assertEqual(build.artifact_base(config, started_at=instant), "1.1.0_20261013_041415")
+        self.assertEqual(build.artifact_base(config, "uiux", started_at=instant), "1.1.0_20261013_041415_uiux")
+        self.assertEqual(build.artifact_base(config, official_release=True, started_at=instant), "1.1.0")
+        with self.assertRaises(build.BuildError):
+            build.artifact_base(config, "uiux", official_release=True)
+        with self.assertRaises(build.BuildError):
+            build.artifact_base({"versionName": "../../outside"}, started_at=instant)
+        with self.assertRaises(build.BuildError):
+            build.main(["--official-release"], self.root)
+
+    def test_release_export_uses_consistent_names_and_keeps_existing_artifacts(self):
+        apk = self.root / "app-release.apk"
+        apk.write_bytes(b"verified APK fixture")
+        mapping = self.root / "app/build/outputs/mapping/release/mapping.txt"
+        mapping.parent.mkdir(parents=True)
+        mapping.write_text("fixture mapping")
+        config = {"applicationId": "com.lamuier.agenT", "versionName": "1.1.0", "versionCode": 3,
+                  "minSdk": 26, "targetSdk": 37}
+        instant = datetime(2026, 10, 12, 20, 14, 15, tzinfo=timezone.utc)
+        base = build.artifact_base(config, started_at=instant)
+        with patch("builtins.print"):
+            build.export_release(self.root, apk, config, self.cert, base, [], True, True, instant)
+        exported = self.root / "dist" / (base + ".apk")
+        checksum = hashlib.sha256(exported.read_bytes()).hexdigest().upper()
+        self.assertEqual((self.root / "dist" / (base + ".sha256")).read_text(),
+                         checksum + "  " + exported.name + "\n")
+        report = build.read_json(self.root / "dist" / (base + "-build.json"))
+        self.assertEqual(report["apk"], str(exported))
+        self.assertEqual(report["buildStartedAt"], instant.isoformat())
+        self.assertEqual(report["artifactTimeZone"], "Asia/Shanghai")
+        self.assertFalse(report["officialRelease"])
+        with self.assertRaises(build.BuildError):
+            build.export_release(self.root, apk, config, self.cert, base, [], True, True, instant)
+        self.assertEqual(exported.read_bytes(), b"verified APK fixture")
+        with patch("builtins.print"):
+            build.export_release(self.root, apk, config, self.cert, "1.1.0", [], True, True,
+                                 instant, official_release=True)
+        official = self.root / "dist/1.1.0.apk"
+        self.assertTrue(official.is_file())
+        self.assertTrue(build.read_json(self.root / "dist/1.1.0-build.json")["officialRelease"])
+        self.assertTrue(exported.is_file())
+
+    def test_windows_naming_policy_preserves_history_and_uses_same_time_zone(self):
+        script = (Path(__file__).resolve().parents[2] / "build.ps1").read_text(encoding="utf-8-sig")
+        for required in ('[switch]$OfficialRelease', '[string]$ArtifactSuffix',
+                         '[DateTimeOffset]::UtcNow', 'ToOffset([TimeSpan]::FromHours(8))',
+                         '"yyyyMMdd_HHmmss"', '"$artifactBaseName.apk"', '"$artifactBaseName.sha256"',
+                         'Test-ReleaseDestination -Dist $dist -Base $artifactBaseName'):
+            self.assertIn(required, script)
+        self.assertNotIn('Remove-Item -LiteralPath $stale.FullName', script)
+        self.assertNotIn('Copy-Item -LiteralPath $apk -Destination $destination -Force', script)
 
     def test_elf_load_segments_require_16k_alignment(self):
         data = bytearray(120)

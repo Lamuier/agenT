@@ -24,10 +24,10 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 
 ## 数据去向
 
-- 公共重置公告 / 观测从第三方 `https://codex-resets.com/api/v1/resets` 只读获取，无需密钥，不携带 Token、Account ID 或个人记录。进入重置页获取并按需刷新，解析后的公开字段明文缓存在应用私有目录，最多 500 条。公共记录不计入个人次数；删除 Codex 凭据不删除无关的公共缓存，卸载会清除。来源链接可由系统浏览器打开 `codex-resets.com` 或校验后的 `x.com` / `twitter.com` 原帖，不附带应用 Token。
+- 公共重置公告 / 观测从第三方 `https://codex-resets.com/api/v1/resets` 只读获取，无需密钥，不携带 Token、Account ID 或个人记录。应用启动时获取并按需刷新，解析后的公开字段明文缓存在应用私有目录，最多 500 条。页面、统计和热力图展示 API 标记为 `regular` 的普通重置与 `banked` 券发放记录，分别计数；旧版可能缺少券发放的缓存会重新完整获取，失败时保留已有缓存；公共记录不计入个人次数；删除 Codex 凭据不删除无关的公共缓存，卸载会清除。来源链接可由系统浏览器打开 `codex-resets.com` 或校验后的 `x.com` / `twitter.com` 原帖，不附带应用 Token。
 - 重置提醒仅在本机保存已发送事件的不可逆标识用于去重；不上传提醒记录，不因到点自动兑换官方重置券。
-- Codex 重置记录（时间、分类、来源、次数、备注、订阅月起始日及窗口观察）使用 Android Keystore AES-GCM 加密保存在应用私有目录，最多保留 500 条，按用户 / 工作区的不可逆摘要隔离，不保存 Token，不上传。重置券缓存只保存解析后的字段，不保存原始响应。
-- 本页不会执行或兑换重置；用户手动登记不发送给 OpenAI。删除 Codex 凭据同时删除全部本机 Codex 重置记录，卸载也会清除记录；记录不参与备份或设备迁移。
+- 旧 Codex 个人重置历史和订阅月起始日继续使用 Android Keystore AES-GCM 加密保存在应用私有目录，旧历史最多 500 条，按用户 / 工作区的不可逆摘要隔离，不保存 Token，不上传。用量同步只覆盖最新观察快照用于窗口提醒，不再追加到期刷新、余额或券事件历史；旧个人历史不再展示。重置券用量缓存只保存解析后的字段，不保存原始响应。
+- 本页不会执行或兑换重置，也不提供手动登记。删除 Codex 凭据同时删除全部本机 Codex 重置记录，卸载也会清除记录；记录不参与备份或设备迁移。
 
 - 用量与服务状态请求指向官方域名：`api2.cursor.sh`、`cursor.com`、`status.cursor.com`、`status.openai.com` 与 `chatgpt.com`；公共重置记录匿名请求第三方 `codex-resets.com`
 - Codex 官方组件状态与相关事件来自 `status.openai.com` 的公开 JSON，仅用于状态页、小组件和离线回显，不携带 Token 或 Account ID；公开缓存不含凭据。
@@ -42,6 +42,7 @@ agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何�
 - Token 与用量缓存经 Android Keystore 管理的不可导出密钥加密后落盘；硬件保护取决于设备，不保证所有设备使用硬件密钥。公开服务状态缓存不含凭据，明文保存在应用私有目录
 - 凭据所在的 SharedPreferences 不参与云备份和设备迁移（`allowBackup=false`，`fullBackupContent=false`，并在 `data_extraction_rules.xml` 中排除 `sharedpref`）。换机或云恢复不会带走 Token
 - Token 明文展示期间自动启用 `FLAG_SECURE`，阻止截屏 / 录屏 / 最近任务缩略图捕获
+- 未保存的 Token 编辑草稿仅暂存在内存，供折叠或旋转导致的配置重建继续编辑；关闭表单、切换服务或凭据更新时清除，不写入系统保存状态、磁盘或日志。
 - 复制 Token 时（Android 13+）剪贴板标记为敏感内容，系统预览仅显示占位
 
 ## 权限用途

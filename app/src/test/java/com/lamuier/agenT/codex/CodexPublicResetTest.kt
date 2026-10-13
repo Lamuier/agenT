@@ -13,9 +13,10 @@ class CodexPublicResetTest {
     private fun payload(rows: List<JSONObject> = listOf(row()), more: Boolean = false, cursor: Any = JSONObject.NULL): String =
         JSONObject().put("data", org.json.JSONArray(rows)).put("pagination", JSONObject().put("has_more", more).put("next_cursor", cursor))
             .put("meta", JSONObject().put("api_version", "v1").put("generated_at", "2026-10-08T05:00:00Z")).toString()
-    @Test fun parsesBothAnnouncementTypesAndObservedSourcesWithUtcTimestamps() {
+    @Test fun keepsBothApiResetTypesWithOriginalSourcesAndUtcTimestamps() {
         val page = CodexPublicResetJson.page(payload(listOf(row(), row("two", "banked"), row("three", source = "observed"))))
         assertEquals(listOf("regular", "banked", "regular"), page.events.map { it.type })
+        assertEquals(listOf("one", "two", "three"), page.events.map { it.id })
         assertEquals(java.time.Instant.parse("2026-10-08T03:44:55Z").epochSecond, page.events.first().at)
         assertEquals("observed", page.events.last().sourceType)
         assertFalse(page.hasMore)
@@ -47,21 +48,42 @@ class CodexPublicResetTest {
         assertNull(CodexPublicResetJson.page(payload(listOf(row().put("source", JSONObject().put("type", "observed")
             .put("url", "https://evil.test"))))).events.single().url)
     }
-    @Test fun publicTimelineMergesWithoutMutatingPersonalLedgerAndFiltersByPeriodAndSource() {
-        val local = CodexResetEvent("mine", CodexResetKind.ManualUse, CodexResetSource.Registered, 100)
-        val public = CodexPublicReset("public", "banked", 150, "Public credit grant.", "observed", null, null)
-        val ledger = CodexResetLedger(events = listOf(local))
+    @Test fun timelineCountsBothApiTypesWithExclusivePeriodBounds() {
+        val regular = CodexPublicReset("regular", "regular", 150, "API regular reset.", "observed", null, null)
+        val banked = regular.copy(id = "credit", type = "banked")
         val range = CodexResetRange(90, 200)
-        val merged = CodexResetTimeline.entries(ledger.events, listOf(public, public, public.copy(id = "outside", at = 200)),
-            range, CodexResetTimelineSource.All, null)
-        assertEquals(listOf(150L, 100L), merged.map { it.at })
-        assertEquals(1, ledger.events.sumOf { it.count })
-        assertEquals(1, CodexResetTimeline.entries(ledger.events, listOf(public), range, CodexResetTimelineSource.Local, null).size)
-        assertEquals(public, CodexResetTimeline.entries(ledger.events, listOf(public), range, CodexResetTimelineSource.Public, null).single().public)
-        assertEquals(local, CodexResetTimeline.entries(ledger.events, listOf(public), range, CodexResetTimelineSource.All, CodexResetKind.ManualUse).single().local)
-        assertTrue(CodexResetTimeline.entries(ledger.events, listOf(public), null, CodexResetTimelineSource.All, null).isEmpty())
-        assertEquals(2, CodexResetTimeline.entries(ledger.events, listOf(public, public.copy(id = "older", at = 50)), range,
-            CodexResetTimelineSource.Public, null, allPublicHistory = true).size)
+        val entries = CodexResetTimeline.entries(listOf(regular, regular, banked,
+            regular.copy(id = "outside", at = 200), regular.copy(id = "start", at = 90)), range)
+        assertEquals(listOf(150L, 150L, 90L), entries.map { it.at })
+        assertEquals(2, entries.count { it.public.type == "regular" })
+        assertEquals(1, entries.count { it.public.type == "banked" })
+        assertTrue(CodexResetTimeline.entries(listOf(regular), null).isEmpty())
+        assertEquals(3, CodexResetTimeline.entries(listOf(regular, banked, regular.copy(id = "older", at = 50)), range,
+            allPublicHistory = true).size)
+    }
+    @Test fun creditOnlyPageDoesNotStopPagination() {
+        val page = CodexPublicResetJson.page(payload(listOf(row(kind = "banked")), true, "next_page"))
+        assertEquals(listOf("banked"), page.events.map { it.type })
+        assertTrue(page.hasMore)
+        assertEquals("next_page", page.cursor)
+    }
+    @Test fun legacyCachesRemainReadableButRequireAFullFetchBeforeEtagReuse() {
+        val snapshot = CodexPublicResetSnapshot(emptyList(), 12345)
+        val legacy = JSONObject(CodexPublicResetJson.encode(snapshot)).put("schema", 1).put("events",
+            org.json.JSONArray(listOf(row(), row("credit", "banked")))).toString()
+        assertEquals(listOf("one", "credit"), CodexPublicResetJson.decode(legacy).events.map { it.id })
+        assertFalse(CodexPublicResetJson.isCurrentCache(legacy))
+        val regularOnly = JSONObject(legacy).put("events", org.json.JSONArray(listOf(row()))).toString()
+        assertFalse(CodexPublicResetJson.isCurrentCache(regularOnly))
+        assertEquals(listOf("one"), CodexPublicResetJson.decode(regularOnly).events.map { it.id })
+        val mixed = snapshot.copy(events = listOf(
+            CodexPublicReset("regular", "regular", 150, "", "observed", null, null),
+            CodexPublicReset("banked", "banked", 150, "", "observed", null, null)))
+        val encoded = CodexPublicResetJson.encode(mixed)
+        assertTrue(CodexPublicResetJson.isCurrentCache(encoded))
+        assertEquals(mixed.events, CodexPublicResetJson.decode(encoded).events)
+        assertFalse(CodexPublicResetJson.isCurrentCache(null))
+        assertFalse(CodexPublicResetJson.isCurrentCache("bad json"))
     }
     @Test fun publicClientHasNoCredentialOrWriteEndpointDependencies() {
         val file = listOf(java.io.File("src/main"), java.io.File("app/src/main")).first { it.isDirectory }

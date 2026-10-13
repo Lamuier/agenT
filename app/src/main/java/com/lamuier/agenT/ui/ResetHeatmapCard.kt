@@ -63,10 +63,8 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
             DatePicker(state = datePicker)
         }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val colors = mapOf(
-        ResetHeatmapKind.Regular to Color(if (dark) 0xFFFF906F else 0xFFEF7655),
-        ResetHeatmapKind.Banked to Color(if (dark) 0xFFE6B18C else 0xFFF5BA8E),
-        ResetHeatmapKind.Other to Color(if (dark) 0xFF91B6F0 else 0xFF7EA3D9))
+    val colors = mapOf(ResetHeatmapKind.Regular to Color(if (dark) 0xFFFF906F else 0xFFEF7655),
+        ResetHeatmapKind.Banked to Color(if (dark) 0xFFE6B18C else 0xFFF5BA8E))
     val empty = Color(if (dark) 0xFF343943 else 0xFFECE3D0)
     val outline = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
     val selectedColor = MaterialTheme.colorScheme.primary
@@ -88,11 +86,8 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(ResetHeatmapKind.Regular to R.string.reset_heatmap_regular,
-                    ResetHeatmapKind.Banked to R.string.reset_heatmap_banked,
-                    ResetHeatmapKind.Other to R.string.reset_heatmap_other).forEach { (kind, label) ->
-                    HeatmapLegend(colors.getValue(kind), stringResource(label))
-                }
+                HeatmapLegend(colors.getValue(ResetHeatmapKind.Regular), stringResource(R.string.reset_heatmap_regular))
+                HeatmapLegend(colors.getValue(ResetHeatmapKind.Banked), stringResource(R.string.reset_heatmap_banked))
                 HeatmapLegend(empty, stringResource(R.string.reset_heatmap_no_record))
             }
             OutlinedButton(onClick = { choosingDate = true }, modifier = Modifier.heightIn(min = 48.dp)) {

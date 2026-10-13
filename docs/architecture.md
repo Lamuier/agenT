@@ -8,7 +8,7 @@ agenT 是单模块原生 Android 应用，使用 Kotlin、Jetpack Compose 与 Ma
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.1.0`，`versionCode=3`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.2.0`，`versionCode=4`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -33,7 +33,7 @@ Kotlin 根包是 `app/src/main/java/com/lamuier/agenT`：
 | 位置 | 职责与主要入口 |
 | --- | --- |
 | 根包 | `AgenTApplication` 管理应用协程、语言迁移和小组件预览；`MainActivity` 管理主题、通知权限及外部跳转 |
-| `ui/`、`ui/theme/` | `AgenTApp` 组合页面和安全面板；`DashboardScreen` / 五个页签展示状态；`SettingsSheet` 分类设置；主题、动效、折痕与触感集中维护 |
+| `ui/`、`ui/theme/` | `AgenTApp` 组合页面和安全面板；`DashboardScreen` / 五个页签展示状态；`SettingsSheet` 分类设置；主题、动效、折痕与触感集中维护；折叠分区和内存 Token 草稿见 [折叠屏适配](foldables.md) |
 | `data/` | Cursor 仓库、加密账号 / 用量 / 任务缓存、双服务公开状态仓库，以及主题、导航、通知和触感偏好 |
 | `network/` | 固定 Cursor / 官方状态端点的 HTTP 客户端、JSON 解析、用量组装与 Codex 组件范围筛选 |
 | `codex/` | Codex 凭据、额度、刷新策略、重置券与本机历史、匿名公共重置记录和日历分桶 |
@@ -83,7 +83,9 @@ flowchart LR
 
 应用内外链由 [CursorCustomTabs](../app/src/main/java/com/lamuier/agenT/util/CursorCustomTabs.kt) 调用允许列表校验，再交给系统浏览器；浏览器自己的登录态不等于应用 Token。公共重置链接和官方状态链接有独立校验规则。详细规则应直接维护在相应源码与测试，避免文档复制 URL 正则后失去同步。
 
-重置历史区分官方字段、本机观察和手动登记，按可识别的用户 / 工作区隔离，最多 500 条；公共缓存同样最多 500 条。公共记录不计入个人次数，删除 Codex 凭据会删除个人重置历史。重置页不执行兑换。
+重置页、概览计数和热力图仅使用公共 API 的 `regular` 普通重置与 `banked` 重置券发放记录，分别计数，不将发放记录数当成券数量或余额。来源仍区分原帖公告与第三方观测，以 API 分类为准，不按文案或余额变化猜测。新响应、缓存、统计及日历都保留这两类；按 API 分页信息继续查询，接口缺失不显示为已确认零次。缓存 schema 升为 2，兼容读取 schema 1；旧缓存可能筛掉过 `banked`，因此首次刷新绕过新鲜度复用且不发送旧 ETag，完整成功后才写入新缓存。公共查询最多五页，保留分页、ETag 和限流退避。
+
+用量同步只覆盖保存最新窗口观察快照，供独立的窗口重置提醒比较；不再追加窗口到期刷新、提前变化、余额或券事件历史。旧个人历史保持加密存储兼容但不展示，订阅月起始日继续复用；删除 Codex 凭据会删除全部私有历史与观察快照。公共缓存最多 500 条，不计入账号使用次数，重置页不执行兑换。
 
 当前仅支持**重置历史热力图**。应用没有每日使用量采集器、app-server 客户端或导入桥接；限额百分比与重置时间不能推算成真实每日 Token 使用量。缺失与失败也不能写成零。
 

@@ -33,16 +33,17 @@ class CodexResetHeatmapTest {
         assertEquals(1, map.days.size)
         assertEquals(2, map.days.single().entries.size)
     }
-    @Test fun mixedTypesArePreservedAndPublicDuplicatesDoNotDoubleCount() {
+    @Test fun regularResetsAndCreditGrantsShareTheDayWithoutDuplicateCounts() {
         val regular = public("same-id", "2026-10-08T12:00:00Z")
         val banked = public("banked", "2026-10-08T10:00:00Z", "banked")
-        val local = CodexResetTimelineEntry(banked.at, local = CodexResetEvent("same-id", CodexResetKind.BalanceChanged,
-            CodexResetSource.Observed, banked.at))
+        val unknown = public("unknown", "2026-10-08T09:00:00Z", "scheduled")
         val day = LocalDate.parse("2026-10-08")
-        val cells = CodexResetHeatmap.build(listOf(regular, regular, banked, local), day, day, ZoneOffset.UTC).days.single()
-        assertEquals(3, cells.entries.size)
-        assertEquals(setOf(ResetHeatmapKind.Regular, ResetHeatmapKind.Banked, ResetHeatmapKind.Other), cells.kinds)
-        assertEquals(regular.at, cells.entries.first().at)
+        val cells = CodexResetHeatmap.build(listOf(regular, regular, banked, banked, unknown), day, day, ZoneOffset.UTC).days.single()
+        assertEquals(listOf(regular, banked), cells.entries)
+        assertEquals(setOf(ResetHeatmapKind.Regular, ResetHeatmapKind.Banked), cells.kinds)
+        val grantOnly = CodexResetHeatmap.build(listOf(banked), day, day, ZoneOffset.UTC).days.single()
+        assertEquals(listOf(banked), grantOnly.entries)
+        assertEquals(setOf(ResetHeatmapKind.Banked), grantOnly.kinds)
     }
     @Test fun absentRecordsAreNotInventedAndEntriesOutsideTheWindowAreIgnored() {
         val from = LocalDate.parse("2026-10-01")

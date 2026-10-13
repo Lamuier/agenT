@@ -150,7 +150,15 @@ internal fun SettingsSheet(
         if (onSectionChange != null) onSectionChange(id) else localSection = id
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 840.dp && androidx.compose.ui.platform.LocalDensity.current.fontScale <= 1.5f
+        val density = LocalDensity.current
+        val folds = LocalWindowFolds.current
+        val wide = with(density) {
+            paneLayout(androidx.compose.ui.geometry.Rect(0f, 0f, maxWidth.toPx(), (maxHeight - 64.dp).toPx()), folds,
+                (320f * fontScale.coerceAtLeast(1f)).dp.toPx(), (160f * fontScale.coerceAtLeast(1f)).dp.toPx(),
+                16.dp.toPx(), maxWidth >= 760.dp || folds.isNotEmpty()).paired
+        }
+        val categoriesScroll = rememberScrollState()
+        val detailScroll = rememberScrollState()
         val current = SettingsSection.entries.firstOrNull { it.name == currentId }
             ?: if (wide) SettingsSection.Connections else null
         fun back() { if (!wide && current != null) select(null) else onDismiss() }
@@ -169,20 +177,21 @@ internal fun SettingsSheet(
             },
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
+                FoldSafeAppBar {
                 TopAppBar(
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     title = { Text(stringResource(if (wide || current == null) R.string.settings_title else current.title)) },
                     navigationIcon = { IconButton(onClick = ::back) {
                         Icon(androidx.compose.ui.res.painterResource(R.drawable.symbol_arrow_back), stringResource(R.string.action_back))
                     } },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
+                }
             },
         ) { padding ->
-            Row(Modifier.fillMaxSize().padding(padding)) {
-                if (wide || current == null) {
-                    Column(Modifier.widthIn(max = if (wide) 280.dp else 640.dp)
-                        .then(if (wide) Modifier.width(280.dp) else Modifier.weight(1f))
-                        .verticalScroll(rememberScrollState()).padding(16.dp),
+            val categories: @Composable () -> Unit = {
+                    Column(Modifier.fillMaxSize()
+                        .verticalScroll(categoriesScroll).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(stringResource(R.string.settings_description), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
@@ -196,12 +205,11 @@ internal fun SettingsSheet(
                             }), item.icon, selected = current == item, onClick = { if (current != item) { feedback.selection(); select(item.name) } })
                         }
                     }
-                }
-                if (wide) VerticalDivider()
-                if (current != null) {
-                    Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
-                        .imePadding().padding(20.dp).widthIn(max = 800.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        when (current) {
+            }
+            val detail: @Composable () -> Unit = {
+                    Column(Modifier.widthIn(max = 840.dp).fillMaxSize().verticalScroll(detailScroll)
+                        .imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        when (current ?: SettingsSection.Connections) {
                             SettingsSection.Connections -> {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.settings_connections_title))
@@ -408,8 +416,11 @@ internal fun SettingsSheet(
                             }
                         }
                     }
-                }
             }
+            AdaptivePaneLayout(modifier = Modifier.padding(padding), allowPair = wide,
+                minPaneWidthDp = 240f, preferredPrimaryWidthDp = 280f, maxContentWidthDp = 1440f,
+                single = { if (current == null) categories() else detail() },
+                primary = categories, secondary = detail)
         }
     }
 }

@@ -14,6 +14,12 @@ internal data class CodexPublicResetPage(val events: List<CodexPublicReset>, val
 
 internal object CodexPublicResetJson {
     const val MAX_EVENTS = 500
+    private const val CACHE_SCHEMA = 2
+    fun supported(events: List<CodexPublicReset>): List<CodexPublicReset> =
+        events.filter { it.type in listOf("regular", "banked") }.distinctBy { it.id }
+    fun isCurrentCache(raw: String?): Boolean = runCatching {
+        raw != null && JSONObject(raw).getInt("schema") == CACHE_SCHEMA
+    }.getOrDefault(false)
     private fun string(root: JSONObject, name: String, max: Int): String = (root.opt(name) as? String)
         ?.takeIf { it.isNotBlank() && it.length <= max } ?: error("Invalid $name")
     private fun event(row: JSONObject): CodexPublicReset {
@@ -35,7 +41,7 @@ internal object CodexPublicResetJson {
         Instant.parse(meta.getString("generated_at"))
         val rows = root.getJSONArray("data")
         require(rows.length() <= 100)
-        val events = (0 until rows.length()).map { event(rows.getJSONObject(it)) }.distinctBy { it.id }
+        val events = supported((0 until rows.length()).map { event(rows.getJSONObject(it)) })
         val pagination = root.getJSONObject("pagination")
         val more = pagination.get("has_more") as? Boolean ?: error("Invalid pagination")
         val cursor = (pagination.opt("next_cursor") as? String)?.also { require(validCursor(it)) }
@@ -43,20 +49,20 @@ internal object CodexPublicResetJson {
         return CodexPublicResetPage(events, more, cursor)
     }
     fun validCursor(value: String) = value.length in 1..1024 && value.matches(Regex("[A-Za-z0-9_-]+"))
-    fun encode(snapshot: CodexPublicResetSnapshot): String = JSONObject().put("schema", 1)
+    fun encode(snapshot: CodexPublicResetSnapshot): String = JSONObject().put("schema", CACHE_SCHEMA)
         .put("fetched_at", snapshot.fetchedAt).put("truncated", snapshot.truncated)
-        .put("events", JSONArray().apply { snapshot.events.take(MAX_EVENTS).forEach { row ->
+        .put("events", JSONArray().apply { supported(snapshot.events).take(MAX_EVENTS).forEach { row ->
             put(JSONObject().put("id", row.id).put("reset_type", row.type)
                 .put("announced_at", Instant.ofEpochSecond(row.at).toString()).put("text", row.text)
                 .put("source", JSONObject().put("type", row.sourceType).put("author", row.author).put("url", row.url)))
         } }).toString()
     fun decode(raw: String): CodexPublicResetSnapshot {
         val root = JSONObject(raw)
-        require(root.getInt("schema") == 1)
+        require(root.getInt("schema") in listOf(1, CACHE_SCHEMA))
         val rows = root.getJSONArray("events")
         require(rows.length() <= MAX_EVENTS)
         val fetched = root.getLong("fetched_at").also { require(it > 0) }
-        return CodexPublicResetSnapshot((0 until rows.length()).map { event(rows.getJSONObject(it)) }.distinctBy { it.id },
+        return CodexPublicResetSnapshot(supported((0 until rows.length()).map { event(rows.getJSONObject(it)) }),
             fetched, root.optBoolean("truncated"), fromCache = true)
     }
 }
@@ -75,18 +81,13 @@ internal object CodexPublicResetLinks {
     }.getOrDefault(false)
 }
 
-internal data class CodexResetTimelineEntry(val at: Long, val local: CodexResetEvent? = null, val public: CodexPublicReset? = null)
-internal enum class CodexResetTimelineSource { All, Local, Public }
+internal data class CodexResetTimelineEntry(val at: Long, val public: CodexPublicReset)
 internal object CodexResetTimeline {
-    fun entries(local: List<CodexResetEvent>, public: List<CodexPublicReset>, range: CodexResetRange?,
-        source: CodexResetTimelineSource, kind: CodexResetKind?, allPublicHistory: Boolean = false): List<CodexResetTimelineEntry> {
+    fun entries(public: List<CodexPublicReset>, range: CodexResetRange?,
+        allPublicHistory: Boolean = false): List<CodexResetTimelineEntry> {
         if (range == null && !allPublicHistory) return emptyList()
         fun inRange(at: Long) = range != null && at >= range.start && at < range.end
-        return buildList {
-            if (source != CodexResetTimelineSource.Public) local.filter { inRange(it.at) && (kind == null || it.kind == kind) }
-                .forEach { add(CodexResetTimelineEntry(it.at, local = it)) }
-            if (source != CodexResetTimelineSource.Local && kind == null) public.distinctBy { it.id }.filter { allPublicHistory || inRange(it.at) }
-                .forEach { add(CodexResetTimelineEntry(it.at, public = it)) }
-        }.sortedByDescending { it.at }
+        return CodexPublicResetJson.supported(public).filter { allPublicHistory || inRange(it.at) }
+            .map { CodexResetTimelineEntry(it.at, it) }.sortedByDescending { it.at }
     }
 }
