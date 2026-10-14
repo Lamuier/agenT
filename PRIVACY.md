@@ -2,76 +2,103 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-11**
+**生效日期：2026-10-14**
 
-agenT 是一款本地优先的 Cursor 与 Codex 用量应用：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
+agenT 在本机展示 Cursor 与 Codex 的用量、任务、重置和服务状态。应用没有账号体系或自建服务端，不内置第三方统计、广告或崩溃收集 SDK。
 
 ## 我们收集哪些数据
 
-**开发者不收集个人数据。** 账号凭据和个人记录保留在本机。官方接口及下述第三方公共 API 提供方可接触正常网络请求中的 IP 地址、User-Agent 等网络信息。
+**开发者不收集个人数据。** 应用在本机处理凭据、缓存和观察记录，并将认证凭据发送给对应的官方服务以查询数据。官方服务和第三方公共 API 提供方可接触请求中的 IP 地址、User-Agent 等正常网络信息，其数据处理受各自政策约束。
 
 ## 应用处理的数据
 
-| 数据 | 用途 | 存储方式 | 离开设备的去向 |
+| 数据 | 用途 | 存储方式 | 应用发送或上传的内容 |
 | --- | --- | --- | --- |
-| Cursor Access Token | 调用 Cursor 官方接口查询用量与云端任务列表 | AndroidKeyStore（AES-GCM）加密后存于应用私有目录 | 仅在请求 Cursor 官方接口时作为认证凭据发出 |
-| Codex / ChatGPT OAuth Access Token 与可选 Account ID | 调用 ChatGPT 官方接口查询 Codex 限流窗口 | AndroidKeyStore（AES-GCM）加密后存于应用私有目录 | 仅在请求 `chatgpt.com/backend-api/wham/usage` 时作为认证凭据发出 |
-| 账号别名 | 本地标识账号 | AndroidKeyStore（AES-GCM）加密存储 | 不离开设备 |
-| 用量摘要（额度、百分比、Credits、按模型 Token、Grok Bot 周额度等数字） | 界面展示、小组件、通知 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
-| 云端任务摘要（任务名、状态、来源、分支、PR 链接、增删行数等） | 「任务」页展示 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
-| Cursor / Codex 服务状态（组件名、可用状态、事件摘要） | 「状态」页与桌面小组件展示 | 应用私有目录明文缓存最近一次成功结果（公开信息，不含 Token） | 仅请求相应官方公开状态接口，不携带 Token 或 Account ID |
-| Codex 用量摘要（套餐、百分比、窗口与重置时间） | Codex 概览、用量与离线回显 | AndroidKeyStore（AES-GCM）加密缓存 | 不离开设备（缓存为解析后的摘要，不含原始响应） |
+| Cursor Access Token | 查询 Cursor 账号、用量与云端任务列表 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证凭据发往 Cursor 官方接口 |
+| Codex / ChatGPT OAuth Access Token 与可选 Account ID | 查询 Codex 限流窗口 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证信息发往 `chatgpt.com/backend-api/wham/usage` |
+| 账号别名 | 本地标识账号 | Android Keystore AES-GCM 加密 | 不上传 |
+| Cursor / Codex 用量摘要（套餐、额度、百分比、窗口与重置时间、Credits、按模型 Token、Grok Bot 周额度等） | 界面、小组件、通知与离线回显 | Android Keystore AES-GCM 加密缓存，只保存解析后的摘要 | 不上传摘要或原始响应 |
+| 本机用量观察（解析后的数字、UTC 时间戳、周期边界与重置时间） | 观察趋势与条件节奏估算 | Android Keystore AES-GCM 加密，保存在禁止备份目录 | 不上传；采集控制与保存期限见[本机用量观察](#本机用量观察) |
+| 云端任务摘要及本机观察 / 确认状态（任务名、状态、来源、分支、PR 链接、增删行数与观察时间等） | 任务页与实时活动、避免重复提示 | 按账号和凭据修订号进行 Android Keystore AES-GCM 加密缓存 | 不上传本机观察或确认记录；不抓取完整任务对话 |
+| 旧 Codex 个人重置历史、订阅月起始日与最新窗口观察快照 | 存储兼容、订阅月筛选与窗口重置提醒 | Android Keystore AES-GCM 加密，按用户 / 工作区身份摘要隔离 | 不上传 |
+| Cursor / Codex 公开服务状态（组件名、状态、事件摘要） | 状态页、概览、小组件与通知 | 最近一次成功结果明文缓存在应用私有目录 | 公开查询不携带 Token 或 Account ID |
+| 公共重置公告 / 观测 | 重置统计、列表与热力图 | 解析后的公开字段明文缓存在应用私有目录 | 匿名查询不携带 Token、Account ID 或个人记录 |
+| 界面与通知偏好、提醒去重标识 | 保留设置、避免重复提醒 | 应用私有 SharedPreferences；这些设置和去重元数据未加密，不含 Token | 不上传 |
+
+## 本机用量观察
+
+采集**默认开启**。成功的 Cursor / Codex 实时用量查询可记录解析后的数字、UTC 时间戳及相应周期信息；缓存回显和失败请求不产生样本。记录按服务及账号的单向身份摘要隔离，不包含原始 Token 或完整响应。采集复用前台、通知和小组件已有的刷新，不增加轮询。
+
+观察按 UTC 日保存，支持查看最近 90 天；同一额度窗口内、数值未下降的五分钟采样桶会合并，每个日文件最多 1000 个点。过期日文件在下一次历史读取或采样写入时清理。记录使用 Android Keystore AES-GCM 加密，保存在应用私有的禁止备份目录。
+
+可在「设置 → 服务连接」关闭采集或清空历史。关闭后保留已有历史，并使此前在途采集失效；清空会删除两项服务的观察历史并使在途采集失效。删除账号或凭据会清除对应服务的全部观察历史；可识别为同账号的 Token 续期保留历史，更新凭据导致身份变化时会清除该服务历史。
+
+观察反映成功刷新时看到的累计值，不能作为完整每日消耗或重置事件明细。跨周期、指标下降或缺测超过 30 分钟时趋势断开；条件估算只在本机使用足够新鲜、连续的样本计算，限额百分比不能换算为 Token 数。
+
+## 重置记录与保存期限
+
+公共重置公告 / 观测从第三方 `https://codex-resets.com/api/v1/resets` 只读获取，启动时获取并按需刷新，缓存最多 500 条。页面、统计和热力图分别展示 API 标记为 `regular` 的普通重置与 `banked` 券发放记录；旧缓存可能缺少券发放时重新完整获取，失败保留已有缓存。它是第三方汇总，缺失日期不代表当天没有重置，发放记录数也不是券数量或余额。
+
+旧 Codex 个人重置历史最多保留 500 条，继续加密保存但不再展示；订阅月起始日继续用于筛选。用量同步只覆盖最新窗口观察快照，用于确认窗口重置提醒，不再追加到期刷新、余额或券事件历史。重置提醒只在本机保存已发送事件的单向标识用于去重，最多 500 个。
+
+当前用量、任务和公开状态缓存用于回显最近成功结果，并随后续成功查询更新；界面与通知偏好、提醒去重元数据保存在本机。重置页不提供手动登记，也不执行或兑换官方重置券。删除和卸载规则见[数据管理](#数据管理)与[卸载](#卸载)。
 
 ## 数据去向
 
-- 公共重置公告 / 观测从第三方 `https://codex-resets.com/api/v1/resets` 只读获取，无需密钥，不携带 Token、Account ID 或个人记录。应用启动时获取并按需刷新，解析后的公开字段明文缓存在应用私有目录，最多 500 条。页面、统计和热力图展示 API 标记为 `regular` 的普通重置与 `banked` 券发放记录，分别计数；旧版可能缺少券发放的缓存会重新完整获取，失败时保留已有缓存；公共记录不计入个人次数；删除 Codex 凭据不删除无关的公共缓存，卸载会清除。来源链接可由系统浏览器打开 `codex-resets.com` 或校验后的 `x.com` / `twitter.com` 原帖，不附带应用 Token。
-- 重置提醒仅在本机保存已发送事件的不可逆标识用于去重；不上传提醒记录，不因到点自动兑换官方重置券。
-- 旧 Codex 个人重置历史和订阅月起始日继续使用 Android Keystore AES-GCM 加密保存在应用私有目录，旧历史最多 500 条，按用户 / 工作区的不可逆摘要隔离，不保存 Token，不上传。用量同步只覆盖最新观察快照用于窗口提醒，不再追加到期刷新、余额或券事件历史；旧个人历史不再展示。重置券用量缓存只保存解析后的字段，不保存原始响应。
-- 本页不会执行或兑换重置，也不提供手动登记。删除 Codex 凭据同时删除全部本机 Codex 重置记录，卸载也会清除记录；记录不参与备份或设备迁移。
+| 请求 | 域名 / 接口 | 认证信息 |
+| --- | --- | --- |
+| Cursor 账号、用量与任务 | `api2.cursor.sh`、`cursor.com` | Cursor Token |
+| Codex 用量 | `chatgpt.com/backend-api/wham/usage` | Codex Token 与可选 Account ID |
+| Cursor / Codex 官方状态 | `status.cursor.com`、`status.openai.com` | 不携带 Token 或 Account ID |
+| 第三方公共重置记录 | `codex-resets.com/api/v1/resets` | 不携带 Token、Account ID 或个人记录；仅分页 / 条件缓存参数 |
 
-- 用量与服务状态请求指向官方域名：`api2.cursor.sh`、`cursor.com`、`status.cursor.com`、`status.openai.com` 与 `chatgpt.com`；公共重置记录匿名请求第三方 `codex-resets.com`
-- Codex 官方组件状态与相关事件来自 `status.openai.com` 的公开 JSON，仅用于状态页、小组件和离线回显，不携带 Token 或 Account ID；公开缓存不含凭据。
-- Access Token 只用于用量与任务列表接口（`api2.cursor.sh`、`cursor.com`），不会随状态页请求或 Custom Tabs 发送
-- Codex Token 只用于 `chatgpt.com/backend-api/wham/usage`，不会发送给 Cursor 或其他域名
-- 打开任务对话、PR、官方状态页或允许的公共重置链接时，应用通过 Chrome Custom Tabs 打开已校验的 HTTPS 页面：`cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及路径为 `/thsottiaux/status/<数字>` 的 `x.com` / `twitter.com` 原帖。这些请求由系统浏览器发出，使用浏览器自身的登录态，不携带本应用 Access Token
-- 全部由本应用发起的连接强制 HTTPS，禁止明文传输，拒绝重定向
-- 不向第三方或开发者服务器上传个人凭据、个人记录或分析数据；公共 API 请求仅带分页 / 条件缓存参数及普通网络请求信息
+凭据只发送给对应服务，不随公开状态、公共重置请求或网页外链发送。应用自身的 HTTP 客户端强制 HTTPS、禁止明文传输并拒绝重定向。
+
+任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
+
+应用不向开发者服务器上传个人凭据、记录或分析数据，也不向第三方公共 API 上传这些数据。
 
 ## 数据安全
 
-- Token 与用量缓存经 Android Keystore 管理的不可导出密钥加密后落盘；硬件保护取决于设备，不保证所有设备使用硬件密钥。公开服务状态缓存不含凭据，明文保存在应用私有目录
-- 凭据所在的 SharedPreferences 不参与云备份和设备迁移（`allowBackup=false`，`fullBackupContent=false`，并在 `data_extraction_rules.xml` 中排除 `sharedpref`）。换机或云恢复不会带走 Token
-- Token 明文展示期间自动启用 `FLAG_SECURE`，阻止截屏 / 录屏 / 最近任务缩略图捕获
-- 未保存的 Token 编辑草稿仅暂存在内存，供折叠或旋转导致的配置重建继续编辑；关闭表单、切换服务或凭据更新时清除，不写入系统保存状态、磁盘或日志。
-- 复制 Token 时（Android 13+）剪贴板标记为敏感内容，系统预览仅显示占位
+- 凭据、账号别名、私有用量 / 任务缓存、个人重置历史和本机用量观察经 Android Keystore 管理的不可导出密钥加密；硬件保护取决于设备，不保证所有设备使用硬件密钥。公开缓存、普通设置和提醒去重元数据保存在应用私有目录。
+- 应用设置 `allowBackup=false`、`fullBackupContent=false`，并通过 `data_extraction_rules.xml` 排除 SharedPreferences 的云备份和设备迁移。本机用量观察保存在 `noBackupFilesDir`；凭据和私有记录不随应用备份或设备迁移导出。
+- 查看已保存 Token 需设备解锁。Token 明文展示期间启用 `FLAG_SECURE`，阻止截屏、录屏和最近任务缩略图捕获。
+- 未保存的 Token 草稿仅暂存在内存，以继续配置重建后的编辑；关闭表单、切换服务、凭据更新或编辑会话结束时删除，不写入系统保存状态、磁盘或日志。
+- Android 13+ 复制 Token 时标记剪贴板为敏感内容。剪贴板由系统管理，建议粘贴后清空。
 
 ## 权限用途
 
 | 权限 | 用途 |
 | --- | --- |
-| `INTERNET` | 请求官方用量、任务、服务状态以及第三方公开重置公告 |
-| `ACCESS_NETWORK_STATE` | 判断网络可用性，避免无效请求 |
+| `INTERNET` | 请求官方账号、用量、任务、状态及第三方公开重置公告 |
+| `ACCESS_NETWORK_STATE` | 判断网络可用性 |
 | `USE_BIOMETRIC` / `USE_FINGERPRINT` | 查看明文 Token 前的指纹 / 锁屏验证 |
-| `POST_NOTIFICATIONS` | 实时活动常驻通知、用量阈值与 Codex 窗口重置提醒 |
+| `POST_NOTIFICATIONS` | 实时活动、用量阈值和 Codex 窗口重置提醒 |
 | `RECEIVE_BOOT_COMPLETED` | 开机后恢复通知刷新调度 |
-| `POST_PROMOTED_NOTIFICATIONS` | 申请 Android 16+ 原生实况提升，实际展示由系统判断 |
+| `POST_PROMOTED_NOTIFICATIONS` | 申请 Android 16+ 原生实况提升，实际展示由系统决定 |
 
 AndroidX 另合并 `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`，这是签名级内部广播权限，不用于读取个人数据。触感通过系统反馈 API 实现，不申请震动权限。
 
+## 数据管理
+
+| 操作 | 对本机数据的影响 |
+| --- | --- |
+| 在「设置 → 服务连接」关闭用量观察采集 | 停止追加观察，保留已有历史；服务查询仍按各自刷新设置执行 |
+| 在同一位置清空用量观察历史 | 删除 Cursor 与 Codex 的观察历史，使在途采集失效；后续样本按采集开关生成 |
+| 删除 Cursor 账号 | 删除该账号的凭据、用量 / 任务缓存，并清除全部 Cursor 本机用量观察 |
+| 删除 Codex 凭据 | 删除凭据、用量缓存、旧个人重置记录、订阅月设置、窗口观察快照及全部 Codex 本机用量观察；无关的公开重置缓存保留 |
+| 在实时活动中确认任务结束提示 | 保存本机确认状态，清除对应结束提示；任务列表继续展示已有任务记录 |
+
+删除本机凭据不会在官方服务上撤销 Token；若要撤销，请在对应服务中管理。普通设置和提醒去重元数据通过清除应用数据或卸载删除。
+
 ## 卸载
 
-卸载会删除本应用的本地账号、Token、缓存与记录，不自动撤销官方服务上的 Token；系统浏览器自身的登录态需在浏览器中管理。
+卸载会删除本应用的本地账号、Token、缓存、观察历史和设置。官方 Token 的撤销与系统浏览器的登录态需分别在对应服务和浏览器中管理。
 
 ## 变更
 
-本政策如有实质变更，将随应用更新在 [CHANGELOG.md](CHANGELOG.md)（[English](CHANGELOG.en.md)）中注明。
+本政策如有实质变更，将同步更新生效日期、中英文文本，并在 [CHANGELOG.md](CHANGELOG.md)（[English](CHANGELOG.en.md)）中注明。
 
 ## 联系
 
-通过本项目 GitHub 仓库的 issue 联系开发者。
-
-## 本机用量观察
-
-成功的 Cursor / Codex 实时用量查询可记录解析后的数字和 UTC 时间戳，使用 Android Keystore AES-GCM 加密保存于应用私有的禁止备份目录，按账号不可逆身份摘要隔离，同窗口五分钟内合并采样，保留 90 天。记录不包含原始 Token 或响应，不上传。采集复用前台、通知及小组件的现有刷新，不增加轮询。
-
-默认开启，可在「设置 → 服务连接」关闭或清空。关闭后保留已有历史；清空会使在途采集失效。删除账号或凭据清除该服务历史；可确认的同账号 Token 续期保留历史。本机观察不是完整每日消耗或重置事件历史；条件估算仅在本机利用足够新鲜、连续的样本计算。
+通过本项目 [GitHub issue](https://github.com/Lamuier/agenT/issues) 联系开发者。

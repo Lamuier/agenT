@@ -2,78 +2,105 @@
 
 > This policy applies to the agenT Android app (package `com.lamuier.agenT`). [中文](PRIVACY.md) | **English**
 
-**Effective date: 2026-10-11**
+**Effective date: 2026-10-14**
 
-agenT is a local-first Cursor and Codex usage app: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
+agenT displays Cursor and Codex usage, tasks, resets and service status on your device. It has no app account system or self-hosted backend and includes no third-party analytics, advertising or crash-reporting SDKs.
 
 The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 
 ## What we collect
 
-**The developer collects no personal data.** Credentials and personal records stay local. Official providers and the third-party public API below can receive standard network information such as IP address and User-Agent.
+**The developer collects no personal data.** The app processes credentials, caches and observations locally and sends authentication credentials to the corresponding official service to query data. Official services and the third-party public API can receive standard request information such as IP address and User-Agent; their handling is governed by their own policies.
 
 ## Data the app processes
 
-| Data | Purpose | Storage | Where it leaves the device |
+| Data | Purpose | Storage | What the app sends or uploads |
 | --- | --- | --- | --- |
-| Cursor Access Token | Call official Cursor APIs for usage and cloud task lists | Encrypted with AndroidKeyStore (AES-GCM) in the app private directory | Sent only as a credential to official Cursor APIs |
-| Codex / ChatGPT OAuth access token and optional Account ID | Call the official ChatGPT endpoint for Codex rate-limit windows | Encrypted with AndroidKeyStore (AES-GCM) in the app private directory | Sent only as a credential to `chatgpt.com/backend-api/wham/usage` |
-| Account alias | Local account label | Encrypted with AndroidKeyStore (AES-GCM) | Does not leave the device |
-| Usage summary (quota, percents, Credits, per-model tokens, Grok Bot weekly quota, and similar numbers) | UI, widgets, notifications | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
-| Cloud task summary (name, status, source, branch, PR link, line diffs, and similar) | Tasks tab | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
-| Cursor / Codex service status (component names, availability, incident summaries) | Status tab and widgets | Latest successful result cached in plaintext in the app private directory (public information, no token) | Requested from the corresponding official public status endpoint without a token or Account ID |
-| Codex usage summary (plan, percentages, windows, and reset times) | Codex overview, usage and offline display | Encrypted AndroidKeyStore (AES-GCM) cache | Does not leave the device (parsed summary only; no raw response) |
+| Cursor Access Token | Query Cursor account, usage and cloud task lists | Android Keystore AES-GCM encryption in app-private storage | Sent only as a credential to official Cursor APIs |
+| Codex / ChatGPT OAuth access token and optional Account ID | Query Codex rate-limit windows | Android Keystore AES-GCM encryption in app-private storage | Sent only as authentication information to `chatgpt.com/backend-api/wham/usage` |
+| Account alias | Local account label | Android Keystore AES-GCM encryption | Not uploaded |
+| Cursor / Codex usage summaries (plan, quota, percentages, windows and reset times, Credits, per-model tokens, Grok Bot weekly quota and similar fields) | UI, widgets, notifications and offline display | Android Keystore AES-GCM encrypted cache of parsed summaries | Summaries and raw responses are not uploaded |
+| Local usage observations (parsed numbers, UTC timestamps, period boundaries and reset times) | Observation trends and conditional pace estimates | Android Keystore AES-GCM encryption in the no-backup directory | Not uploaded; see [Local usage observations](#local-usage-observations) for controls and retention |
+| Cloud task summaries and local observation / acknowledgement state (name, status, source, branch, PR link, line changes and observation times) | Tasks and live activities; avoid repeated notices | Android Keystore AES-GCM encrypted cache isolated by account and credential revision | Local observations and acknowledgements are not uploaded; full task conversations are not fetched |
+| Legacy personal Codex reset history, subscription anchor day and latest window observation snapshot | Storage compatibility, subscription-month filters and window reset alerts | Android Keystore AES-GCM encryption, isolated by user / workspace identity digests | Not uploaded |
+| Public Cursor / Codex service status (components, states and incident summaries) | Status, Overview, widgets and notifications | Latest successful result cached in plaintext in app-private storage | Public requests include no token or Account ID |
+| Public reset announcements / observations | Reset statistics, lists and heatmaps | Parsed public fields cached in plaintext in app-private storage | Anonymous requests include no token, Account ID or personal records |
+| UI / notification preferences and reminder deduplication identifiers | Preserve settings and avoid repeated alerts | App-private SharedPreferences; these settings and deduplication metadata are unencrypted and contain no token | Not uploaded |
+
+## Local usage observations
+
+Collection is **enabled by default**. Successful live Cursor / Codex usage requests can record parsed numbers, UTC timestamps and period information; cached displays and failed requests produce no samples. Records are isolated by service and a one-way account identity digest and contain no raw tokens or complete responses. Collection reuses existing foreground, notification and widget refreshes and adds no polling.
+
+Observations are stored by UTC day and support viewing the latest 90 days. Samples in the same five-minute bucket and quota window are coalesced when values have not decreased, with at most 1000 points per daily file. Expired daily files are removed on the next history read or sample write. Records use Android Keystore AES-GCM encryption in the app-private no-backup directory.
+
+Disable collection or clear history in Settings → Service connections. Disabling keeps existing history and invalidates earlier in-flight collection; clearing deletes both services' observation histories and invalidates in-flight collection. Removing an account or credential clears all observations for the corresponding service. An identified same-account token renewal preserves history; a credential update that changes identity clears that service's history.
+
+Observations reflect cumulative values seen during successful refreshes and cannot serve as complete daily consumption or reset-event details. Trend lines break at period changes, decreases or gaps over 30 minutes. Conditional estimates are computed on-device from sufficient fresh continuous samples; quota percentages cannot be converted to token counts.
+
+## Reset records and retention
+
+Public announcements / observations are read from third-party `https://codex-resets.com/api/v1/resets` at startup and refreshed as needed, with up to 500 cached records. The page, statistics and heatmap separately display API `regular` resets and `banked` credit grants. Legacy caches that may lack grants trigger a full fetch; failures preserve existing cached records. This is a third-party summary: missing dates do not prove no reset occurred, and grant record counts are not credit quantities or balances.
+
+Up to 500 legacy personal Codex reset events remain encrypted for compatibility but are no longer displayed; the subscription anchor day is still used for filtering. Usage sync only overwrites the latest window observation for confirmed window-reset alerts and no longer appends renewal, balance or credit-event history. Reset reminders store up to 500 one-way sent-event identifiers locally for deduplication.
+
+Current usage, task and public-status caches preserve the latest successful results and update after subsequent successful queries. UI / notification preferences and reminder deduplication metadata remain local. The reset page offers no manual registration and never executes or redeems official reset credits. See [Data controls](#data-controls) and [Uninstall](#uninstall) for deletion rules.
 
 ## Where data goes
 
-- Public announcements / observations are read from third-party `https://codex-resets.com/api/v1/resets`, without a key, token, Account ID, or personal records. Fetch at app startup and refresh as needed; cache up to 500 parsed public records in plaintext in the private app directory. The page, statistics and heatmap display API `regular` resets and `banked` credit grants with separate counts. Legacy caches that may lack grants trigger a full fetch; failures preserve existing cached records. Public records do not count as personal resets. Removing the Codex credential preserves unrelated public cache; uninstalling removes it. Checked source / credit links open `codex-resets.com` or `x.com` / `twitter.com` original posts in the system browser without app tokens.
-- Reset reminders retain only irreversible event identifiers locally for deduplication. Reminder records are not uploaded and scheduled checks never redeem reset credits.
-- Legacy personal Codex reset history and subscription anchor days remain Android Keystore AES-GCM encrypted in app-private storage, with up to 500 legacy events, isolated by irreversible user/workspace digests, without tokens or uploads. Usage sync overwrites the latest observation for independent window reminders; it no longer appends renewal, balance or credit-event history. Legacy personal history is no longer displayed. Credit usage caches retain parsed fields only.
-- The reset page never executes or redeems resets and offers no manual registration. Deleting the Codex credential removes all local Codex history and observation snapshots; uninstalling also clears them. Private records are excluded from backup and device transfer.
+| Request | Host / endpoint | Authentication |
+| --- | --- | --- |
+| Cursor account, usage and tasks | `api2.cursor.sh`, `cursor.com` | Cursor token |
+| Codex usage | `chatgpt.com/backend-api/wham/usage` | Codex token and optional Account ID |
+| Official Cursor / Codex status | `status.cursor.com`, `status.openai.com` | No token or Account ID |
+| Third-party public reset records | `codex-resets.com/api/v1/resets` | No token, Account ID or personal records; only pagination / conditional-cache parameters |
 
-- Usage and status requests use official hosts: `api2.cursor.sh`, `cursor.com`, `status.cursor.com`, `status.openai.com`, and `chatgpt.com`; public reset records use anonymous requests to third-party `codex-resets.com`
-- Official Codex component status and related incidents come from public JSON on `status.openai.com`, used only for Status, widgets, and offline display. Requests never include a token or Account ID; the public cache contains no credentials.
-- The Access Token is used only for usage and task-list APIs (`api2.cursor.sh`, `cursor.com`). It is not sent with status-page requests or Custom Tabs
-- The Codex token is used only for `chatgpt.com/backend-api/wham/usage`; it is never sent to Cursor or another host
-- Opening a task conversation, pull request, official status page, or allowed public-reset link uses Chrome Custom Tabs to a checked HTTPS page: `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `stspg.io` and its subdomains, `codex-resets.com`, and `x.com` / `twitter.com` posts whose path is `/thsottiaux/status/<digits>`. Those requests are made by the system browser with the browser’s own login, without this app’s Access Token
-- All connections initiated by this app require HTTPS. Cleartext is forbidden. Redirects are rejected
-- No personal credentials, records, or analytics are uploaded to third-party or developer-operated servers. Public API requests carry only pagination / cache parameters and standard network request information.
+Credentials are sent only to the corresponding service and are not attached to public-status requests, public-reset requests or web links. The app's own HTTP clients require HTTPS, forbid cleartext and reject redirects.
+
+Task conversations, PRs, official status pages and public-reset source links are checked against an allowlist before opening in the system browser's Custom Tabs, with a system-browser fallback. Allowed sources include `cursor.com` and its subdomains, `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `stspg.io` and its subdomains, `codex-resets.com`, and path-validated `thsottiaux` posts on `x.com` / `twitter.com`. Web requests use the browser's own login state and are governed by the browser's and website's data policies.
+
+The app uploads no personal credentials, records or analytics to developer-operated servers or to the third-party public API.
 
 ## Data security
 
-- Token and usage caches are encrypted with non-exportable keys managed by Android Keystore. Hardware protection depends on the device and is not guaranteed on every device. Public service-status caches contain no credentials and are stored in plaintext in the app private directory
-- SharedPreferences that hold credentials are excluded from cloud backup and device transfer (`allowBackup=false`, `fullBackupContent=false`, and `sharedpref` excluded in `data_extraction_rules.xml`). A new phone or cloud restore will not bring your token
-- While a token is shown in plain text, `FLAG_SECURE` is enabled to block screenshots, recording, and Recents thumbnails
-- Unsaved Token drafts stay only in memory to continue editing across configuration changes such as folding or rotation. Closing the form, changing providers or updating credentials clears the draft; it is not written to saved state, disk or logs.
-- Copied tokens (Android 13+) are marked sensitive so system clipboard previews show a placeholder
+- Credentials, aliases, private usage / task caches, personal reset history and local usage observations are encrypted with non-exportable keys managed by Android Keystore. Hardware protection depends on the device and is not guaranteed on every device. Public caches, ordinary settings and reminder deduplication metadata are held in app-private storage.
+- The app sets `allowBackup=false` and `fullBackupContent=false`, and excludes SharedPreferences from cloud backup and device transfer through `data_extraction_rules.xml`. Local observations use `noBackupFilesDir`; credentials and private records are not exported through app backup or device transfer.
+- Revealing a saved token requires device unlock. While plain-text tokens are shown, `FLAG_SECURE` blocks screenshots, screen recording and Recents thumbnails.
+- Unsaved token drafts stay only in memory to continue editing after configuration changes. Closing the form, changing services, updating credentials or ending the editing session removes them; drafts are not written to saved state, disk or logs.
+- On Android 13+, copied tokens are marked sensitive. The system manages the clipboard; clear it after pasting.
 
 ## Permissions
 
 | Permission | Purpose |
 | --- | --- |
-| `INTERNET` | Request official usage, tasks, status, and third-party public reset announcements |
-| `ACCESS_NETWORK_STATE` | Detect connectivity and avoid useless requests |
-| `USE_BIOMETRIC` / `USE_FINGERPRINT` | Fingerprint / lock-screen verification before showing a token in plain text |
-| `POST_NOTIFICATIONS` | Ongoing live activities, quota threshold alerts, and Codex window reset reminders |
+| `INTERNET` | Request official account, usage, tasks and status, and third-party public reset announcements |
+| `ACCESS_NETWORK_STATE` | Detect network availability |
+| `USE_BIOMETRIC` / `USE_FINGERPRINT` | Fingerprint / lock-screen verification before revealing tokens |
+| `POST_NOTIFICATIONS` | Live activities, quota threshold alerts and Codex window reset reminders |
 | `RECEIVE_BOOT_COMPLETED` | Restore notification refresh scheduling after boot |
-| `POST_PROMOTED_NOTIFICATIONS` | Request native Live Update promotion on Android 16+; the system decides actual presentation |
+| `POST_PROMOTED_NOTIFICATIONS` | Request native Live Update promotion on Android 16+; the system decides presentation |
 
 AndroidX also merges `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, a signature-level internal broadcast permission that does not read personal data. Haptics use the system feedback API without a vibration permission.
 
+## Data controls
+
+| Action | Effect on local data |
+| --- | --- |
+| Disable observation collection in Settings → Service connections | Stop appending observations and keep existing history; service queries still follow their refresh settings |
+| Clear observation history in the same location | Delete Cursor and Codex observation histories and invalidate in-flight collection; subsequent samples follow the collection switch |
+| Delete a Cursor account | Delete that account's credentials and usage / task caches, and clear all local Cursor usage observations |
+| Delete the Codex credential | Delete credentials, usage cache, legacy personal reset records, subscription settings, window observation snapshots and all local Codex usage observations; unrelated public-reset cache remains |
+| Confirm ended task messages in live activities | Save local acknowledgement state and clear the corresponding notices; existing task records remain in the task list |
+
+Deleting local credentials does not revoke provider tokens; manage revocation in the corresponding service. Clearing app data or uninstalling removes ordinary settings and reminder deduplication metadata.
+
 ## Uninstall
 
-Uninstalling removes this app’s local accounts, tokens, caches and records. It does not revoke provider tokens; the system browser’s own login state is managed separately.
+Uninstalling deletes this app's local accounts, tokens, caches, observation history and settings. Manage provider-token revocation and the system browser's login state in the corresponding service and browser.
 
 ## Changes
 
-Material changes to this policy will be noted with the app update in [CHANGELOG.en.md](CHANGELOG.en.md) (canonical Chinese: [CHANGELOG.md](CHANGELOG.md)).
+Material policy changes will update the effective date and both language versions and be recorded in [CHANGELOG.en.md](CHANGELOG.en.md) (canonical Chinese: [CHANGELOG.md](CHANGELOG.md)).
 
 ## Contact
 
-Contact the developer by opening an issue in this project's GitHub repository.
-
-## Local usage observations
-
-Successful live Cursor / Codex usage requests can record parsed numeric observations and UTC timestamps in the app’s private no-backup directory, encrypted with Android Keystore AES-GCM. Records are isolated by a one-way account identity digest, coalesced within five-minute windows and retained for 90 days. They contain no raw tokens or responses and are never uploaded. Existing foreground, notification and widget refreshes share collection; it adds no polling.
-
-Collection is enabled by default and can be disabled or cleared in Settings → Service connections. Disabling retains existing history; clearing invalidates in-flight collection. Removing credentials deletes that service’s history; an identified same-account token renewal preserves it. Observations do not constitute complete daily consumption or reset event history. Conditional estimates are computed on-device only from sufficient fresh continuous samples.
+Contact the developer through this project's [GitHub issues](https://github.com/Lamuier/agenT/issues).
