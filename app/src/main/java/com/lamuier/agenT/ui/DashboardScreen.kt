@@ -1,10 +1,8 @@
 package com.lamuier.agenT.ui
 
 import android.provider.Settings
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.snapshotFlow
@@ -13,7 +11,6 @@ import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -21,15 +18,11 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -51,46 +44,24 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Cached
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.HealthAndSafety
-import androidx.compose.material.icons.outlined.Hub
-import androidx.compose.material.icons.outlined.Input
 import androidx.compose.material.icons.outlined.KeyOff
-import androidx.compose.material.icons.outlined.Layers
-import androidx.compose.material.icons.outlined.Output
 import androidx.compose.material.icons.outlined.PersonAdd
-import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.SpaceDashboard
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -99,18 +70,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,18 +94,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -148,31 +111,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaUiState
-import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.model.AppUiState
 import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.model.AgenTOverview
 import com.lamuier.agenT.model.DashboardTab
-import com.lamuier.agenT.model.ModelTokenUsage
-import com.lamuier.agenT.model.TokenUsageBreakdown
-import com.lamuier.agenT.model.UsageWindow
 import com.lamuier.agenT.ui.theme.LocalDisplayZone
-import com.lamuier.agenT.ui.theme.LocalPulseChartColors
 import com.lamuier.agenT.ui.theme.PulseChartColors
 import com.lamuier.agenT.util.BillingProgress
+import com.lamuier.agenT.util.AgentTaskPresentation
 import com.lamuier.agenT.util.DisplayTime
 import com.lamuier.agenT.util.SplitOverviewRingFocus
 import com.lamuier.agenT.util.UsageCalculations
-import com.lamuier.agenT.util.UsageHistoryWindows
 import com.lamuier.agenT.util.UsageLevel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.Locale
 import kotlin.math.cos
 import kotlinx.coroutines.delay
-import java.time.YearMonth
 import kotlinx.coroutines.launch
 
 /** 周期倒计时/百分比的本地走动间隔（仅重算时间，不触发网络请求）。 */
@@ -183,13 +139,6 @@ private const val PAIRED_RING_BREATH_MS = 3_000
 
 /** 呼吸谷值透明度：不要到 0，避免另一侧完全消失后突然跳出来。 */
 private const val PAIRED_RING_MIN_ALPHA = 0.08f
-
-@Immutable
-private data class ChartSegment(
-    val label: String,
-    val value: Double,
-    val color: Color,
-)
 
 @Immutable
 private data class MetricTile(
@@ -212,6 +161,9 @@ internal fun DashboardScreen(
     snackbarHostState: SnackbarHostState,
     tabOrder: List<DashboardTab>,
     pendingOpenTab: DashboardTab? = null,
+    onVisibleTabChange: (DashboardTab) -> Unit = {},
+    allowPageWork: Boolean = true,
+    onHistoryDaysChange: (String, Int) -> Unit = { _, _ -> },
     onOpenTabConsumed: () -> Unit = {},
     onLoadHistoryWindow: (String, Long, Long, String?) -> Unit,
     onRefresh: () -> Unit,
@@ -224,10 +176,14 @@ internal fun DashboardScreen(
     onRefreshPublicResets: (Boolean) -> Unit = {},
 ) {
     val uiScope = rememberCoroutineScope()
+    val openCursorUrl = rememberOpenCursorUrl { message ->
+        uiScope.launch { snackbarHostState.showSnackbar(message) }
+    }
     val feedback = LocalAppFeedback.current
     val tabs = remember(tabOrder) { DashboardTab.resolveOrder(tabOrder.map { it.id }) }
     var selectedTabId by rememberSaveable { mutableStateOf(pendingOpenTab?.id ?: tabs.first().id) }
     val selectedTab = DashboardTab.fromId(selectedTabId) ?: tabs.first()
+    LaunchedEffect(selectedTab) { onVisibleTabChange(selectedTab) }
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(selectedTab).coerceAtLeast(0), pageCount = { tabs.size })
     val pageStates = rememberSaveableStateHolder()
     val dragging by pagerState.interactionSource.collectIsDraggedAsState()
@@ -252,9 +208,7 @@ internal fun DashboardScreen(
         }
     }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val refreshBusy = state.loadingUsage || state.loadingTasks || state.loadingStatus ||
-        state.refreshing || state.refreshingStatus || state.refreshingTasks ||
-        codexState.booting || codexState.refreshing || codexState.saving || codexState.refreshingStatus
+    val refreshBusy = dashboardRefreshBusy(state, codexState)
     val refreshBusyUpdated by rememberUpdatedState(refreshBusy)
     var refreshSource by remember { mutableStateOf<DashboardRefreshSource?>(null) }
     val startRefresh: (DashboardRefreshSource) -> Unit = { source ->
@@ -315,10 +269,23 @@ internal fun DashboardScreen(
                         scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
                     scrollBehavior = scrollBehavior,
                     actions = {
-                        IconButton(enabled = !state.loadingAccounts && !refreshBusy && refreshSource == null && !state.submitting,
+                        if (selectedTab == DashboardTab.Tasks) {
+                            IconButton(onClick = { openCursorUrl(AgentTaskPresentation.agentsPageUrl()) }) {
+                                Icon(Icons.Outlined.Add, stringResource(R.string.tasks_create_on_web))
+                            }
+                        }
+                        val showRefreshProgress = refreshBusy || refreshSource == DashboardRefreshSource.Button
+                        val refreshDescription = stringResource(if (showRefreshProgress) R.string.action_refreshing else R.string.action_refresh)
+                        IconButton(modifier = Modifier.semantics { contentDescription = refreshDescription },
+                            enabled = !state.loadingAccounts && !refreshBusy && refreshSource == null && !state.submitting,
                             onClick = { startRefresh(DashboardRefreshSource.Button) }) {
-                            if (refreshSource == DashboardRefreshSource.Button) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else Icon(painterResource(R.drawable.symbol_refresh), stringResource(R.string.action_refresh))
+                            if (showRefreshProgress) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else Icon(painterResource(R.drawable.symbol_refresh), contentDescription = null)
                         }
                         IconButton(enabled = !state.loadingAccounts && !state.submitting, onClick = { feedback.selection(); onShowSettings() }) {
                             Icon(painterResource(R.drawable.symbol_settings), stringResource(R.string.action_settings))
@@ -338,7 +305,7 @@ internal fun DashboardScreen(
                     onRefresh = { startRefresh(DashboardRefreshSource.Pull) },
                     modifier = Modifier.fillMaxSize().padding(padding).nestedScroll(scrollBehavior.nestedScrollConnection)) {
                     HorizontalPager(state = pagerState, key = { tabs[it].id }, modifier = Modifier.fillMaxSize(),
-                        beyondViewportPageCount = 1) { page ->
+                        beyondViewportPageCount = if (allowPageWork) 1 else 0) { page ->
                         pageStates.SaveableStateProvider(tabs[page].id) {
                                 when (tabs.getOrNull(page) ?: DashboardTab.Overview) {
                                     DashboardTab.Overview -> UnifiedOverviewTab(
@@ -351,27 +318,14 @@ internal fun DashboardScreen(
                                             }
                                         },
                                     )
-                                    DashboardTab.Usage -> UnifiedUsageDependentTab(
-                                        state = state,
-                                        codexState = codexState,
+                                    DashboardTab.Usage -> UsageScreen(
+                                        state, codexState, onLoadHistoryWindow,
                                         onRefresh = { startRefresh(DashboardRefreshSource.Button) },
                                         onRefreshCodex = onRefreshCodex,
-                                        onManageCodex = onManageCodex,
-                                        onManageAccount = onManageAccount,
-                                        onShowTokenHelp = onShowTokenHelp,
-                                    ) {
-                                        UsageTab(
-                                            usage = it,
-                                            extraHistory = state.extraHistory,
-                                            loadingHistoryKey = state.loadingHistoryKey,
-                                            historyError = state.historyError,
-                                            historyErrorKey = state.historyErrorKey,
-                                            onLoadHistoryWindow = onLoadHistoryWindow,
-                                            codexState = codexState,
-                                            onRefreshCodex = onRefreshCodex,
-                                            onManageCodex = onManageCodex,
-                                        )
-                                    }
+                                        onManageCursor = onManageAccount, onManageCodex = onManageCodex,
+                                        active = allowPageWork && selectedTab == DashboardTab.Usage,
+                                        onHistoryDaysChange = onHistoryDaysChange,
+                                    )
                                     DashboardTab.Tasks -> AccountOnlyTab(
                                         state = state,
                                         onManageAccount = onManageAccount,
@@ -390,7 +344,8 @@ internal fun DashboardScreen(
                                             },
                                         )
                                     }
-                                    DashboardTab.Resets -> CodexResetTab(codexState, onSubscriptionDay, onRefreshPublicResets)
+                                    DashboardTab.Resets -> CodexResetTab(codexState, onSubscriptionDay, onRefreshPublicResets,
+                                        active = allowPageWork && selectedTab == DashboardTab.Resets)
                                     DashboardTab.Status -> StatusTab(
                                         status = state.serviceStatus,
                                         loading = state.loadingStatus,
@@ -430,75 +385,6 @@ internal val DashboardTab.navigationIcon: Int get() = when(this) {
     DashboardTab.Status -> R.drawable.symbol_monitor_heart
 }
 
-
-@Composable
-private fun UnifiedUsageDependentTab(
-    state: AppUiState,
-    codexState: CodexQuotaUiState,
-    onRefresh: () -> Unit,
-    onRefreshCodex: () -> Unit,
-    onManageCodex: () -> Unit,
-    onManageAccount: () -> Unit,
-    onShowTokenHelp: () -> Unit,
-    content: @Composable (AgenTOverview) -> Unit,
-) {
-    val account = state.accounts.firstOrNull { it.id == state.selectedAccountId }
-        ?: state.accounts.firstOrNull()
-    val cursorUnavailable = account == null || account.tokenExpired || state.usage == null
-    if (!cursorUnavailable) {
-        content(state.usage!!)
-        return
-    }
-    AdaptiveServiceContent(primary = {
-        SectionHeading(
-            icon = Icons.Outlined.Code,
-            title = stringResource(R.string.agent_service_cursor_title),
-            supporting = stringResource(R.string.cursor_section_supporting),
-        )
-        when {
-            account == null -> ProviderStateCard(
-                icon = Icons.Outlined.PersonAdd,
-                title = stringResource(R.string.dashboard_add_account_title),
-                description = stringResource(R.string.dashboard_add_account_usage_body),
-                primaryActionLabel = stringResource(R.string.action_add_account),
-                onPrimaryAction = onManageAccount,
-                secondaryActionLabel = stringResource(R.string.action_token_help),
-                onSecondaryAction = onShowTokenHelp,
-            )
-            account.tokenExpired -> ProviderStateCard(
-                icon = Icons.Outlined.KeyOff,
-                title = stringResource(R.string.dashboard_token_expired_title),
-                description = stringResource(R.string.dashboard_token_expired_usage_body),
-                primaryActionLabel = stringResource(R.string.action_update_token),
-                onPrimaryAction = onManageAccount,
-                secondaryActionLabel = stringResource(R.string.action_token_help_short),
-                onSecondaryAction = onShowTokenHelp,
-                error = true,
-            )
-            state.loadingUsage -> ProviderStateCard(
-                icon = Icons.Outlined.DataUsage,
-                title = stringResource(R.string.dashboard_loading_usage_title),
-                description = stringResource(R.string.dashboard_loading_usage_body),
-                loading = true,
-            )
-            else -> ProviderStateCard(
-                icon = Icons.Outlined.CloudOff,
-                title = stringResource(R.string.dashboard_usage_unavailable_title),
-                description = stringResource(R.string.dashboard_usage_unavailable_body),
-                primaryActionLabel = stringResource(R.string.action_reload),
-                onPrimaryAction = onRefresh,
-                secondaryActionLabel = stringResource(R.string.action_manage_account),
-                onSecondaryAction = onManageAccount,
-            )
-        }
-    }, secondary = {
-        CodexQuotaSection(
-            state = codexState,
-            onManageCredential = onManageCodex,
-            onRefresh = onRefreshCodex,
-        )
-    })
-}
 
 @Composable
 internal fun ProviderStateCard(
@@ -892,600 +778,6 @@ private fun FreshnessRow(usage: AgenTOverview) {
     }
 }
 
-private enum class HistoryQueryMode { CalendarMonth, BillingCycle }
-
-@Composable
-private fun UsageTab(
-    usage: AgenTOverview,
-    extraHistory: Map<String, UsageWindow>,
-    loadingHistoryKey: String?,
-    historyError: String?,
-    historyErrorKey: String?,
-    onLoadHistoryWindow: (String, Long, Long, String?) -> Unit,
-    codexState: CodexQuotaUiState,
-    onRefreshCodex: () -> Unit,
-    onManageCodex: () -> Unit,
-) {
-    var providerFilter by rememberSaveable { mutableStateOf(0) }
-    val feedback = LocalAppFeedback.current
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(56.dp)) { HingeSafeLayout {
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(stringResource(R.string.usage_all_services), "Cursor", "Codex").forEachIndexed { index, title ->
-                    FilterChip(selected = providerFilter == index,
-                        onClick = { if (providerFilter != index) { providerFilter = index; feedback.selection() } },
-                        label = { Text(title) })
-                }
-            }
-        } }
-        Box(Modifier.weight(1f)) {
-            AdaptiveServiceContent(allowPair = providerFilter == 0, secondaryFirst = true,
-                primaryFraction = 0.65f, maxContentWidthDp = 1440f,
-                primary = { compact ->
-                    if (providerFilter != 2) {
-                        val chartColors = LocalPulseChartColors.current
-                        val quota = remember(usage) { UsageCalculations.quotaBreakdown(usage) }
-        val includedUsageLabel = stringResource(R.string.label_included_usage)
-        val bonusLabel = stringResource(R.string.label_bonus)
-        val remainingQuotaLabel = stringResource(R.string.label_remaining_quota)
-        val segments = remember(quota, chartColors, includedUsageLabel, bonusLabel, remainingQuotaLabel) {
-            buildList {
-                add(
-                    ChartSegment(
-                        includedUsageLabel,
-                        quota.includedInQuotaDollars,
-                        chartColors.chart1,
-                    ),
-                )
-                if (quota.bonusInQuotaDollars > 0.0) {
-                    add(ChartSegment(bonusLabel, quota.bonusInQuotaDollars, chartColors.chart2))
-                }
-                add(
-                    ChartSegment(
-                        remainingQuotaLabel,
-                        quota.remainingDollars,
-                        chartColors.chart3,
-                    ),
-                )
-            }
-        }
-
-        SectionHeading(
-            icon = Icons.Outlined.Code,
-            title = stringResource(R.string.agent_service_cursor_title),
-            supporting = stringResource(R.string.cursor_section_supporting),
-        )
-        SectionHeading(
-            icon = Icons.Outlined.Layers,
-            title = stringResource(R.string.label_usage_pools),
-            supporting = stringResource(R.string.label_usage_pools_supporting),
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shadowElevation = 1.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(if (compact) 14.dp else 18.dp),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
-            ) {
-                HorizontalUsageChart(
-                    label = stringResource(R.string.label_cursor_models),
-                    percent = usage.usage.autoPercentUsed,
-                    color = chartColors.chart1,
-                    caption = stringResource(R.string.label_cursor_models_caption),
-                )
-                HorizontalUsageChart(
-                    label = stringResource(R.string.label_other_models),
-                    percent = usage.usage.apiPercentUsed,
-                    color = chartColors.chart2,
-                    caption = stringResource(R.string.label_other_models_caption),
-                )
-            }
-        }
-
-        usage.grokBot?.let { grok ->
-            val nowMillis = rememberNowMillis()
-            val zone = LocalDisplayZone.current
-            val grokProgress = remember(grok, nowMillis, zone) {
-                UsageCalculations.billingProgress(
-                    grok.periodStart,
-                    grok.resetsAt,
-                    nowMillis,
-                    displayZone = zone,
-                )
-            }
-            SectionHeading(
-                icon = Icons.Outlined.SmartToy,
-                title = "Grok Bot",
-                supporting = grokProgress?.let {
-                    stringResource(R.string.label_grok_weekly_quota_reset, formatRemainingLabel(it.remainingMillis))
-                } ?: stringResource(R.string.label_grok_weekly_quota_usage),
-            )
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shadowElevation = 1.dp,
-            ) {
-                Column(
-                    modifier = Modifier.padding(if (compact) 14.dp else 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
-                ) {
-                    HorizontalUsageChart(
-                        label = stringResource(R.string.label_week_usage),
-                        percent = grok.percentUsed,
-                        color = chartColors.chart3,
-                        caption = stringResource(R.string.label_grok_on_demand_caption),
-                    )
-                }
-            }
-        }
-
-        SectionHeading(
-            icon = Icons.Outlined.PieChart,
-            title = stringResource(R.string.label_quota_composition),
-            supporting = stringResource(
-                if (quota.extraBonusDollars > 0.0) {
-                    R.string.label_quota_composition_supporting_extra_bonus
-                } else {
-                    R.string.label_quota_composition_supporting
-                },
-            ),
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shadowElevation = 1.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(if (compact) 14.dp else 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                StackedBar(
-                    segments = segments,
-                    description = buildSegmentDescription(stringResource(R.string.label_quota_composition), segments),
-                    height = if (compact) 14.dp else 16.dp,
-                )
-                SegmentLegend(segments)
-                if (quota.extraBonusDollars > 0.0) {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            stringResource(R.string.label_bonus_extra),
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        AnimatedValueText(
-                            value = money(quota.extraBonusDollars),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        stringResource(R.string.label_plan_quota),
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    AnimatedValueText(
-                        value = quota.limitDollars.takeIf { it > 0.0 }?.let(::money) ?: "—",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        stringResource(R.string.label_total_spend),
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    AnimatedValueText(
-                        value = money(quota.totalSpendDollars),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-
-        TokenUsageSection(usage = usage, compact = compact)
-        HistoryUsageSection(
-            usage = usage,
-            extraHistory = extraHistory,
-            loadingHistoryKey = loadingHistoryKey,
-            historyError = historyError,
-            historyErrorKey = historyErrorKey,
-            onLoadHistoryWindow = onLoadHistoryWindow,
-            compact = compact,
-        )
-                    }
-                }, secondary = {
-                    if (providerFilter != 1) CodexQuotaSection(state = codexState,
-                        onManageCredential = onManageCodex, onRefresh = onRefreshCodex)
-                })
-        }
-    }
-}
-
-@Composable
-private fun TokenUsageSection(usage: AgenTOverview, compact: Boolean) {
-    val tokenUsage = usage.tokenUsage
-    SectionHeading(
-        icon = Icons.AutoMirrored.Outlined.TrendingUp,
-        title = stringResource(R.string.label_token_usage),
-        supporting = stringResource(R.string.label_token_section_supporting),
-    )
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shadowElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(if (compact) 14.dp else 18.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
-        ) {
-            when {
-                tokenUsage == null -> {
-                    Text(
-                        text = stringResource(R.string.label_token_unavailable),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                tokenUsage.models.isEmpty() -> {
-                    Text(
-                        text = stringResource(R.string.label_token_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                else -> {
-                    tokenUsage.models.forEachIndexed { index, model ->
-                        ModelTokenRow(model = model, compact = compact)
-                        if (index < tokenUsage.models.lastIndex) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun HistoryUsageSection(
-    usage: AgenTOverview,
-    extraHistory: Map<String, UsageWindow>,
-    loadingHistoryKey: String?,
-    historyError: String?,
-    historyErrorKey: String?,
-    onLoadHistoryWindow: (String, Long, Long, String?) -> Unit,
-    compact: Boolean,
-) {
-    val chartColors = LocalPulseChartColors.current
-    val zone = LocalDisplayZone.current
-    val nowMonth = remember(zone) { YearMonth.now(zone) }
-    var mode by rememberSaveable(usage.accountId) { mutableStateOf(HistoryQueryMode.CalendarMonth) }
-    var selectedMonth by rememberSaveable(usage.accountId) { mutableStateOf(nowMonth) }
-    var cycleOffset by rememberSaveable(usage.accountId) { mutableIntStateOf(-1) }
-    val selectedMonthKey = UsageHistoryWindows.yearMonthKey(selectedMonth)
-    val cycleStartMs = remember(usage.billingCycle.start) {
-        UsageHistoryWindows.parseLocalDateTimeMs(usage.billingCycle.start)
-    }
-    val cycleEndMs = remember(usage.billingCycle.end) {
-        UsageHistoryWindows.parseLocalDateTimeMs(usage.billingCycle.end)
-    }
-    val selectedCycleRange = remember(cycleStartMs, cycleEndMs, cycleOffset) {
-        if (cycleStartMs == null || cycleEndMs == null) {
-            null
-        } else {
-            UsageHistoryWindows.billingCycleOffset(cycleStartMs, cycleEndMs, cycleOffset)
-        }
-    }
-    val selectedCycleKey = selectedCycleRange?.let { UsageHistoryWindows.cycleKey(it.startMs) }
-    LaunchedEffect(selectedMonthKey, mode, usage.accountId, zone, historyErrorKey) {
-        if (mode != HistoryQueryMode.CalendarMonth) return@LaunchedEffect
-        if (historyErrorKey == selectedMonthKey) return@LaunchedEffect
-        val monthRange = UsageHistoryWindows.calendarMonth(selectedMonth, zone = zone)
-        if (usage.history?.calendarMonth?.yearMonth != selectedMonthKey &&
-            extraHistory[selectedMonthKey] == null
-        ) {
-            onLoadHistoryWindow(selectedMonthKey, monthRange.startMs, monthRange.endMs, selectedMonthKey)
-        }
-    }
-    LaunchedEffect(selectedCycleKey, mode, usage.accountId, historyErrorKey) {
-        if (mode != HistoryQueryMode.BillingCycle) return@LaunchedEffect
-        val range = selectedCycleRange ?: return@LaunchedEffect
-        val key = selectedCycleKey ?: return@LaunchedEffect
-        if (historyErrorKey == key) return@LaunchedEffect
-        if (cycleOffset == -1 && usage.history?.previousCycle != null) return@LaunchedEffect
-        if (extraHistory[key] == null) {
-            onLoadHistoryWindow(key, range.startMs, range.endMs, null)
-        }
-    }
-    val extraCycle = selectedCycleKey?.let { extraHistory[it] }
-    val window = when (mode) {
-        HistoryQueryMode.BillingCycle -> {
-            if (cycleOffset == -1) extraCycle ?: usage.history?.previousCycle else extraCycle
-        }
-        HistoryQueryMode.CalendarMonth -> {
-            if (usage.history?.calendarMonth?.yearMonth == selectedMonthKey) {
-                usage.history?.calendarMonth
-            } else {
-                extraHistory[selectedMonthKey]
-            }
-        }
-    }
-    val loadingKey = when (mode) {
-        HistoryQueryMode.CalendarMonth -> selectedMonthKey
-        HistoryQueryMode.BillingCycle -> selectedCycleKey
-    }
-    val loading = loadingHistoryKey == loadingKey && window == null
-    val failed = historyErrorKey != null &&
-        historyErrorKey == loadingKey &&
-        window == null &&
-        !loading
-    val earliestMonth = nowMonth.minusMonths(12)
-    val pools = remember(window?.tokenUsage) { UsageCalculations.poolPercents(window?.tokenUsage) }
-    SectionHeading(
-        icon = Icons.Outlined.History,
-        title = stringResource(R.string.label_history_title),
-        supporting = stringResource(R.string.label_history_supporting),
-    )
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shadowElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(if (compact) 14.dp else 18.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
-        ) {
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val options = listOf(
-                    HistoryQueryMode.CalendarMonth to stringResource(R.string.label_history_calendar_month),
-                    HistoryQueryMode.BillingCycle to stringResource(R.string.label_history_billing_cycle),
-                )
-                options.forEachIndexed { index, (value, label) ->
-                    SegmentedButton(
-                        selected = mode == value,
-                        onClick = { mode = value },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                    ) {
-                        Text(label)
-                    }
-                }
-            }
-            if (mode == HistoryQueryMode.CalendarMonth) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = { selectedMonth = selectedMonth.minusMonths(1) },
-                        enabled = selectedMonth.isAfter(earliestMonth),
-                    ) {
-                        Icon(Icons.Outlined.ChevronLeft, contentDescription = stringResource(R.string.label_history_prev_month))
-                    }
-                    Text(
-                        stringResource(R.string.label_year_month, selectedMonth.year, selectedMonth.monthValue),
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    IconButton(
-                        onClick = { selectedMonth = selectedMonth.plusMonths(1) },
-                        enabled = selectedMonth.isBefore(nowMonth),
-                    ) {
-                        Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.label_history_next_month))
-                    }
-                }
-            } else {
-                val labels = selectedCycleRange?.let { UsageHistoryWindows.formatRange(it, zone) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = { cycleOffset -= 1 },
-                        enabled = selectedCycleRange != null && cycleOffset > -12,
-                    ) {
-                        Icon(Icons.Outlined.ChevronLeft, contentDescription = stringResource(R.string.label_history_prev_cycle))
-                    }
-                    Text(
-                        text = if (labels != null) {
-                            "${labels.first} → ${labels.second}"
-                        } else {
-                            stringResource(R.string.label_history_cycle_unknown)
-                        },
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    IconButton(
-                        onClick = { cycleOffset += 1 },
-                        enabled = cycleOffset < -1,
-                    ) {
-                        Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.label_history_next_cycle))
-                    }
-                }
-            }
-            when {
-                loading -> {
-                    Text(
-                        stringResource(R.string.label_history_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                failed -> {
-                    Text(
-                        historyError ?: stringResource(R.string.error_load_history),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    TextButton(
-                        onClick = {
-                            when (mode) {
-                                HistoryQueryMode.CalendarMonth -> {
-                                    val monthRange = UsageHistoryWindows.calendarMonth(selectedMonth, zone = zone)
-                                    onLoadHistoryWindow(
-                                        selectedMonthKey,
-                                        monthRange.startMs,
-                                        monthRange.endMs,
-                                        selectedMonthKey,
-                                    )
-                                }
-                                HistoryQueryMode.BillingCycle -> {
-                                    val range = selectedCycleRange ?: return@TextButton
-                                    val key = selectedCycleKey ?: return@TextButton
-                                    onLoadHistoryWindow(key, range.startMs, range.endMs, null)
-                                }
-                            }
-                        },
-                    ) {
-                        Text(stringResource(R.string.action_reload))
-                    }
-                }
-                window?.tokenUsage == null -> {
-                    Text(
-                        stringResource(R.string.label_history_empty_tokens),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                else -> {
-                    val tokenUsage = window.tokenUsage!!
-                    if (pools != null) {
-                        HorizontalUsageChart(
-                            label = stringResource(R.string.label_cursor_models),
-                            percent = pools.ownPercent,
-                            color = chartColors.chart1,
-                            caption = stringResource(R.string.label_history_pool_share_caption, money(pools.ownPoolDollars)),
-                        )
-                        HorizontalUsageChart(
-                            label = stringResource(R.string.label_other_models),
-                            percent = pools.thirdPartyPercent,
-                            color = chartColors.chart2,
-                            caption = stringResource(R.string.label_history_pool_share_caption, money(pools.thirdPartyDollars)),
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.label_history_pool_share_unavailable),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    val cachedTokens = tokenUsage.totalCacheWriteTokens + tokenUsage.totalCacheReadTokens
-                    val tokenLine = listOfNotNull(
-                        stringResource(R.string.label_in_tokens, UsageCalculations.formatTokens(tokenUsage.totalInputTokens)),
-                        stringResource(R.string.label_out_tokens, UsageCalculations.formatTokens(tokenUsage.totalOutputTokens)),
-                        cachedTokens.takeIf { it > 0L }?.let {
-                            stringResource(R.string.label_cache_tokens_short, UsageCalculations.formatTokens(it))
-                        },
-                        money(tokenUsage.totalCostDollars),
-                    ).joinToString(" · ")
-                    Text(
-                        tokenLine,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (tokenUsage.models.isNotEmpty()) {
-                        tokenUsage.models.forEachIndexed { index, model ->
-                            ModelTokenRow(model = model, compact = compact)
-                            if (index < tokenUsage.models.lastIndex) {
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModelTokenRow(
-    model: ModelTokenUsage,
-    compact: Boolean,
-) {
-    val cached = model.cacheWriteTokens + model.cacheReadTokens
-    val modelA11y = if (cached > 0L) {
-        stringResource(
-            R.string.label_model_token_a11y_cache,
-            model.modelIntent,
-            model.inputTokens.toString(),
-            model.outputTokens.toString(),
-            cached.toString(),
-            money(model.costDollars),
-        )
-    } else {
-        stringResource(
-            R.string.label_model_token_a11y,
-            model.modelIntent,
-            model.inputTokens.toString(),
-            model.outputTokens.toString(),
-            money(model.costDollars),
-        )
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                contentDescription = modelA11y
-            },
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = model.modelIntent,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = money(model.costDollars),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        val tokenLine = listOfNotNull(
-            stringResource(R.string.label_in_tokens, UsageCalculations.formatTokens(model.inputTokens)),
-            stringResource(R.string.label_out_tokens, UsageCalculations.formatTokens(model.outputTokens)),
-            cached.takeIf { it > 0L }?.let {
-                stringResource(R.string.label_cache_tokens_short, UsageCalculations.formatTokens(it))
-            },
-        ).joinToString(" · ")
-        Text(
-            text = tokenLine,
-            style = if (compact) {
-                MaterialTheme.typography.bodySmall
-            } else {
-                MaterialTheme.typography.bodyMedium
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
 
 @Composable
 internal fun AdaptiveTabContent(scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
@@ -1529,12 +821,13 @@ internal fun AdaptiveTabContent(scrollState: androidx.compose.foundation.ScrollS
 
 @Composable
 internal fun AdaptiveLazyTabContent(state: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+    modifier: Modifier = Modifier,
     content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 360.dp || maxHeight < 620.dp || LocalDensity.current.fontScale > 1.15f
         androidx.compose.foundation.lazy.LazyColumn(
             state = state,
-            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().align(Alignment.TopCenter),
+            modifier = modifier.widthIn(max = 1200.dp).fillMaxSize().align(Alignment.TopCenter),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(if (compact) 12.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
         ) { content(compact) }
@@ -2070,53 +1363,6 @@ private fun MetricRowCard(tiles: List<MetricTile>, compact: Boolean) {
 }
 
 @Composable
-private fun HorizontalUsageChart(
-    label: String,
-    percent: Double?,
-    color: Color,
-    caption: String? = null,
-) {
-    val value = percent?.safeNonNegative()
-    val animatedProgress by animateFloatAsState(
-        targetValue = value?.toProgress() ?: 0f,
-        animationSpec = tween(520, easing = FastOutSlowInEasing),
-        label = "$label progress",
-    )
-    val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val poolDescription = stringResource(
-        R.string.pool_progress_description,
-        label,
-        value?.let(::formatPercent) ?: stringResource(R.string.no_data),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(label, modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
-            AnimatedValueText(
-                value = value?.let(::formatPercent) ?: "—",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        caption?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        ProgressTrack(
-            progress = animatedProgress,
-            color = color,
-            height = 12.dp,
-            trackColor = trackColor,
-            modifier = Modifier.clearAndSetSemantics {
-                contentDescription = poolDescription
-            },
-        )
-    }
-}
-
-@Composable
 private fun ProgressTrack(
     progress: Float,
     color: Color,
@@ -2143,74 +1389,6 @@ private fun ProgressTrack(
     }
 }
 
-@Composable
-private fun StackedBar(segments: List<ChartSegment>, description: String, height: Dp) {
-    val positiveSegments = segments.map { it.copy(value = it.value.safeNonNegative()) }
-    val total = positiveSegments.sumOf { it.value }
-    val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val reveal = remember { Animatable(0f) }
-    LaunchedEffect(positiveSegments) {
-        reveal.snapTo(0f)
-        reveal.animateTo(1f, tween(480, easing = FastOutSlowInEasing))
-    }
-    val gapPx = with(LocalDensity.current) { 2.dp.toPx() }
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(RoundedCornerShape(999.dp))
-            .background(trackColor)
-            .semantics { contentDescription = description },
-    ) {
-        if (total <= 0.0) return@Canvas
-        val active = positiveSegments.filter { it.value > 0.0 }
-        val gaps = ((active.size - 1).coerceAtLeast(0) * gapPx)
-        val usable = (size.width - gaps).coerceAtLeast(0f)
-        var startX = 0f
-        active.forEachIndexed { index, segment ->
-            val segmentWidth = (segment.value / total * usable * reveal.value).toFloat()
-            drawRoundRect(
-                color = segment.color,
-                topLeft = Offset(startX, 0f),
-                size = Size(segmentWidth, size.height),
-                cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
-            )
-            startX += segmentWidth
-            if (index < active.lastIndex) startX += gapPx
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SegmentLegend(segments: List<ChartSegment>) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        segments.forEach { segment ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(segment.color),
-                )
-                Text(segment.label, style = MaterialTheme.typography.bodySmall)
-                AnimatedValueText(
-                    value = money(segment.value),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-    }
-}
-
 /**
  * 页面可见期间每 [BILLING_TICK_MS] 返回一次最新时间，驱动周期百分比/倒计时本地走动；
  * 后台自动暂停，不触发网络请求。
@@ -2229,14 +1407,6 @@ private fun rememberNowMillis(): Long {
     }
     return now
 }
-
-private fun buildSegmentDescription(prefix: String, segments: List<ChartSegment>): String =
-    buildString {
-        append(prefix)
-        segments.forEach { segment ->
-            append(" · ${segment.label} ${money(segment.value)}")
-        }
-    }
 
 @Composable
 private fun formatRemainingLabel(millis: Long, compact: Boolean = false): String =

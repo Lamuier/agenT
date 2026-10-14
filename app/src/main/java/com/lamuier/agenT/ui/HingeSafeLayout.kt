@@ -144,13 +144,15 @@ internal fun AdaptiveServiceContent(
 internal fun AdaptiveLazyServiceContent(
     primary: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit,
     secondary: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit,
+    primaryModifier: Modifier = Modifier,
+    secondaryModifier: Modifier = Modifier,
 ) {
     val firstState = androidx.compose.foundation.lazy.rememberLazyListState()
     val secondState = androidx.compose.foundation.lazy.rememberLazyListState()
     AdaptivePaneLayout(primaryFraction = 0.38f, maxContentWidthDp = 1440f,
-        single = { AdaptiveLazyTabContent(state = firstState) { compact -> primary(compact); secondary(compact) } },
-        primary = { AdaptiveLazyTabContent(state = firstState, content = primary) },
-        secondary = { AdaptiveLazyTabContent(state = secondState, content = secondary) })
+        single = { AdaptiveLazyTabContent(state = firstState, modifier = primaryModifier) { compact -> primary(compact); secondary(compact) } },
+        primary = { AdaptiveLazyTabContent(state = firstState, modifier = primaryModifier, content = primary) },
+        secondary = { AdaptiveLazyTabContent(state = secondState, modifier = secondaryModifier, content = secondary) })
 }
 
 /** Keep titles and actions clear of a separator as well as the page body. */

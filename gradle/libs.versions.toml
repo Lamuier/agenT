@@ -7,6 +7,7 @@ lifecycle = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.08.00"
 junit = "4.13.2"
+benchmark = "1.5.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -30,4 +31,6 @@ org-json = { group = "org.json", name = "json", version = "20250517" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-test = { id = "com.android.test", version.ref = "agp" }
+baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

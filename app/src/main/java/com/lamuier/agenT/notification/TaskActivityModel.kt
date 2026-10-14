@@ -5,10 +5,26 @@ import com.lamuier.agenT.model.AgenTasks
 
 /** Only observed transitions are recent activity; a first sync must not replay task history. */
 internal object TaskActivityModel {
-    const val COMPLETION_RETENTION_MILLIS = 60L * 60 * 1000
+    const val COMPLETION_RETENTION_MILLIS = 15L * 60 * 1000
 
     fun isActive(status: AgentTaskStatus) = status == AgentTaskStatus.Creating || status == AgentTaskStatus.Running
     fun isTerminal(status: AgentTaskStatus) = status in setOf(AgentTaskStatus.Finished, AgentTaskStatus.Error, AgentTaskStatus.Expired)
+
+    fun recentCompletions(tasks: AgenTasks, nowMillis: Long): Map<String, Long> {
+        val terminalIds = tasks.tasks.distinctBy { it.id }.filter { isTerminal(it.status) }.map { it.id }.toSet()
+        return tasks.completedAtMillis.filter { (id, time) ->
+            id in terminalIds && nowMillis - time in 0 until COMPLETION_RETENTION_MILLIS
+        }
+    }
+
+    /** A stale button must never acknowledge a newer run of the same task. */
+    fun acknowledge(tasks: AgenTasks, displayedCompletions: Map<String, Long>): AgenTasks = tasks.copy(
+        completedAtMillis = tasks.completedAtMillis.filterNot { (id, time) -> displayedCompletions[id] == time },
+    )
+
+    fun nextExpiry(tasks: AgenTasks?, nowMillis: Long): Long? = tasks?.let {
+        recentCompletions(it, nowMillis).values.minOrNull()?.plus(COMPLETION_RETENTION_MILLIS)
+    }
 
     fun observe(previous: AgenTasks?, current: AgenTasks, nowMillis: Long): AgenTasks {
         val baseline = previous?.takeIf { it.accountId == current.accountId && it.observedAtMillis > 0 }

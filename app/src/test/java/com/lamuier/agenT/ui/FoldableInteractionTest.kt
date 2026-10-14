@@ -86,13 +86,13 @@ class FoldableInteractionTest {
                 }
             }
         }
-        compose.onNode(hasText("Codex") and hasClickAction()).performClick()
+        compose.onNodeWithTag("usage-summary-codex").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { width = 360.dp }
-        compose.onNode(hasText("Codex") and hasClickAction()).assertIsSelected()
+        compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNode(hasText("Usage") and hasClickAction()).assertIsSelected()
-        compose.onNode(hasText("Codex") and hasClickAction()).assertIsSelected()
+        compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
         compose.runOnIdle { width = 1000.dp }
-        compose.onNode(hasText("Codex") and hasClickAction()).assertIsSelected()
+        compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
     }
 }

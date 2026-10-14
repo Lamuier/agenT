@@ -11,7 +11,12 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -24,6 +29,7 @@ import com.lamuier.agenT.model.TokenProvider
 import com.lamuier.agenT.qa.ReviewFixture
 import com.lamuier.agenT.ui.theme.*
 import com.lamuier.agenT.util.AppLanguage
+import com.lamuier.agenT.R
 import org.junit.Rule
 import org.junit.Test
 import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
@@ -55,6 +61,7 @@ class UiRenderTest(private val profile: String, private val scene: String) {
     @get:Rule(order = 1) val compose = createComposeRule()
 
     @Test fun render() {
+        RuntimeEnvironment.getApplication().getSharedPreferences("usage-page-v1", 0).edit().clear().commit()
         val fixture = ReviewFixture.create(ZoneId.systemDefault(), Instant.parse("2026-10-12T04:00:00Z"))
         compose.mainClock.autoAdvance = false
         compose.setContent {
@@ -65,7 +72,9 @@ class UiRenderTest(private val profile: String, private val scene: String) {
             val translated = LocalContext.current.createConfigurationContext(configuration).resources
             val density = LocalDensity.current
             CompositionLocalProvider(LocalConfiguration provides configuration, LocalResources provides translated,
-                LocalDensity provides Density(density.density, spec.fontScale), LocalDisplayZone provides ZoneId.of("UTC")) {
+                LocalDensity provides Density(density.density, spec.fontScale), LocalDisplayZone provides ZoneId.of("UTC"),
+                LocalUsageNow provides Instant.parse("2026-10-12T04:00:00Z").toEpochMilli(),
+                LocalResetNow provides Instant.parse("2026-10-12T04:00:00Z")) {
                 AgenTTheme(ThemeSettings(if(spec.dark) ThemeMode.Dark else ThemeMode.Light, ColorPalette.Pulse)) {
                     val scale = LocalDensity.current.density
                     CompositionLocalProvider(LocalWindowFolds provides spec.folds.map {
@@ -88,6 +97,7 @@ class UiRenderTest(private val profile: String, private val scene: String) {
                                     "settings-appearance" -> SettingsSection.Appearance.name
                                     "settings-general" -> SettingsSection.General.name
                                     "settings-system" -> SettingsSection.SystemEntries.name
+                                    "settings-notifications" -> SettingsSection.Notifications.name
                                     else -> null
                                 }, onSectionChange = {})
                             else -> DashboardScreen(fixture.cursor, fixture.codex, remember { SnackbarHostState() }, DashboardTab.DEFAULT_ORDER,
@@ -104,6 +114,31 @@ class UiRenderTest(private val profile: String, private val scene: String) {
         val output = File("build/reports/ui-review/$profile-$scene.png").apply { parentFile?.mkdirs() }
         compose.onRoot().captureRoboImage(output.absolutePath, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
         check(output.isFile && output.length() > 1000) { "No rendered UI: $output" }
+        if (scene == "usage") {
+            compose.mainClock.autoAdvance = true
+            fun captureSection(key: String, suffix: String) {
+                compose.onNodeWithTag("usage-detail-list").performScrollToKey(key)
+                compose.waitForIdle()
+                val detail = File("build/reports/ui-review/$profile-usage-$suffix.png")
+                compose.onRoot().captureRoboImage(detail.absolutePath, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
+                check(detail.isFile && detail.length() > 1000)
+            }
+            captureSection("cursor-plan", "pace")
+            captureSection("usage-trend", "trend")
+            captureSection("usage-statistics", "models")
+            compose.scrollToUsageSummary()
+            compose.onNodeWithTag("usage-summary-codex").performScrollTo().assertIsDisplayed().performClick()
+            captureSection("window-primary", "codex")
+        }
+        if (scene == "settings-notifications") {
+            val label = RuntimeEnvironment.getApplication().getString(R.string.notification_live_updates_label)
+            compose.mainClock.autoAdvance = true
+            compose.onNodeWithText(label, useUnmergedTree = true).performScrollTo()
+            compose.waitForIdle()
+            val live = File("build/reports/ui-review/$profile-settings-notifications-live.png")
+            compose.onRoot().captureRoboImage(live.absolutePath, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
+            check(live.isFile && live.length() > 1000) { "No rendered live activity setting: $live" }
+        }
         if (scene == "resets") {
             compose.onAllNodes(hasScrollToIndexAction()).onLast().performScrollToKey("timeline")
             compose.waitForIdle()
@@ -133,7 +168,7 @@ class UiRenderTest(private val profile: String, private val scene: String) {
             "landscape_en" to Profile(840, 360, "en", false, 1f),
         )
         @JvmStatic @Parameters(name = "{0}-{1}") fun scenarios(): List<Array<String>> = (if (System.getenv("AGENT_UI_REVIEW_SMOKE") == "1") profiles.keys.take(1) else profiles.keys).flatMap { profile ->
-            (if (System.getenv("AGENT_UI_REVIEW_SMOKE") == "1") listOf("overview") else listOf("overview", "usage", "tasks", "resets", "status", "settings", "settings-appearance", "settings-general", "settings-system", "token"))
+            (if (System.getenv("AGENT_UI_REVIEW_SMOKE") == "1") listOf("overview") else listOf("overview", "usage", "tasks", "resets", "status", "settings", "settings-appearance", "settings-general", "settings-system", "settings-notifications", "token"))
                 .filter { scene -> System.getenv("AGENT_UI_REVIEW_SCENES")?.split(',')?.contains(scene) != false }
                 .map { arrayOf(profile, it) }
         }

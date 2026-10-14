@@ -152,6 +152,15 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".notification.TaskCompletionReceiver"
+            android:exported="false" />
+
+        <service
+            android:name=".notification.TaskCompletionExpiryJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <service
             android:name=".notification.NotificationRefreshJob"
             android:exported="false"

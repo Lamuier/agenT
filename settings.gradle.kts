@@ -40,4 +40,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "agenT"
 include(":app")
+include(":performance")
 

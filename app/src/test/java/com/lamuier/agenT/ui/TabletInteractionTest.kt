@@ -62,16 +62,24 @@ class TabletInteractionTest {
             }
         }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("Official regular reset count").assertIsDisplayed()
-        compose.onNodeWithText("Reset credit grant records").assertIsDisplayed()
-        compose.onAllNodesWithText("1", substring = false).assertCountEquals(2)
-        compose.onNodeWithText("Refresh reset records").performClick()
+        compose.onNodeWithTag("reset-count-regular").assertIsDisplayed().assert(hasAnyDescendant(hasText("1")))
+        compose.onNodeWithTag("reset-count-banked").assertIsDisplayed().assert(hasAnyDescendant(hasText("1")))
+        compose.onNodeWithTag("reset-refresh").performClick()
         assertEquals(listOf(false, true), requests)
-        compose.onAllNodes(hasScrollToIndexAction()).onLast().performScrollToKey("public:regular")
-        compose.onNodeWithText("API regular reset fixture").assertIsDisplayed()
-        compose.onAllNodes(hasScrollToIndexAction()).onLast().performScrollToKey("public:banked")
-        compose.onNodeWithText("API credit grant fixture").assertIsDisplayed()
-        compose.onNodeWithText("Official reset credit grant").assertIsDisplayed()
+        // Click callbacks in scroll containers may be posted after the manual frame advance.
+        // Let the test clock draw the resulting state before checking expansion.
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("reset-detail-list").performScrollToKey("public:regular")
+        val regularCard = compose.onNodeWithTag("reset-record-regular").performScrollTo().assertIsDisplayed()
+        regularCard.performClick()
+        regularCard.assert(hasStateDescription("Collapse record"))
+        compose.onNodeWithText("API regular reset fixture", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("reset-detail-list").performScrollToKey("public:banked")
+        val bankedCard = compose.onNodeWithTag("reset-record-banked").performScrollTo().assertIsDisplayed()
+        bankedCard.performClick()
+        bankedCard.assert(hasStateDescription("Collapse record"))
+        compose.onNodeWithText("API credit grant fixture", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("reset-record-banked", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Credit grants")))
         listOf("Add record", "Account", "Window renewal records", "Reset credit details").forEach {
             compose.onNodeWithText(it, substring = false).assertDoesNotExist()
         }

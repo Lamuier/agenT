@@ -2,18 +2,26 @@ package com.lamuier.agenT.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.*
 import com.lamuier.agenT.ui.theme.LocalDisplayZone
@@ -23,83 +31,93 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
+internal val LocalResetNow = staticCompositionLocalOf<Instant?> { null }
+
 @Composable
 internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) -> Unit,
-    onRefreshPublicResets: (Boolean) -> Unit = {}) {
+    onRefreshPublicResets: (Boolean) -> Unit = {}, active: Boolean = true) {
     val zone = LocalDisplayZone.current
-    var period by rememberSaveable { mutableStateOf(CodexResetPeriod.Week) }
-    var now by remember { mutableStateOf(Instant.now()) }
-    var configuring by remember { mutableStateOf(false) }
-    var heatmapMonths by rememberSaveable { mutableIntStateOf(6) }
-    var heatmapEnd by rememberSaveable(zone.id) { mutableStateOf(LocalDate.now(zone)) }
-    var selectedDay by rememberSaveable { mutableStateOf<LocalDate?>(null) }
     val context = LocalContext.current
+    val fixedNow = LocalResetNow.current
+    var period by rememberSaveable { mutableStateOf(CodexResetPeriod.Week) }
+    var clock by remember { mutableStateOf(Instant.now()) }
+    val now = fixedNow ?: clock
+    var configuring by remember { mutableStateOf(false) }
+    var explaining by rememberSaveable { mutableStateOf(false) }
+    var heatmapMonths by rememberSaveable { mutableIntStateOf(6) }
+    var heatmapEnd by rememberSaveable(zone.id) { mutableStateOf(now.atZone(zone).toLocalDate()) }
+    var selectedDay by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    var expandedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
     val feedback = LocalAppFeedback.current
-    LaunchedEffect(Unit) { onRefreshPublicResets(false) }
-    LaunchedEffect(Unit) { while (true) { delay(60_000); now = Instant.now() } }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(active) { if (active) onRefreshPublicResets(false) }
+    LaunchedEffect(fixedNow, active, lifecycleOwner) {
+        if (fixedNow == null && active) lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) { clock = Instant.now(); delay(60_000) }
+        }
+    }
     val anchor = state.resetLedger?.subscriptionDay
     val range = CodexResetPeriods.range(period, now, zone, anchor)
     val snapshot = state.publicResets
     val periodEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), range)
+    val metrics = remember(snapshot?.events, range, now.atZone(zone).toLocalDate(), zone) {
+        if (snapshot != null && range != null) resetDashboardData(snapshot.events, range, now, zone) else null
+    }
+    val allEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), null, allPublicHistory = true)
     val chartFrom = heatmapEnd.minusMonths(heatmapMonths.toLong()).plusDays(1)
     val chartRange = CodexResetRange(chartFrom.atStartOfDay(zone).toEpochSecond(), heatmapEnd.plusDays(1).atStartOfDay(zone).toEpochSecond())
     val chartEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), chartRange)
     val chart = remember(chartEntries, chartFrom, heatmapEnd, zone) { CodexResetHeatmap.build(chartEntries, chartFrom, heatmapEnd, zone) }
-    val dayEntries = selectedDay?.let { day -> chart.days.firstOrNull { it.date == day }?.entries }.orEmpty()
+    val dayEntries = selectedDay?.let { day -> allEntries.filter { Instant.ofEpochSecond(it.at).atZone(zone).toLocalDate() == day } }.orEmpty()
     val visibleEntries = if (selectedDay == null) periodEntries else dayEntries
     AdaptiveLazyServiceContent(primary = {
         item(key = "summary") {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.reset_page_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(R.string.reset_page_subtitle), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.reset_dash_title), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { explaining = true }, modifier = Modifier.testTag("reset-explanation")) { Text(stringResource(R.string.u_explanation)) }
+                IconButton(onClick = { onRefreshPublicResets(true) }, enabled = !state.refreshingPublicResets, modifier = Modifier.testTag("reset-refresh")) {
+                    if (state.refreshingPublicResets) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.Refresh, stringResource(R.string.reset_public_refresh))
+                }
             }
         }
         item(key = "period") {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 ResetPeriodSelector(period) { if (period != it) { period = it; selectedDay = null; feedback.selection() } }
-                range?.let { Text("${resetStamp(it.start, zone, dateOnly = true)} — ${resetStamp(it.end - 1, zone, dateOnly = true)}",
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                range?.let { Text(resetStamp(it.start, zone, true) + " — " + resetStamp(it.end - 1, zone, true),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (period == CodexResetPeriod.Subscription) {
                     TextButton(onClick = { configuring = true }, enabled = state.credential != null && !state.resetSaving) {
-                        Text(anchor?.let { stringResource(R.string.reset_anchor_value, it) } ?: stringResource(R.string.reset_set_anchor))
+                        Text(anchor?.let { stringResource(R.string.reset_dash_anchor, it) } ?: stringResource(R.string.reset_set_anchor))
                     }
-                    if (range == null) Text(stringResource(R.string.reset_anchor_missing), style = MaterialTheme.typography.bodySmall)
-                    state.resetError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    if (range == null) Text(stringResource(R.string.reset_anchor_missing), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
         item(key = "official-stats") {
-            ResetStat(Modifier.fillMaxWidth(), R.string.reset_official_regular_count,
-                if (snapshot != null && range != null) periodEntries.count { it.public.type == "regular" }.toString() else "—",
-                stringResource(R.string.reset_regular_count_hint))
-        }
-        item(key = "credit-grant-stats") {
-            ResetStat(Modifier.fillMaxWidth(), R.string.reset_official_banked_count,
-                if (snapshot != null && range != null) periodEntries.count { it.public.type == "banked" }.toString() else "—",
-                stringResource(R.string.reset_banked_count_hint))
+            ResetDashboardCard(stringResource(R.string.reset_dash_composition)) {
+                ResetComposition(metrics)
+                UsageKpiGrid(listOf(
+                    UsageKpi(stringResource(R.string.reset_dash_recorded_days), metrics?.recordedDays?.toString() ?: "—", "reset-recorded-days"),
+                    UsageKpi(stringResource(R.string.reset_dash_latest), metrics?.latest?.let { resetStamp(it, zone) } ?: "—", "reset-latest",
+                        metrics?.latest?.let { Instant.ofEpochSecond(it).atZone(zone).toString() } ?: "—")))
+            }
         }
         item(key = "public-status") {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.reset_public_boundary), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AdaptiveFilterRow(spacing = 4.dp) {
-                    TextButton(onClick = { com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL) }) {
-                        Text(stringResource(R.string.reset_public_credit))
-                    }
-                    TextButton(onClick = { onRefreshPublicResets(true) }, enabled = !state.refreshingPublicResets) {
-                        Text(stringResource(if (state.refreshingPublicResets) R.string.action_refreshing else R.string.reset_public_refresh))
-                    }
-                }
-                state.publicResetsError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                snapshot?.let {
-                    Text(stringResource(R.string.reset_public_updated, resetStamp(it.fetchedAt / 1000, zone)) +
-                        if (it.fromCache) " · ${stringResource(R.string.overview_cached)}" else "",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (it.truncated) Text(stringResource(R.string.reset_public_truncated), style = MaterialTheme.typography.bodySmall)
-                }
-                if (snapshot == null) Text(stringResource(if (state.refreshingPublicResets) R.string.action_refreshing else R.string.reset_public_load_error),
-                    style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.reset_dash_public), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (snapshot != null) {
+                    Text((if (snapshot.fromCache || state.publicResetsError != null) stringResource(R.string.overview_cached) + " · " else "") +
+                        resetStamp(snapshot.fetchedAt / 1000, zone), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (snapshot.truncated) Text(stringResource(R.string.reset_dash_partial), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                } else Text(stringResource(if (state.refreshingPublicResets) R.string.action_refreshing else R.string.label_data_unavailable), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        item(key = "frequency") {
+            ResetDashboardCard(stringResource(R.string.reset_dash_frequency)) {
+                ResetTypeLegend()
+                ResetFrequencyChart(metrics, selectedDay) { selectedDay = it; feedback.selection() }
             }
         }
     }, secondary = {
@@ -112,87 +130,94 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
                         onClick = { if (heatmapMonths != months) { heatmapMonths = months; selectedDay = null; feedback.selection() } },
                         label = { Text(stringResource(R.string.reset_heatmap_months, months)) }) }
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    TextButton(onClick = { heatmapEnd = heatmapEnd.minusMonths(heatmapMonths.toLong()); selectedDay = null }) {
-                        Text(stringResource(R.string.reset_heatmap_earlier))
-                    }
-                    Text("${chartFrom.format(DateTimeFormatter.ofPattern("yyyy.MM.dd"))} — ${heatmapEnd.format(DateTimeFormatter.ofPattern("yyyy.MM.dd"))}",
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { heatmapEnd = heatmapEnd.minusMonths(heatmapMonths.toLong()); selectedDay = null }) { Text(stringResource(R.string.reset_heatmap_earlier)) }
+                    Text(chartFrom.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")) + " — " + heatmapEnd.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
                         Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    TextButton(onClick = { heatmapEnd = minOf(heatmapEnd.plusMonths(heatmapMonths.toLong()), today); selectedDay = null },
-                        enabled = heatmapEnd < today) { Text(stringResource(R.string.reset_heatmap_later)) }
+                    TextButton(onClick = { heatmapEnd = minOf(heatmapEnd.plusMonths(heatmapMonths.toLong()), today); selectedDay = null }, enabled = heatmapEnd < today) {
+                        Text(stringResource(R.string.reset_heatmap_later)) }
                 }
-                ResetHeatmapCard(chart, selectedDay, onSelect = { selectedDay = it })
-                Text(stringResource(R.string.reset_heatmap_boundary), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (snapshot != null) ResetHeatmapCard(chart, selectedDay) { selectedDay = it; feedback.selection() }
+                else Text(stringResource(R.string.label_data_unavailable), style = MaterialTheme.typography.labelSmall)
             }
         }
         item(key = "records-heading") {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(selectedDay?.let { stringResource(R.string.reset_heatmap_selected, it.toString(), dayEntries.size) }
-                    ?: stringResource(R.string.reset_period_records), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+                    ?: stringResource(R.string.reset_period_records), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
                 if (selectedDay != null) TextButton(onClick = { selectedDay = null }) { Text(stringResource(R.string.reset_show_period)) }
-                if (snapshot != null && visibleEntries.isEmpty() && (range != null || selectedDay != null)) {
-                    Text(stringResource(if (selectedDay == null) R.string.reset_period_empty else R.string.reset_heatmap_empty_day), style = MaterialTheme.typography.bodySmall)
-                }
+            }
+            if (snapshot != null && visibleEntries.isEmpty() && (range != null || selectedDay != null)) Text(
+                stringResource(if (selectedDay == null) R.string.reset_period_empty else R.string.reset_heatmap_empty_day), style = MaterialTheme.typography.labelSmall)
+        }
+        items(visibleEntries, key = { "public:" + it.public.id }) { entry ->
+            PublicResetCard(entry.public, zone, entry.public.id in expandedIds) {
+                expandedIds = if (entry.public.id in expandedIds) expandedIds - entry.public.id else expandedIds + entry.public.id
             }
         }
-        items(visibleEntries, key = { "public:${it.public.id}" }) { entry -> PublicResetCard(entry.public, zone) }
-        item(key = "boundary") {
-            Text(stringResource(R.string.reset_data_boundary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    })
+    }, primaryModifier = Modifier.testTag("reset-primary-list"), secondaryModifier = Modifier.testTag("reset-detail-list"))
     if (configuring) ResetAnchorDialog(anchor, onDismiss = { configuring = false }, onSave = { onSubscriptionDay(it); configuring = false })
+    if (explaining) FoldSafeAlertDialog(onDismissRequest = { explaining = false }, title = { Text(stringResource(R.string.u_explanation)) },
+        text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            listOf(R.string.reset_dash_chart_help, R.string.reset_api_count_hint, R.string.reset_public_boundary, R.string.reset_public_truncated,
+                R.string.reset_heatmap_boundary, R.string.reset_data_boundary).forEach { Text(stringResource(it)) }
+            TextButton(onClick = { com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL) }) {
+                Text(stringResource(R.string.reset_public_credit)) }
+        } }, confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(R.string.action_close)) } })
 }
 
-@Composable private fun PublicResetCard(event: CodexPublicReset, zone: ZoneId) {
+@Composable internal fun ResetDashboardCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            content()
+        }
+    }
+}
+
+@Composable private fun PublicResetCard(event: CodexPublicReset, zone: ZoneId, expanded: Boolean, onToggle: () -> Unit) {
     val context = LocalContext.current
+    val colors = resetChartColors()
     var linkFailed by remember { mutableStateOf(false) }
-    fun open(url: String) { linkFailed = !com.lamuier.agenT.util.CursorCustomTabs.open(context, url) }
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(if (event.type == "banked") R.string.reset_public_banked else R.string.reset_public_regular),
-                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-            Text(stringResource(R.string.reset_public_event_time, resetStamp(event.at, zone)), style = MaterialTheme.typography.labelSmall)
-            Text(stringResource(if (event.sourceType == "observed") R.string.reset_public_observed else R.string.reset_public_announcement),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(event.text, style = MaterialTheme.typography.bodySmall)
-            Row {
-                TextButton(onClick = { open(CodexPublicResetLinks.CREDIT_URL) }) { Text(stringResource(R.string.reset_public_credit)) }
-                event.url?.let { url -> TextButton(onClick = { open(url) }) { Text(stringResource(R.string.reset_public_open_source)) } }
+    val title = stringResource(if (event.type == "banked") R.string.reset_dash_banked else R.string.reset_dash_regular)
+    val source = stringResource(if (event.sourceType == "observed") R.string.reset_dash_observed else R.string.reset_dash_announcement)
+    val action = stringResource(if (expanded) R.string.reset_dash_collapse else R.string.reset_dash_expand)
+    Surface(onClick = onToggle, modifier = Modifier.fillMaxWidth().testTag("reset-record-" + event.id).semantics { stateDescription = action },
+        shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    ResetTypeLabel(title, if (event.type == "banked") colors.banked else colors.regular)
+                    Text(resetStamp(event.at, zone) + " · " + source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, action)
             }
-            if (linkFailed) Text(stringResource(R.string.reset_public_link_error), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error)
+            if (expanded) {
+                Text(event.text, style = MaterialTheme.typography.bodySmall)
+                Text(Instant.ofEpochSecond(event.at).atZone(zone).toString(), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(if (event.sourceType == "observed") R.string.reset_public_observed else R.string.reset_public_announcement),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { linkFailed = !com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL) }) { Text(stringResource(R.string.reset_public_credit)) }
+                    event.url?.let { url -> TextButton(onClick = { linkFailed = !com.lamuier.agenT.util.CursorCustomTabs.open(context, url) }) { Text(stringResource(R.string.reset_public_open_source)) } }
+                }
+                if (linkFailed) Text(stringResource(R.string.reset_public_link_error), style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun ResetPeriodSelector(period: CodexResetPeriod, onSelect: (CodexResetPeriod) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        @Composable fun Chip(item: CodexResetPeriod, modifier: Modifier = Modifier) {
-            FilterChip(selected = period == item, onClick = { onSelect(item) },
-                label = { Text(stringResource(periodLabel(item))) }, modifier = modifier)
-        }
-        if (maxWidth < 320.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                CodexResetPeriod.entries.forEach { Chip(it) }
-            }
-        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CodexResetPeriod.entries.forEach { Chip(it, Modifier.weight(1f)) }
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }, modifier = Modifier.testTag("reset-period-selector")) { Text(stringResource(periodLabel(period)) + " ▾") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            CodexResetPeriod.entries.forEach { item -> DropdownMenuItem(text = { Text(stringResource(periodLabel(item))) },
+                modifier = Modifier.testTag("reset-period-" + item.name), onClick = { expanded = false; onSelect(item) }) }
         }
     }
 }
 
-@Composable private fun ResetStat(modifier: Modifier, title: Int, value: String, detail: String) {
-    Surface(modifier, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(title), style = MaterialTheme.typography.labelMedium)
-            Text(value, fontSize = if (value.toIntOrNull() == null && value != "—") 18.sp else 26.sp, fontWeight = FontWeight.SemiBold)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 @Composable private fun ResetAnchorDialog(initial: Int?, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
     var day by remember { mutableStateOf(initial?.toString().orEmpty()) }
     FoldSafeAlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.reset_set_anchor)) },

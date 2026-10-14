@@ -31,6 +31,20 @@ object NotificationRefreshScheduler {
     private const val JOB_ID = 4242
     private const val PERIOD_MS = 15L * 60 * 1000
     internal const val RESET_JOB_ID = 4243
+    internal const val TASK_EXPIRY_JOB_ID = 4244
+
+    /** Cache-only expiry does not need a network connection; battery restrictions can still defer it. */
+    fun scheduleTaskExpiry(context: Context, deadlineMillis: Long?, nowMillis: Long = System.currentTimeMillis()) {
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        if (deadlineMillis == null) { scheduler.cancel(TASK_EXPIRY_JOB_ID); return }
+        if (scheduler.getPendingJob(TASK_EXPIRY_JOB_ID)?.extras?.getLong("deadline") == deadlineMillis) return
+        val job = JobInfo.Builder(TASK_EXPIRY_JOB_ID, ComponentName(context, TaskCompletionExpiryJob::class.java))
+            .setPersisted(true).setMinimumLatency((deadlineMillis - nowMillis).coerceAtLeast(1L))
+            .setExtras(PersistableBundle().apply { putLong("deadline", deadlineMillis) }).build()
+        runCatching { scheduler.schedule(job) }
+    }
+
+    fun cancelTaskExpiry(context: Context) { context.getSystemService(JobScheduler::class.java).cancel(TASK_EXPIRY_JOB_ID) }
 
     /** Best-effort reset-time refresh. No exact-alarm permission; Doze may defer execution. */
     fun scheduleReset(context: Context, usage: CodexQuotaOverview, revision: Long) {
@@ -73,7 +87,27 @@ object NotificationRefreshScheduler {
             appContext.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
         scheduler.cancel(JOB_ID)
         scheduler.cancel(RESET_JOB_ID)
+        scheduler.cancel(TASK_EXPIRY_JOB_ID)
     }
+}
+
+class TaskCompletionExpiryJob : JobService() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var expiryJob: Job? = null
+
+    override fun onStartJob(params: JobParameters?): Boolean {
+        expiryJob = scope.launch {
+            try {
+                AgenTNotificationCoordinator.get(applicationContext).refreshCopyFromCache()
+            } finally {
+                if (kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive == true) jobFinished(params, false)
+            }
+        }
+        return true
+    }
+
+    override fun onStopJob(params: JobParameters?): Boolean { expiryJob?.cancel(); return true }
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
 }
 
 class NotificationRefreshJob : JobService() {

@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private var startupDrawGate: StartupDrawGate? = null
+    private var firstFrameDrawn by mutableStateOf(false)
 
     /** 长按图标 Shortcut 带来的待执行动作，由 UI 层消费后清空。 */
     private var pendingShortcutAction by mutableStateOf<ShortcutAction?>(null)
@@ -64,7 +65,13 @@ class MainActivity : FragmentActivity() {
         val notificationPreferences = NotificationPreferences.get(applicationContext)
         val dashboardPreferences = DashboardPreferences.get(applicationContext)
 
-        startupDrawGate = StartupDrawGate(window.decorView)
+        startupDrawGate = StartupDrawGate(window.decorView) {
+            if (!isDestroyed && !firstFrameDrawn) {
+                firstFrameDrawn = true
+                reportFullyDrawn()
+                (application as AgenTApplication).onFirstFrameDrawn()
+            }
+        }
         setContent {
             val themeSettings by themePreferences.settings.collectAsStateWithLifecycle()
             val notificationSettings by notificationPreferences.settings.collectAsStateWithLifecycle()
@@ -90,6 +97,7 @@ class MainActivity : FragmentActivity() {
                 }
                 AgenTApp(
                     onInitialContentReady = { startupDrawGate?.release() },
+                    firstFrameDrawn = firstFrameDrawn,
                     hapticFeedbackEnabled = haptics,
                     onHapticFeedbackChange = interactions::setHapticFeedbackEnabled,
                     viewModel = cursorViewModel,
@@ -102,22 +110,22 @@ class MainActivity : FragmentActivity() {
                     onOpenTabConsumed = { pendingOpenTab = null },
                     onThemeModeChange = { mode ->
                         themePreferences.setThemeMode(mode)
-                        AgenTWidgetUpdater.requestUpdate(applicationContext)
+                        requestWidgetUpdate()
                     },
                     onPaletteChange = { palette ->
                         themePreferences.setColorPalette(palette)
-                        AgenTWidgetUpdater.requestUpdate(applicationContext)
+                        requestWidgetUpdate()
                     },
                     timeZoneId = timeZoneId,
                     onTimeZoneChange = { id ->
                         dashboardPreferences.setTimeZoneId(id)
-                        AgenTWidgetUpdater.requestUpdate(applicationContext)
+                        requestWidgetUpdate()
                     },
                     language = language,
                     onLanguageChange = { selected ->
                         if (selected != dashboardPreferences.readLanguage()) {
                             dashboardPreferences.setLanguage(selected)
-                            AgenTWidgetUpdater.requestUpdate(applicationContext)
+                            requestWidgetUpdate()
                             if (Build.VERSION.SDK_INT < 33) recreate()
                         }
                     },
@@ -126,24 +134,20 @@ class MainActivity : FragmentActivity() {
                         if (enabled) {
                             ensureNotificationPermissionAndRefresh()
                         } else {
-                            runCatching {
-                                AgenTNotificationCoordinator
-                                    .get(applicationContext)
-                                    .refreshFromCache()
-                            }
+                            requestNotificationCacheRefresh()
                         }
                     },
                     onThresholdRemindersToggle = { enabled ->
                         notificationPreferences.setThresholdRemindersEnabled(enabled)
                         if (enabled) ensureNotificationPermissionAndRefresh()
-                        else AgenTNotificationCoordinator.get(applicationContext).refreshFromCache()
+                        else requestNotificationCacheRefresh()
                     },
                     codexUsageAutoRefresh = codexUsageAutoRefresh,
                     onCodexUsageAutoRefreshChange = dashboardPreferences::setCodexUsageAutoRefresh,
                     onCodexResetRemindersToggle = { enabled ->
                         notificationPreferences.setCodexResetRemindersEnabled(enabled)
                         if (enabled) ensureNotificationPermissionAndRefresh()
-                        else AgenTNotificationCoordinator.get(applicationContext).refreshFromCache()
+                        else requestNotificationCacheRefresh()
                     },
                     onCatLanguageToggle = { enabled ->
                         notificationPreferences.setCatLanguageEnabled(enabled)
@@ -154,11 +158,7 @@ class MainActivity : FragmentActivity() {
                     percentDisplayMode = notificationSettings.percentDisplayMode,
                     onPercentDisplayModeChange = { mode ->
                         notificationPreferences.setPercentDisplayMode(mode)
-                        runCatching {
-                            AgenTNotificationCoordinator
-                                .get(applicationContext)
-                                .refreshFromCache()
-                        }
+                        requestNotificationCacheRefresh()
                     },
                     tabOrder = tabOrder,
                     onTabOrderChange = dashboardPreferences::setOrder,
@@ -193,6 +193,16 @@ class MainActivity : FragmentActivity() {
      * 在 Android 13+ 上先申请 POST_NOTIFICATIONS，授权（或本就无需授权）后
      * 用最近一次缓存刷新通知并启动周期任务；未授权时 coordinator 内部会撤下通知。
      */
+    private fun requestWidgetUpdate() {
+        val app = application as AgenTApplication
+        app.applicationScope.launch { runCatching { AgenTWidgetUpdater.requestUpdate(app) } }
+    }
+
+    private fun requestNotificationCacheRefresh() {
+        val app = application as AgenTApplication
+        app.applicationScope.launch { runCatching { AgenTNotificationCoordinator.get(app).refreshFromCache() } }
+    }
+
     private fun ensureNotificationPermissionAndRefresh() {
         val needsRequest = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
@@ -202,9 +212,7 @@ class MainActivity : FragmentActivity() {
         if (needsRequest) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            runCatching {
-                AgenTNotificationCoordinator.get(applicationContext).refreshFromCache()
-            }
+            requestNotificationCacheRefresh()
         }
     }
 
@@ -212,9 +220,7 @@ class MainActivity : FragmentActivity() {
         ActivityResultContracts.RequestPermission(),
     ) {
         // 无论授权与否都按当前偏好刷新一次（未授权则 coordinator 内部撤下通知）。
-        runCatching {
-            AgenTNotificationCoordinator.get(applicationContext).refreshFromCache()
-        }
+        requestNotificationCacheRefresh()
     }
 
     override fun onResume() {
@@ -229,14 +235,14 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
-        startupDrawGate?.release()
+        startupDrawGate?.dispose()
         startupDrawGate = null
         super.onDestroy()
     }
 
     override fun onStop() {
         super.onStop()
-        AgenTWidgetUpdater.requestUpdate(applicationContext)
+        requestWidgetUpdate()
     }
 
     private fun preferWideColorGamut() {

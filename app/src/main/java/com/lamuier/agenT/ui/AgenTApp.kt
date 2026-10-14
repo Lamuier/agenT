@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,12 +40,17 @@ import com.lamuier.agenT.model.AppStage
 import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.model.DashboardTab
 import com.lamuier.agenT.model.ShortcutAction
+import com.lamuier.agenT.model.RefreshResult
 import com.lamuier.agenT.ui.theme.ColorPalette
 import com.lamuier.agenT.ui.theme.LocalDisplayZone
 import com.lamuier.agenT.ui.theme.ThemeMode
 import com.lamuier.agenT.util.AppLanguage
 import com.lamuier.agenT.util.DisplayTimeZones
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitCancellation
 
 private const val FOREGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1_000L
 
@@ -76,10 +84,11 @@ fun AgenTApp(
     codexUsageAutoRefresh: Boolean = true,
     onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
     onInitialContentReady: () -> Unit = {},
+    firstFrameDrawn: Boolean = true,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val codexState by codexViewModel.state.collectAsStateWithLifecycle()
-    if (state.stage == AppStage.Dashboard && !codexState.booting) {
+    if (state.stage == AppStage.Dashboard && !codexState.booting && pendingShortcutAction == null) {
         // 成功组合出本地恢复后的首页，才放行首帧；后续网络刷新不再拦截绘制。
         SideEffect(onInitialContentReady)
     }
@@ -100,12 +109,29 @@ fun AgenTApp(
     var deleteTarget by remember { mutableStateOf<CursorAccount?>(null) }
     var showCodexDeleteDialog by remember { mutableStateOf(false) }
     val sheetOpen = manageTokens || showTokenHelp || showSettings
+    var visibleTab by remember { mutableStateOf(pendingOpenTab ?: tabOrder.firstOrNull() ?: DashboardTab.Overview) }
+    LaunchedEffect(firstFrameDrawn, visibleTab, sheetOpen, lifecycleOwner) {
+        val active = firstFrameDrawn && visibleTab == DashboardTab.Usage && !sheetOpen
+        if (!active) { viewModel.setHistoryActive(false); codexViewModel.setHistoryActive(false); return@LaunchedEffect }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.setHistoryActive(true); codexViewModel.setHistoryActive(true)
+            try { awaitCancellation() }
+            finally { viewModel.setHistoryActive(false); codexViewModel.setHistoryActive(false) }
+        }
+    }
+    DisposableEffect(viewModel, codexViewModel) {
+        onDispose { viewModel.setHistoryActive(false); codexViewModel.setHistoryActive(false) }
+    }
+    LaunchedEffect(firstFrameDrawn) {
+        if (firstFrameDrawn) codexViewModel.refreshPublicResets(false)
+    }
     val displayZone = remember(timeZoneId) { DisplayTimeZones.resolve(timeZoneId) }
     val appContext = LocalContext.current.applicationContext
-    LaunchedEffect(codexState.credential, codexState.usage, codexState.serviceStatus, codexState.statusError,
+    LaunchedEffect(firstFrameDrawn, codexState.credential, codexState.usage, codexState.serviceStatus, codexState.statusError,
         state.serviceStatus, state.statusError) {
-        com.lamuier.agenT.widget.AgenTWidgetUpdater.requestUpdate(appContext)
+        if (!firstFrameDrawn) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.lamuier.agenT.widget.AgenTWidgetUpdater.requestUpdate(appContext)
             com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshFromCache()
         }
     }
@@ -148,18 +174,19 @@ fun AgenTApp(
         }
     }
 
-    LaunchedEffect(state.error, sheetOpen) {
-        if (sheetOpen) return@LaunchedEffect
-        val message = state.error ?: return@LaunchedEffect
-        viewModel.clearError()
-        snackbarHostState.showSnackbar(message)
-    }
-
-    LaunchedEffect(codexState.error, sheetOpen) {
-        if (sheetOpen) return@LaunchedEffect
-        val message = codexState.error ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
-    }
+    LoadFailureNotice(buildSet {
+        if (state.error != null) add("cursor-usage")
+        if (state.tasksError != null) add("cursor-tasks")
+        if (state.statusError != null) add("cursor-status")
+        if (state.usageHistoryError) add("cursor-observations")
+        state.historyErrors.keys.forEach { add("cursor-history:$it") }
+        if (state.historyError != null) add("cursor-history:${state.historyErrorKey}")
+        if (codexState.error != null) add("codex-usage")
+        if (codexState.statusError != null) add("codex-status")
+        if (codexState.publicResetsError != null) add("public-resets")
+        if (codexState.resetError != null) add("codex-reset-settings")
+        if (codexState.usageHistoryError) add("codex-observations")
+    }, sheetOpen, snackbarHostState)
 
     LaunchedEffect(state.stage, state.loadingAccounts, account?.id, state.selectedAccountId) {
         if (
@@ -172,72 +199,68 @@ fun AgenTApp(
         }
     }
 
-    LaunchedEffect(
-        lifecycleOwner,
-        state.stage,
-        account?.id,
-        account?.tokenExpired,
-        state.submitting,
-        sheetOpen,
-    ) {
-        if (
-            state.stage != AppStage.Dashboard ||
-            account == null ||
-            account.tokenExpired ||
-            state.submitting ||
-            sheetOpen
-        ) {
-            return@LaunchedEffect
-        }
+    val currentState by rememberUpdatedState(state)
+    val currentCodexState by rememberUpdatedState(codexState)
+    val currentAccount by rememberUpdatedState(account)
+    val currentSheetOpen by rememberUpdatedState(sheetOpen)
+    val currentFirstFrameDrawn by rememberUpdatedState(firstFrameDrawn)
+    LaunchedEffect(lifecycleOwner, viewModel, codexViewModel) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            viewModel.refreshSelected(force = false, silent = true, includeStatus = false)
-            while (true) {
-                delay(FOREGROUND_REFRESH_INTERVAL_MS)
-                viewModel.refreshSelected(force = false, silent = true, includeStatus = false)
+            // Restore both local stores, and let surviving requests from a previous foreground finish.
+            // Opening or closing settings does not create another foreground session.
+            snapshotFlow {
+                currentFirstFrameDrawn && currentState.stage == AppStage.Dashboard && !currentState.loadingAccounts &&
+                    !currentState.submitting && !currentSheetOpen &&
+                    !dashboardRefreshBusy(currentState, currentCodexState)
+            }.first { it }
+            val entryAccount = currentAccount
+            val entryCredential = currentCodexState.credential
+            val requests = buildList<RefreshRequest> {
+                add { result -> viewModel.refreshStatus(false, true, result) }
+                add { result -> codexViewModel.refreshStatus(false, result) }
+                if (entryAccount != null && !entryAccount.tokenExpired) {
+                    add { result -> viewModel.refreshUsage(false, true, result) }
+                    add { result -> viewModel.refreshTasks(false, true, result) }
+                }
+                if (entryCredential != null && !entryCredential.expired && !entryCredential.invalid) {
+                    add { result -> codexViewModel.refresh(false, result, includePublicResets = false) }
+                }
             }
-        }
-    }
-
-    LaunchedEffect(lifecycleOwner, state.stage, sheetOpen) {
-        if (state.stage != AppStage.Dashboard || sheetOpen) {
-            return@LaunchedEffect
-        }
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            viewModel.refreshStatus(force = false, silent = true)
-            codexViewModel.refreshStatus(force = false)
-            while (true) {
-                delay(FOREGROUND_REFRESH_INTERVAL_MS)
-                viewModel.refreshStatus(force = false, silent = true)
-                codexViewModel.refreshStatus(force = false)
+            if (refreshOnForeground(requests) && !currentSheetOpen &&
+                currentAccount?.id == entryAccount?.id &&
+                currentCodexState.credential?.updatedAt == entryCredential?.updatedAt &&
+                lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                OperationFeedback.success()
             }
-        }
-    }
-
-    LaunchedEffect(
-        lifecycleOwner,
-        state.stage,
-        codexState.credential?.updatedAt,
-        codexState.credential?.expired,
-        codexState.credential?.invalid,
-        codexState.saving,
-        sheetOpen,
-    ) {
-        val credential = codexState.credential
-        if (
-            state.stage != AppStage.Dashboard ||
-            credential == null ||
-            credential.expired ||
-            credential.invalid ||
-            codexState.saving ||
-            sheetOpen
-        ) {
-            return@LaunchedEffect
-        }
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            codexViewModel.refresh(force = false)
-            while (true) {
-                delay(codexViewModel.nextRefreshDelayMillis())
-                codexViewModel.refresh(force = false)
+            // Subsequent polling stays silent and never restarts just because a sheet was dismissed.
+            coroutineScope {
+                launch {
+                    while (true) {
+                        delay(FOREGROUND_REFRESH_INTERVAL_MS)
+                        if (!currentSheetOpen && !currentState.submitting && currentAccount?.tokenExpired == false) {
+                            viewModel.refreshSelected(force = false, silent = true, includeStatus = false)
+                        }
+                    }
+                }
+                launch {
+                    while (true) {
+                        delay(FOREGROUND_REFRESH_INTERVAL_MS)
+                        if (!currentSheetOpen) {
+                            viewModel.refreshStatus(force = false, silent = true)
+                            codexViewModel.refreshStatus(force = false)
+                        }
+                    }
+                }
+                launch {
+                    while (true) {
+                        delay(codexViewModel.nextRefreshDelayMillis())
+                        val credential = currentCodexState.credential
+                        if (!currentSheetOpen && !currentCodexState.saving && credential != null &&
+                            !credential.expired && !credential.invalid) {
+                            codexViewModel.refresh(force = false)
+                        }
+                    }
+                }
             }
         }
     }
@@ -251,6 +274,11 @@ fun AgenTApp(
             snackbarHostState = snackbarHostState,
             tabOrder = tabOrder,
             pendingOpenTab = pendingOpenTab,
+            onVisibleTabChange = { visibleTab = it },
+            allowPageWork = firstFrameDrawn,
+            onHistoryDaysChange = { service, days ->
+                if (service == "cursor") viewModel.setHistoryDays(days) else codexViewModel.setHistoryDays(days)
+            },
             onOpenTabConsumed = onOpenTabConsumed,
             onLoadHistoryWindow = viewModel::loadHistoryWindow,
             onRefresh = {
@@ -265,15 +293,15 @@ fun AgenTApp(
                 }
                 val batch = OperationFeedback.batch(parts)
                 if (cursorConnected) {
-                    viewModel.refreshUsage(true, true) { batch.finish("cursor-usage", it) }
-                    viewModel.refreshTasks(true, true) { batch.finish("cursor-tasks", it) }
+                    viewModel.refreshUsage(true, true) { batch.finish("cursor-usage", it == RefreshResult.Updated) }
+                    viewModel.refreshTasks(true, true) { batch.finish("cursor-tasks", it == RefreshResult.Updated) }
                 }
-                viewModel.refreshStatus(true, true) { batch.finish("cursor-status", it) }
-                codexViewModel.refreshStatus(true) { batch.finish("codex-status", it) }
-                if (codexConnected) codexViewModel.refresh(true, { batch.finish("codex-usage", it) }, includePublicResets = false)
+                viewModel.refreshStatus(true, true) { batch.finish("cursor-status", it == RefreshResult.Updated) }
+                codexViewModel.refreshStatus(true) { batch.finish("codex-status", it == RefreshResult.Updated) }
+                if (codexConnected) codexViewModel.refresh(true, { batch.finish("codex-usage", it == RefreshResult.Updated) }, includePublicResets = false)
                 if (publicLoaded) codexViewModel.refreshPublicResets(true) { batch.finish("public-resets", it) }
             },
-            onRefreshCodex = { codexViewModel.refresh(true, { if (it) OperationFeedback.success() }, includePublicResets = false) },
+            onRefreshCodex = { codexViewModel.refresh(true, { if (it == RefreshResult.Updated) OperationFeedback.success() }, includePublicResets = false) },
             onManageCodex = { openTokenManagement(preferred = com.lamuier.agenT.model.TokenProvider.Codex) },
             onManageAccount = { openTokenManagement(preferred = com.lamuier.agenT.model.TokenProvider.Cursor) },
             onShowSettings = { showSettings = true },

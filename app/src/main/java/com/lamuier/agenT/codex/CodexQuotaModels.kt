@@ -47,6 +47,8 @@ data class CodexQuotaUiState(
     val resetLedger: CodexResetLedger? = null,
     val resetError: String? = null,
     val resetSaving: Boolean = false,
+    val usageHistory: List<com.lamuier.agenT.usage.UsageObservation> = emptyList(),
+    val usageHistoryError: Boolean = false,
     val publicResets: CodexPublicResetSnapshot? = null,
     val refreshingPublicResets: Boolean = false,
     val publicResetsError: String? = null,

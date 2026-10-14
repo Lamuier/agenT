@@ -35,6 +35,9 @@ import com.lamuier.agenT.model.TokenProvider
 import com.lamuier.agenT.util.DeviceCredentialGate
 import com.lamuier.agenT.util.SensitiveContent
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +86,7 @@ internal fun TokenManagementContent(
     val existingMetadata = if (cursor) cursorAccount?.alias else codexCredential?.accountId
     val hasCredential = if (cursor) cursorAccount != null else codexCredential != null
     val activity = context.tokenActivity()
+    val revealScope = rememberCoroutineScope()
     val draft = remember(activity) { activity?.let { androidx.lifecycle.ViewModelProvider(it)[TokenDraftViewModel::class.java] }
         ?: TokenDraftViewModel() }
     SideEffect { draft.activate(provider, revision, existingMetadata.orEmpty()) }
@@ -127,10 +131,14 @@ internal fun TokenManagementContent(
             resources.getString(R.string.account_reveal_gate_subtitle),
             onSuccess = {
                 if (active.get()) {
-                    runCatching { onRevealSavedToken(provider) }
-                        .onSuccess { revealed = it; savedVisible = false; copied = false }
-                        .onFailure { localError = it.message ?: resources.getString(R.string.account_cannot_read_token) }
-                    revealBusy = false
+                    revealScope.launch {
+                        val result = withContext(Dispatchers.IO) { runCatching { onRevealSavedToken(provider) } }
+                        if (active.get()) {
+                            result.onSuccess { revealed = it; savedVisible = false; copied = false }
+                                .onFailure { localError = it.message ?: resources.getString(R.string.account_cannot_read_token) }
+                            revealBusy = false
+                        }
+                    }
                 }
             },
             onError = { if (active.get()) { localError = it; revealBusy = false } },

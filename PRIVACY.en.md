@@ -71,3 +71,9 @@ Material changes to this policy will be noted with the app update in [CHANGELOG.
 ## Contact
 
 Contact the developer by opening an issue in this project's GitHub repository.
+
+## Local usage observations
+
+Successful live Cursor / Codex usage requests can record parsed numeric observations and UTC timestamps in the app’s private no-backup directory, encrypted with Android Keystore AES-GCM. Records are isolated by a one-way account identity digest, coalesced within five-minute windows and retained for 90 days. They contain no raw tokens or responses and are never uploaded. Existing foreground, notification and widget refreshes share collection; it adds no polling.
+
+Collection is enabled by default and can be disabled or cleared in Settings → Service connections. Disabling retains existing history; clearing invalidates in-flight collection. Removing credentials deletes that service’s history; an identified same-account token renewal preserves it. Observations do not constitute complete daily consumption or reset event history. Conditional estimates are computed on-device only from sufficient fresh continuous samples.

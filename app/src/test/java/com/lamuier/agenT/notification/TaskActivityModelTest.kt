@@ -32,6 +32,7 @@ class TaskActivityModelTest {
     }
 
     @Test fun everyObservedTerminalResultIsKeptAndRepeatedPollDoesNotExtendRetention() {
+        assertEquals(15 * 60_000L, TaskActivityModel.COMPLETION_RETENTION_MILLIS)
         for (result in listOf(AgentTaskStatus.Finished, AgentTaskStatus.Error, AgentTaskStatus.Expired)) {
             val running = observe(null, tasks(task(AgentTaskStatus.Running)), now - 100)
             val ended = observe(running, tasks(task(result)))
@@ -39,6 +40,7 @@ class TaskActivityModelTest {
             val next = observe(ended, tasks(task(result)), now + 1000)
             assertEquals(ended.completedAtMillis, next.completedAtMillis)
             assertEquals(result, snapshot(next).attentions.filterIsInstance<MonitorAttention.Task>().single().task.status)
+            assertEquals(1, snapshot(next, now + 15 * 60_000L - 1).attentions.filterIsInstance<MonitorAttention.Task>().size)
             val expired = observe(next, tasks(task(result)), now + TaskActivityModel.COMPLETION_RETENTION_MILLIS)
             assertTrue(expired.completedAtMillis.isEmpty())
             assertTrue(snapshot(expired, expired.observedAtMillis).attentions.isEmpty())
@@ -100,13 +102,44 @@ class TaskActivityModelTest {
         val baseline = observe(null, tasks(task(AgentTaskStatus.Running)), now - 1000)
         val ended = observe(baseline, tasks(task(AgentTaskStatus.Finished), task(AgentTaskStatus.Running, "bc-other")))
             .copy(cacheAgeSeconds = 1201)
+        val fresh = snapshot(ended.copy(cacheAgeSeconds = 900), now + 900_000L)
+        assertEquals(IslandMonitorState.TaskRunning, fresh.primary)
+        assertEquals(listOf("bc-other"), fresh.attentions.filterIsInstance<MonitorAttention.Task>().map { it.task.id })
         val stale = snapshot(ended, now + 1201 * 1000)
-        assertEquals(IslandMonitorState.TaskEnded, stale.primary)
-        assertEquals(1, stale.attentions.filterIsInstance<MonitorAttention.Task>().size)
+        assertEquals(IslandMonitorState.Syncing, stale.primary)
+        assertTrue(stale.attentions.filterIsInstance<MonitorAttention.Task>().isEmpty())
         assertTrue(stale.attentions.contains(MonitorAttention.PendingTasks))
         val expired = snapshot(ended, now + TaskActivityModel.COMPLETION_RETENTION_MILLIS)
         assertEquals(IslandMonitorState.Syncing, expired.primary)
         assertTrue(expired.attentions.filterIsInstance<MonitorAttention.Task>().isEmpty())
+    }
+
+    @Test fun confirmationSurvivesCacheRestoreAndPollsWithoutRemovingHistoryOrOtherAttention() {
+        val baseline = observe(null, tasks(task(AgentTaskStatus.Running)), now - 1000)
+        val ended = observe(baseline, tasks(task(AgentTaskStatus.Finished), task(AgentTaskStatus.Running, "bc-other")))
+        val confirmed = TaskActivityModel.acknowledge(ended, TaskActivityModel.recentCompletions(ended, now))
+        assertEquals(ended.tasks, confirmed.tasks)
+        assertEquals(ended.observedAtMillis, confirmed.observedAtMillis)
+        assertTrue(confirmed.completedAtMillis.isEmpty())
+        val restored = TasksJsonParser.parseStored(TasksJsonParser.toJson(confirmed), 1, "", 0)
+        val next = observe(restored, tasks(*ended.tasks.toTypedArray()), now + 1000)
+        assertTrue(next.completedAtMillis.isEmpty())
+        val attention = snapshot(next, now + 1000, StatusIndicator.Critical)
+        assertEquals(IslandMonitorState.ServiceIssue, attention.primary)
+        assertEquals(listOf("bc-other"), attention.attentions.filterIsInstance<MonitorAttention.Task>().map { it.task.id })
+    }
+
+    @Test fun staleConfirmationPreservesNewCompletionsAndNewRunOfTheSameTask() {
+        val baseline = observe(null, tasks(task(AgentTaskStatus.Running)), now - 1000)
+        val ended = observe(baseline, tasks(task(AgentTaskStatus.Finished)))
+        val displayed = TaskActivityModel.recentCompletions(ended, now)
+        val restarted = observe(ended, tasks(task(AgentTaskStatus.Running), task(AgentTaskStatus.Running, "bc-new")), now + 1000)
+        val newer = observe(restarted, tasks(task(AgentTaskStatus.Finished), task(AgentTaskStatus.Error, "bc-new")), now + 2000)
+        assertEquals(newer.completedAtMillis, TaskActivityModel.acknowledge(newer, displayed).completedAtMillis)
+        val partial = TaskActivityModel.acknowledge(newer, mapOf("bc-new" to now + 2000))
+        assertEquals(mapOf("bc-task" to now + 2000), partial.completedAtMillis)
+        assertEquals(now + 2000 + 900_000L, TaskActivityModel.nextExpiry(partial, now + 2000))
+        assertNull(TaskActivityModel.nextExpiry(partial, now + 2000 + 900_000L))
     }
 
     @Test fun failuresAndQuotaAlertsRetainPriorityWithoutHidingTasks() {

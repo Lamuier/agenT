@@ -82,6 +82,8 @@ object AgenTAssembler {
                 apiPercentUsed = planUsage.optFinite("apiPercentUsed")?.let(::round2),
                 displayMessage = periodUsage.optNullableString("displayMessage"),
                 remainingBonus = planUsage.optBoolean("remainingBonus"),
+                availableMetrics = mapOf("total" to "totalSpend", "included" to "includedSpend", "bonus" to "bonusSpend", "remaining" to "remaining", "limit" to "limit")
+                    .filter { (_, key) -> planUsage.optNumber(key)?.let { it >= 0 } == true }.keys,
             ),
             credits = Credits(
                 totalDollars = centsToDollars(grantTotalCents + stripeCreditCents),
@@ -164,33 +166,42 @@ object AgenTAssembler {
                         cacheReadTokens = cacheRead,
                         costDollars = centsToDollars(costCents),
                         tier = tier,
+                        availableMetrics = metricKeys(item, totals = false),
                     ),
                 )
             }
         }.sortedWith(
             compareByDescending<ModelTokenUsage> { it.costDollars }
-                .thenByDescending { it.inputTokens + it.outputTokens }
+                .thenByDescending { it.inputTokens.toDouble() + it.outputTokens }
                 .thenBy { it.modelIntent.lowercase(Locale.US) },
         )
 
-        val totalInput = root.tokenCount("totalInputTokens").takeIf { it > 0 }
-            ?: models.sumOf { it.inputTokens }
-        val totalOutput = root.tokenCount("totalOutputTokens").takeIf { it > 0 }
-            ?: models.sumOf { it.outputTokens }
-        val totalCacheWrite = root.tokenCount("totalCacheWriteTokens").takeIf { it > 0 }
-            ?: models.sumOf { it.cacheWriteTokens }
-        val totalCacheRead = root.tokenCount("totalCacheReadTokens").takeIf { it > 0 }
-            ?: models.sumOf { it.cacheReadTokens }
-        val totalCost = root.optNumber("totalCostCents")?.let(::centsToDollars)
-            ?: models.sumOf { it.costDollars }.let(::round2)
-
+        fun tokenSum(metric: String, value: (ModelTokenUsage) -> Long): Long? = runCatching {
+            if (models.any { metric !in it.availableMetrics }) return@runCatching null
+            models.fold(0L) { sum, row -> Math.addExact(sum, value(row)) }
+        }.getOrNull()
+        val sums = mapOf("input" to tokenSum("input") { it.inputTokens }, "output" to tokenSum("output") { it.outputTokens },
+            "read" to tokenSum("read") { it.cacheReadTokens }, "write" to tokenSum("write") { it.cacheWriteTokens })
+        val costSum = models.sumOf { it.costDollars }.takeIf { it.isFinite() && it >= 0 }
+        val validRows = (0 until aggregations.length()).all { index ->
+            val row = aggregations.optJSONObject(index)
+            row != null && !row.optNullableString("modelIntent").isNullOrBlank()
+        }
+        val fallbackKeys = setOf("input", "output", "read", "write", "cost").filter { key ->
+            root.optJSONArray("aggregations") != null && validRows &&
+                (0 until aggregations.length()).all { key in metricKeys(aggregations.getJSONObject(it), totals = false) } &&
+                (key != "cost" && sums[key] != null || key == "cost" && costSum != null && models.all { key in it.availableMetrics })
+        }
         return TokenUsageBreakdown(
             models = models,
-            totalInputTokens = totalInput,
-            totalOutputTokens = totalOutput,
-            totalCacheWriteTokens = totalCacheWrite,
-            totalCacheReadTokens = totalCacheRead,
-            totalCostDollars = totalCost,
+            totalInputTokens = root.tokenCountOrNull("totalInputTokens") ?: sums["input"] ?: 0L,
+            totalOutputTokens = root.tokenCountOrNull("totalOutputTokens") ?: sums["output"] ?: 0L,
+            totalCacheWriteTokens = root.tokenCountOrNull("totalCacheWriteTokens") ?: sums["write"] ?: 0L,
+            totalCacheReadTokens = root.tokenCountOrNull("totalCacheReadTokens") ?: sums["read"] ?: 0L,
+            totalCostDollars = root.optNumber("totalCostCents")?.takeIf { it >= 0 }?.let(::centsToDollars) ?: costSum?.let(::round2) ?: 0.0,
+            availableMetrics = metricKeys(root, totals = true) + fallbackKeys,
+            modelsAvailable = root.optJSONArray("aggregations") != null && validRows &&
+                (0 until aggregations.length()).all { metricKeys(aggregations.getJSONObject(it), totals = false).isNotEmpty() },
         )
     }
 
@@ -221,6 +232,8 @@ object AgenTAssembler {
             pooledLimitDollars = centsToDollars(pooledLimit),
             pooledUsedDollars = centsToDollars(spendLimit.optNumber("pooledUsed")),
             pooledRemainingDollars = centsToDollars(spendLimit.optNumber("pooledRemaining")),
+            availableMetrics = mapOf("total" to "totalSpend", "individualRemaining" to "individualRemaining", "pooledRemaining" to "pooledRemaining")
+                .filter { (_, key) -> spendLimit.optNumber(key)?.let { it >= 0 } == true }.keys,
         )
     }
 
@@ -330,19 +343,19 @@ object AgenTAssembler {
         return optString(key).takeIf { it.isNotBlank() }
     }
 
-    /** Token 字段可能是数字或带千分位的字符串。 */
-    private fun JSONObject.tokenCount(key: String): Long {
-        if (!has(key) || isNull(key)) return 0L
-        return when (val value = opt(key)) {
-            is Number -> value.toLong().coerceAtLeast(0L)
-            is String -> value
-                .trim()
-                .replace(",", "")
-                .replace("_", "")
-                .toLongOrNull()
-                ?.coerceAtLeast(0L)
-                ?: 0L
-            else -> 0L
-        }
+    private fun metricKeys(json: JSONObject, totals: Boolean): Set<String> {
+        val fields = if (totals) listOf("totalInputTokens", "totalOutputTokens", "totalCacheReadTokens", "totalCacheWriteTokens", "totalCostCents")
+            else listOf("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "totalCents")
+        return listOf("input", "output", "read", "write", "cost").zip(fields).filter { (metric, field) ->
+            if (metric == "cost") json.optNumber(field)?.let { it >= 0 } == true else json.tokenCountOrNull(field) != null
+        }.map { it.first }.toSet()
+    }
+    private fun JSONObject.tokenCount(key: String): Long = tokenCountOrNull(key) ?: 0L
+    private fun JSONObject.tokenCountOrNull(key: String): Long? {
+        if (!has(key) || isNull(key)) return null
+        return runCatching {
+            val raw = get(key).toString().trim().replace(",", "").replace("_", "")
+            BigDecimal(raw).longValueExact().takeIf { it >= 0 }
+        }.getOrNull()
     }
 }

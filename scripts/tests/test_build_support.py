@@ -127,7 +127,7 @@ class BuildSupportTest(unittest.TestCase):
                     build.parser().parse_args(options)
 
     def test_failed_gradle_does_not_export_old_apk_or_retain_signing_env(self):
-        config = {"versionName": "1.0.1", "compileSdk": 37, "buildToolsVersion": "37.0.0"}
+        config = {"appName": "agenT", "versionName": "1.0.1", "compileSdk": 37, "buildToolsVersion": "37.0.0"}
         sdk = self.root / "SDK"
         (sdk / "platforms/android-37.0").mkdir(parents=True)
         (sdk / "platforms/android-37.0/android.jar").touch()
@@ -155,26 +155,48 @@ class BuildSupportTest(unittest.TestCase):
 
     def test_existing_artifacts_and_traversal_suffix_are_rejected(self):
         (self.root / "dist").mkdir()
-        existing = self.root / "dist/1.0.1.apk"
+        existing = self.root / "dist/agenT-1.0.1.apk"
         existing.write_bytes(b"original published APK")
         with self.assertRaises(build.BuildError):
-            build.ensure_destination(self.root, "1.0.1")
+            build.ensure_destination(self.root, "agenT-1.0.1")
         self.assertEqual(existing.read_bytes(), b"original published APK")
         with self.assertRaises(build.BuildError):
-            build.artifact_base({"versionName": "1.0.1"}, "../../outside")
+            build.artifact_base({"appName": "agenT", "versionName": "1.0.1"}, "../../outside")
 
     def test_timestamped_and_official_names_use_current_version_and_beijing_time(self):
         instant = datetime(2026, 10, 12, 20, 14, 15, tzinfo=timezone.utc)
-        config = {"versionName": "1.1.0"}
-        self.assertEqual(build.artifact_base(config, started_at=instant), "1.1.0_20261013_041415")
-        self.assertEqual(build.artifact_base(config, "uiux", started_at=instant), "1.1.0_20261013_041415_uiux")
-        self.assertEqual(build.artifact_base(config, official_release=True, started_at=instant), "1.1.0")
+        config = {"appName": "agenT", "versionName": "1.1.0"}
+        self.assertEqual(build.artifact_base(config, started_at=instant), "agenT-1.1.0_20261013_041415")
+        self.assertEqual(build.artifact_base(config, "uiux", started_at=instant), "agenT-1.1.0_20261013_041415_uiux")
+        self.assertEqual(build.artifact_base(config, official_release=True, started_at=instant), "agenT-1.1.0")
         with self.assertRaises(build.BuildError):
             build.artifact_base(config, "uiux", official_release=True)
         with self.assertRaises(build.BuildError):
-            build.artifact_base({"versionName": "../../outside"}, started_at=instant)
+            build.artifact_base({"appName": "agenT", "versionName": "../../outside"}, started_at=instant)
         with self.assertRaises(build.BuildError):
             build.main(["--official-release"], self.root)
+
+    def test_app_name_comes_from_default_resources(self):
+        (self.root / "app/src/main/res/values").mkdir(parents=True)
+        (self.root / "app/build.gradle.kts").write_text(
+            'applicationId = "com.lamuier.agenT"; versionName = "1.2.0"; buildToolsVersion = "37.0.0"; '
+            'versionCode = 4; minSdk = 26; targetSdk = 37; compileSdk = 37')
+        resource = self.root / "app/src/main/res/values/strings.xml"
+        resource.write_text('<resources><string name="app_name">追程 &amp; App</string></resources>', encoding="utf-8")
+        config = build.app_config(self.root)
+        self.assertEqual(config["appName"], "追程 & App")
+        self.assertEqual(build.artifact_base(config, official_release=True), "追程 & App-1.2.0")
+        resource.write_text('<resources><string name="app_name">agenT</string><string name="app_name">other</string></resources>')
+        with self.assertRaises(build.BuildError):
+            build.app_config(self.root)
+        resource.write_text('invalid xml')
+        with self.assertRaises(build.BuildError):
+            build.app_config(self.root)
+
+    def test_invalid_app_names_cannot_escape_the_export_directory(self):
+        for name in ("", "..", "../outside", "bad/name", "bad\\name", "bad:name", "bad\nname", "name.", " name"):
+            with self.subTest(name=name), self.assertRaises(build.BuildError):
+                build.artifact_base({"appName": name, "versionName": "1.2.0"})
 
     def test_release_export_uses_consistent_names_and_keeps_existing_artifacts(self):
         apk = self.root / "app-release.apk"
@@ -182,7 +204,7 @@ class BuildSupportTest(unittest.TestCase):
         mapping = self.root / "app/build/outputs/mapping/release/mapping.txt"
         mapping.parent.mkdir(parents=True)
         mapping.write_text("fixture mapping")
-        config = {"applicationId": "com.lamuier.agenT", "versionName": "1.1.0", "versionCode": 3,
+        config = {"appName": "agenT", "applicationId": "com.lamuier.agenT", "versionName": "1.1.0", "versionCode": 3,
                   "minSdk": 26, "targetSdk": 37}
         instant = datetime(2026, 10, 12, 20, 14, 15, tzinfo=timezone.utc)
         base = build.artifact_base(config, started_at=instant)
@@ -201,12 +223,19 @@ class BuildSupportTest(unittest.TestCase):
             build.export_release(self.root, apk, config, self.cert, base, [], True, True, instant)
         self.assertEqual(exported.read_bytes(), b"verified APK fixture")
         with patch("builtins.print"):
-            build.export_release(self.root, apk, config, self.cert, "1.1.0", [], True, True,
+            build.export_release(self.root, apk, config, self.cert, "agenT-1.1.0", [], True, True,
                                  instant, official_release=True)
-        official = self.root / "dist/1.1.0.apk"
+        official = self.root / "dist/agenT-1.1.0.apk"
         self.assertTrue(official.is_file())
-        self.assertTrue(build.read_json(self.root / "dist/1.1.0-build.json")["officialRelease"])
+        self.assertTrue(build.read_json(self.root / "dist/agenT-1.1.0-build.json")["officialRelease"])
         self.assertTrue(exported.is_file())
+        unicode_config = dict(config, appName="追程 App")
+        unicode_base = build.artifact_base(unicode_config, official_release=True)
+        with patch("builtins.print"):
+            build.export_release(self.root, apk, unicode_config, self.cert, unicode_base, [], True, True,
+                                 instant, official_release=True)
+        self.assertIn("追程 App-1.1.0.apk", (self.root / "dist" / (unicode_base + ".sha256")).read_text(encoding="utf-8"))
+        self.assertEqual(build.read_json(self.root / "dist" / (unicode_base + "-build.json"))["appName"], "追程 App")
 
     def test_windows_naming_policy_preserves_history_and_uses_same_time_zone(self):
         script = (Path(__file__).resolve().parents[2] / "build.ps1").read_text(encoding="utf-8-sig")
@@ -214,6 +243,9 @@ class BuildSupportTest(unittest.TestCase):
                          '[DateTimeOffset]::UtcNow', 'ToOffset([TimeSpan]::FromHours(8))',
                          '"yyyyMMdd_HHmmss"', '"$artifactBaseName.apk"', '"$artifactBaseName.sha256"',
                          'Test-ReleaseDestination -Dist $dist -Base $artifactBaseName'):
+            self.assertIn(required, script)
+        for required in ('${AppName}-${VersionName}', '-AppName $version.AppName',
+                         "app_name", 'appName = $version.AppName', 'UTF8Encoding'):
             self.assertIn(required, script)
         self.assertNotIn('Remove-Item -LiteralPath $stale.FullName', script)
         self.assertNotIn('Copy-Item -LiteralPath $apk -Destination $destination -Force', script)

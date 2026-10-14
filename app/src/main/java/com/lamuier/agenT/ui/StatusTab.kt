@@ -116,7 +116,7 @@ private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, s
             supporting = stringResource(if (codex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
         )
         when {
-            selectedStatus == null && selectedLoading -> ProviderStateCard(
+            selectedStatus == null && (selectedLoading || selectedRefreshing) -> ProviderStateCard(
                 icon = Icons.Outlined.CloudOff,
                 title = stringResource(R.string.status_loading_title),
                 description = stringResource(R.string.status_loading_body),
@@ -125,13 +125,12 @@ private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, s
             selectedStatus == null -> ProviderStateCard(
                 icon = Icons.Outlined.CloudOff,
                 title = stringResource(R.string.status_unavailable_title),
-                description = selectedError ?: stringResource(R.string.network_retry_hint),
+                description = stringResource(R.string.network_retry_hint),
                 primaryActionLabel = stringResource(R.string.action_reload),
                 onPrimaryAction = onRetry,
             )
             else -> ServiceStatusContent(
-                status = selectedStatus,
-                error = selectedError?.takeIf { !selectedRefreshing },
+                status = selectedStatus.copy(fromCache = selectedStatus.fromCache || selectedError != null),
                 openUrl = openUrl,
                 compact = compact,
             )
@@ -147,7 +146,7 @@ private fun StatusOverviewTile(name: String, status: ServiceStatus?, loading: Bo
                 ?: stringResource(if (loading) R.string.status_loading_title else R.string.status_unavailable_title),
                 color = status?.let { indicatorColor(it.indicator) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
-            if (status?.fromCache == true) Text(stringResource(R.string.overview_cached), style = MaterialTheme.typography.labelSmall)
+            status?.let { StatusFreshnessRow(it, showRefreshHint = false) }
         }
     }
 }
@@ -155,7 +154,6 @@ private fun StatusOverviewTile(name: String, status: ServiceStatus?, loading: Bo
 @Composable
 private fun ServiceStatusContent(
     status: ServiceStatus,
-    error: String?,
     openUrl: (String) -> Unit,
     compact: Boolean,
 ) {
@@ -169,13 +167,6 @@ private fun ServiceStatusContent(
         accent = accent,
         compact = compact,
     )
-    if (error != null) {
-        Text(
-            error,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
         SectionHeading(
             icon = Icons.Outlined.CheckCircle,
             title = stringResource(R.string.status_components_title),
@@ -188,9 +179,9 @@ private fun ServiceStatusContent(
             shadowElevation = 1.dp,
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth().padding(if (compact) 6.dp else 8.dp)) {
-                val components = status.components.sortedBy {
+                val components = androidx.compose.runtime.remember(status.components) { status.components.sortedBy {
                     if (it.name.contains("Codex", true) || it.name == "CLI" || it.name == "VS Code extension") 0 else 1
-                }
+                } }
                 val columns = if (maxWidth >= (480 * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp) 2 else 1
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     components.chunked(columns).forEach { row ->
@@ -267,7 +258,6 @@ private fun ServiceStatusContent(
             Spacer(Modifier.size(6.dp))
             Text(stringResource(R.string.status_open_official))
         }
-    StatusFreshnessRow(status)
 }
 
 @Composable
@@ -355,6 +345,7 @@ private fun OverallStatusHero(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            StatusFreshnessRow(status)
         }
     }
 }
@@ -482,9 +473,10 @@ private fun IncidentCard(
 }
 
 @Composable
-private fun StatusFreshnessRow(status: ServiceStatus) {
-    val stamp = DisplayTime.formatStoredClock(status.fetchedAt, LocalDisplayZone.current)
+private fun StatusFreshnessRow(status: ServiceStatus, showRefreshHint: Boolean = true) {
+    val stamp = DisplayTime.formatStoredDateTime(status.fetchedAt, LocalDisplayZone.current, withYear = true)
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -496,10 +488,11 @@ private fun StatusFreshnessRow(status: ServiceStatus) {
         )
         Text(
             listOfNotNull(
-                stringResource(if (status.fromCache) R.string.freshness_cached else R.string.freshness_updated),
-                stamp,
-                stringResource(R.string.freshness_pull_hint),
+                stringResource(R.string.status_last_updated, stamp ?: "—"),
+                if (status.fromCache) stringResource(R.string.freshness_cached) else null,
+                if (showRefreshHint) stringResource(R.string.freshness_pull_hint) else null,
             ).joinToString(" · "),
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

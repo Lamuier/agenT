@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +60,7 @@ internal fun UnifiedOverviewTab(state: AppUiState, codex: CodexQuotaUiState, onO
                 state.loadingAccounts -> OverviewHint(stringResource(R.string.dashboard_account_loading))
                 account == null -> OverviewConnectionHint(R.string.connection_not_configured, onManageCursor)
                 account.tokenExpired -> OverviewConnectionHint(R.string.connection_token_expired, onManageCursor)
-                usage == null -> OverviewHint(state.error ?: stringResource(R.string.dashboard_loading_usage_body))
+                usage == null -> OverviewHint(stringResource(if (state.loadingUsage) R.string.dashboard_loading_usage_body else R.string.dashboard_usage_unavailable_body))
                 else -> {
                     val billing = UsageCalculations.billingProgress(usage.billingCycle.start, usage.billingCycle.end,
                         System.currentTimeMillis(), displayZone = zone)
@@ -88,7 +89,7 @@ internal fun UnifiedOverviewTab(state: AppUiState, codex: CodexQuotaUiState, onO
                         horizontalArrangement = Arrangement.spacedBy(16.dp)) { used(Modifier.weight(1f)); remaining() }
                     OverviewPoolMeter(stringResource(R.string.overview_pool_own), usage.usage.autoPercentUsed)
                     OverviewPoolMeter(stringResource(R.string.overview_pool_other), usage.usage.apiPercentUsed)
-                    OverviewFreshness(usage.fetchedAt, usage.fromCache)
+                    OverviewFreshness(usage.fetchedAt, usage.fromCache || state.error != null)
                 }
             }
         }
@@ -101,11 +102,11 @@ internal fun UnifiedOverviewTab(state: AppUiState, codex: CodexQuotaUiState, onO
                 codex.booting -> OverviewHint(stringResource(R.string.codex_status_loading_body))
                 credential == null -> OverviewConnectionHint(R.string.connection_not_configured, onManageCodex)
                 credential.expired || credential.invalid -> OverviewConnectionHint(R.string.connection_token_expired, onManageCodex)
-                usage == null -> OverviewHint(codex.error ?: stringResource(R.string.codex_status_loading_body))
+                usage == null -> OverviewHint(stringResource(if (codex.refreshing) R.string.codex_status_loading_body else R.string.codex_no_usage))
                 else -> {
                     usage.primary?.let { CodexQuotaWindowRow(stringResource(R.string.quota_five_hour_short), it) }
                     usage.secondary?.let { CodexQuotaWindowRow(stringResource(R.string.quota_weekly_short), it) }
-                    OverviewFreshness(usage.fetchedAt, usage.fromCache)
+                    OverviewFreshness(usage.fetchedAt, usage.fromCache || codex.error != null)
                 }
             }
         }
@@ -241,7 +242,10 @@ private fun OverviewPanel(title: String, action: String, onOpen: () -> Unit,
 private fun OverviewTasksCard(state: AppUiState, onOpen: () -> Unit) {
     val account = state.accounts.firstOrNull { it.id == state.selectedAccountId }
     val tasks = state.tasks.takeIf { account != null && !account.tokenExpired && it?.accountId == account.id }
-    val visible = com.lamuier.agenT.util.AgentTaskGrouping.visibleTasks(tasks?.tasks.orEmpty())
+    val visible = remember(tasks?.tasks) { com.lamuier.agenT.util.AgentTaskGrouping.visibleTasks(tasks?.tasks.orEmpty()) }
+    val recent = remember(visible) { visible.sortedWith(compareBy<com.lamuier.agenT.model.AgentTask> {
+        if (it.status == com.lamuier.agenT.model.AgentTaskStatus.Running || it.status == com.lamuier.agenT.model.AgentTaskStatus.Creating) 0 else 1
+    }.thenByDescending { it.latestTimeMs }).take(3) }
     val resources = LocalResources.current
     OverviewPanel(stringResource(R.string.overview_recent_tasks), stringResource(R.string.overview_open_tasks), onOpen) {
         when {
@@ -252,9 +256,7 @@ private fun OverviewTasksCard(state: AppUiState, onOpen: () -> Unit) {
                     it.status == com.lamuier.agenT.model.AgentTaskStatus.Creating }
                 Text(stringResource(R.string.tasks_summary, visible.size, active), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                visible.sortedWith(compareBy<com.lamuier.agenT.model.AgentTask> {
-                    if (it.status == com.lamuier.agenT.model.AgentTaskStatus.Running || it.status == com.lamuier.agenT.model.AgentTaskStatus.Creating) 0 else 1
-                }.thenByDescending { it.latestTimeMs }).take(3).forEach { task ->
+                recent.forEach { task ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(task.name.ifBlank { stringResource(R.string.task_untitled) }, maxLines = 2,
                             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
@@ -271,14 +273,16 @@ private fun OverviewTasksCard(state: AppUiState, onOpen: () -> Unit) {
 
 @Composable
 private fun OverviewStatusCard(name: String, status: ServiceStatus?, onOpen: () -> Unit) {
+    val components = remember(status?.components) {
+        status?.components.orEmpty().sortedBy { if (it.status == com.lamuier.agenT.model.ComponentStatus.Operational) 1 else 0 }.take(3)
+    }
     val resources = LocalResources.current
     OverviewPanel(stringResource(R.string.overview_service_health, name), stringResource(R.string.overview_open_status), onOpen) {
         if (status == null) OverviewHint(stringResource(R.string.status_unavailable_title))
         else {
             Text(StatusPresentation.indicatorLabel(status.indicator, resources), style = MaterialTheme.typography.bodyMedium)
             if (status.partialComponents) OverviewHint(stringResource(R.string.status_components_partial))
-            status.components.sortedBy { if (it.status == com.lamuier.agenT.model.ComponentStatus.Operational) 1 else 0 }
-                .take(3).forEach { component ->
+            components.forEach { component ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(component.name, Modifier.weight(1f), maxLines = 2, style = MaterialTheme.typography.bodySmall)
                         Text(StatusPresentation.componentLabel(component.status, resources), maxLines = 2,
@@ -307,7 +311,6 @@ private fun OverviewResetCard(state: CodexQuotaUiState, onOpen: () -> Unit) {
         }
         Text(stringResource(R.string.reset_api_count_hint), style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        snapshot?.let { OverviewFreshness(java.time.Instant.ofEpochMilli(it.fetchedAt).toString(), it.fromCache) }
-        state.publicResetsError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        snapshot?.let { OverviewFreshness(java.time.Instant.ofEpochMilli(it.fetchedAt).toString(), it.fromCache || state.publicResetsError != null) }
     }
 }

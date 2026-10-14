@@ -36,7 +36,8 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
     fun live(cursor: AgenTOverview?, codex: CodexQuotaOverview?, revision: Long,
         mode: PercentDisplayMode, zone: ZoneId, contentIntent: PendingIntent, channel: String,
         cursorStatus: ServiceStatus? = null, codexStatus: ServiceStatus? = null, tasks: AgenTasks? = null,
-        tasksIntent: PendingIntent = contentIntent): Notification? {
+        tasksIntent: PendingIntent = contentIntent, confirmTasksIntent: PendingIntent? = null,
+        nowMillis: Long = System.currentTimeMillis()): Notification? {
         val metrics = QuotaNoticeModel.metrics(cursor, codex, revision)
         if (metrics.isEmpty() && tasks == null) return null
         val provider = if (tasks != null || metrics.any { it.source == QuotaNoticeSource.Cursor }) {
@@ -47,7 +48,7 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
                 ?.let { age -> age <= IslandMonitorState.FRESH_SECONDS } == true
         }.map { it.source }.toSet()
         val snapshot = MonitorSnapshot.collect(metrics, freshSources,
-            linkedMapOf("Cursor" to cursorStatus, "Codex" to codexStatus), tasks)
+            linkedMapOf("Cursor" to cursorStatus, "Codex" to codexStatus), tasks, nowMillis)
         val monitor = snapshot.primary
         val alerts = snapshot.attentions.map { attention ->
             when (attention) {
@@ -79,6 +80,9 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
         val body = if (alerts.isEmpty()) normal else alerts.joinToString("\n")
         val title = if (snapshot.hasMultiple) text(R.string.notification_multi_title, text(monitor.labelRes), snapshot.additionalCount) else text(monitor.labelRes)
         val chip = copy.shortCaption(monitor, snapshot.additionalCount) { context.getString(it) }
+        val confirmAction = confirmTasksIntent?.takeIf {
+            snapshot.attentions.filterIsInstance<MonitorAttention.Task>().any { TaskActivityModel.isTerminal(it.task.status) }
+        }?.let { Notification.Action.Builder(null, text(R.string.notification_tasks_confirm), it).build() }
         val builder = Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             // No oversized thumbnail: the system header and island already carry the app identity.
@@ -86,6 +90,7 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
             .setStyle(Notification.BigTextStyle().bigText(body))
             .setContentIntent(if (snapshot.attentions.firstOrNull() is MonitorAttention.Task) tasksIntent else contentIntent)
             .apply {
+                confirmAction?.let(::addAction)
                 if (snapshot.attentions.any { it is MonitorAttention.Task || it == MonitorAttention.PendingTasks })
                     addAction(Notification.Action.Builder(null, text(R.string.tab_tasks), tasksIntent).build())
             }.setCategory(Notification.CATEGORY_PROGRESS)
