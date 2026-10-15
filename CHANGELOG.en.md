@@ -6,7 +6,7 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unreleased
 
-No pending changes.
+- Reorganize both privacy-policy versions and update the effective date to 2026-10-14. Consolidate usage summaries and include local observations, task acknowledgements, public caches, preferences and reminder deduplication in the data inventory. Document default collection, disabling / clearing, service-wide deletion, the 90-day query range and expired daily-file cleanup on reads / writes, plus browser-request boundaries and data controls. Synchronize both READMEs, architecture, performance and documentation maintenance guidance. This documentation update describes existing behavior.
 
 ## 1.3.0 — 2026-10-14
 
