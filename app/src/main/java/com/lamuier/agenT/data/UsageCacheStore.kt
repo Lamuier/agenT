@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 class UsageCacheStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-    private val crypto = KeystoreCrypto(KEY_ALIAS)
+    private val crypto by lazy { KeystoreCrypto(KEY_ALIAS) }
 
     fun read(accountId: Int, revision: Long): CacheEntry? {
         val encrypted = preferences.getString(key(accountId, revision), null) ?: return null

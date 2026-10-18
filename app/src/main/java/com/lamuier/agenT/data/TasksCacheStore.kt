@@ -7,7 +7,7 @@ import org.json.JSONObject
 /** 云端任务列表缓存：与用量缓存同为账号敏感数据，按 账号+凭据修订号 加密存储。 */
 class TasksCacheStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-    private val crypto = KeystoreCrypto(KEY_ALIAS)
+    private val crypto by lazy { KeystoreCrypto(KEY_ALIAS) }
 
     fun read(accountId: Int, revision: Long): CacheEntry? {
         val encrypted = preferences.getString(key(accountId, revision), null) ?: return null

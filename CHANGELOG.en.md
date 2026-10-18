@@ -8,6 +8,30 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 No pending changes.
 
+## 1.3.0 — 2026-10-14
+
+> Version decision: 1.2.0 → 1.3.0, with `versionCode` increased to 5. Dual-service Usage dashboards, encrypted local observations and comparisons, reset charts and task-result acknowledgement add compatible user-visible capabilities, alongside startup and foreground-refresh improvements. Keep the package ID, signing identity and existing data compatible.
+
+- Improve cold startup and application performance: initialize Keystore on demand, restore caches in parallel on IO, and refresh system surfaces after the first frame. Load history by service and visible range, reuse decoded days and chart paths, suspend invisible-page clocks, and share Codex requests and widget redraws. Add isolated performance tests, explicit emulator verification and Baseline / Startup Profiles while preserving cache isolation, refresh cadence and alerts.
+
+- Turn Resets into a compact dashboard with numeric cards, a record composition ring, daily bars and a heatmap sharing theme colors. Collapse announcement text and move data definitions into a fold-safe help dialog, preserving period/date selection, expansion, cache and retry. Charts count supplied API records without inferring quota-window refreshes or account redemptions.
+
+- Turn Usage into a compact dashboard with independent quota dials, a four-cell token scorecard, horizontal model ranking, axes and sample selection for observed trends, and equal-period comparison bars. Collapse explanations and condense pace/window details; label quota usage and elapsed cycle time directly, replacing the black cycle tick with a themed diamond. Preserve filters, exact values, cache states, large text and fold-aware layouts; add live-data and first-viewport validation.
+
+- Remove inline load errors from Overview, Usage, Tasks, Resets and Status. Failed refreshes preserve cached content, timestamps and retry actions, with a brief generic notice that omits IP addresses, ports and exception details. Avoid repeating persistent failures and keep available trends visible when history reads fail; add cached/empty states, retry and notice regression coverage.
+
+- Rebuilt Usage with compact dual-service summaries and independent service states. Added token categories, model sorting and exact details, equal-length historical comparisons, and encrypted 90-day local observations. Conditional pace estimates require fresh continuous samples; gaps, resets and unknown fields remain explicit. Added collection controls, privacy documentation and parsing, sampling, interaction and rendering regression coverage, plus opt-in live-token verification of the API, parsing, cache and Usage screen without recording credentials or raw responses.
+
+- Restore the top + action on Tasks to create tasks on Cursor Agents through validated Custom Tabs. Keep it available without credentials, with expired tokens, during loading or errors, and for empty or merged-only lists; add entry and URL regression coverage.
+
+- Move status freshness from the detail footer into each service summary and add it to the top Cursor / Codex cards. Show the full date and time in the selected display time zone, preserve cached timestamps and labels, and allow wrapping on narrow screens and with large text.
+
+- Keep ended task messages in live activities for 15 minutes and add a Confirm action to native notifications, Live Updates and expanded Xiaomi HyperIsland cards. Persist acknowledgement of the displayed results while preserving task history, running tasks and other alerts; prevent polls, restarts and stale buttons from replaying or clearing new results. Expiry refresh requires no network, with retention and action regression coverage.
+
+- Improve automatic refresh on foreground entry / return: coordinate startup and polling, show app-bar progress, and confirm once with haptics after complete successful queries with a real update. Fresh-cache skips, failures, periodic polling and background sync remain silent; discard confirmation after leaving the foreground. Preserve cached content and page state, avoid refreshes on settings dismissal, and add completion, cache, cancellation and UI regression coverage.
+
+- Update project agent guidance and Mac / Linux / Windows artifact naming: official APKs use `AppName-Version.apk`, and unarchived builds append a Beijing-time timestamp to the same base name. Read the app name from default resources; keep checksums, mappings and build reports aligned, retaining history and rejecting collisions.
+
 ## 1.2.0 — 2026-10-13
 
 > Version decision: 1.1.0 → 1.2.0, with `versionCode` increased to 4. Tablet information grids, full task details and foldable interactions add compatible user-visible capabilities. Keep the package ID, signing identity and existing data compatible.

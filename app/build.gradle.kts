@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.baselineprofile)
 }
 
 val releaseStoreFile = providers.environmentVariable("AGENTT_RELEASE_STORE_FILE").orNull
@@ -23,8 +24,8 @@ android {
         applicationId = "com.lamuier.agenT"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.3.0"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -67,6 +68,24 @@ android {
         compose = true
         buildConfig = true
     }
+
+
+}
+
+// The profile plugin copies release sources in its finalizeDsl callback first.
+androidComponents.finalizeDsl { extension ->
+    for (variant in listOf("nonMinifiedRelease", "benchmarkRelease")) {
+        extension.sourceSets.maybeCreate(variant).apply {
+            kotlin.directories.addAll(listOf("src/debug/java", "src/performance/java"))
+            manifest.srcFile("src/performance/AndroidManifest.xml")
+        }
+    }
+}
+
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+    filter { exclude("com.lamuier.agenT.qa.**") }
 }
 
 kotlin {
@@ -79,9 +98,20 @@ kotlin {
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     inputs.property("uiReviewSmoke", providers.environmentVariable("AGENT_UI_REVIEW_SMOKE").orElse(""))
     inputs.property("uiReviewScenes", providers.environmentVariable("AGENT_UI_REVIEW_SCENES").orElse(""))
+    val liveUsageRequested = providers.environmentVariable("AGENT_LIVE_USAGE_CREDENTIAL_FILE")
+        .map { it.isNotBlank() }.orElse(false)
+    inputs.property("liveUsageRequested", liveUsageRequested)
+    if (!liveUsageRequested.get()) exclude("**/LiveUsageTest.class")
+    val liveResetRequested = providers.environmentVariable("AGENT_LIVE_RESET_VERIFY").map { it == "1" }.orElse(false)
+    inputs.property("liveResetRequested", liveResetRequested)
+    if (!liveResetRequested.get()) exclude("**/LiveResetDashboardTest.class")
+    // Live requests must never reuse a successful result from a previous credential or date.
+    outputs.upToDateWhen { !liveUsageRequested.get() && !liveResetRequested.get() }
+    outputs.doNotCacheIf("Live usage verification requires fresh network responses") { liveUsageRequested.get() || liveResetRequested.get() }
 }
 
 dependencies {
+    baselineProfile(project(":performance"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

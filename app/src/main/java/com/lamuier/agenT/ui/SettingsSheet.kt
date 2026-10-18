@@ -240,6 +240,7 @@ internal fun SettingsSheet(
                     checked = codexUsageAutoRefresh,
                     onCheckedChange = onCodexUsageAutoRefreshChange,
                 )
+                UsageHistorySettings()
             }
                             }
                             SettingsSection.Appearance -> {
@@ -623,7 +624,7 @@ private fun PercentModeOption(
 }
 
 @Composable
-private fun SettingToggleRow(
+internal fun SettingToggleRow(
     label: String,
     description: String,
     checked: Boolean,

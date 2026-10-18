@@ -16,6 +16,35 @@ import org.robolectric.annotation.Config
 class StartupDrawGateTest {
     private fun root() = FrameLayout(ApplicationProvider.getApplicationContext<Context>())
 
+    @Test fun deferredWorkRunsOnlyOnceAfterAnActualReleasedDraw() {
+        val controller = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        val view = FrameLayout(controller.get())
+        controller.get().setContentView(view)
+        var calls = 0
+        val gate = StartupDrawGate(view) { calls++ }
+        view.viewTreeObserver.dispatchOnDraw()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(0, calls)
+        gate.release()
+        view.viewTreeObserver.dispatchOnDraw()
+        view.viewTreeObserver.dispatchOnDraw()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(1, calls)
+        gate.dispose(); controller.pause().stop().destroy()
+    }
+
+    @Test fun destroyingTheGateDiscardsAlreadyQueuedMaintenance() {
+        val controller = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        val view = FrameLayout(controller.get())
+        controller.get().setContentView(view)
+        var calls = 0
+        val gate = StartupDrawGate(view) { calls++ }
+        gate.release(); view.viewTreeObserver.dispatchOnDraw(); gate.dispose()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(0, calls)
+        controller.pause().stop().destroy()
+    }
+
     @Test fun partialLocalContentDoesNotDrawBeforeCacheRestorationIsPublished() {
         val root = root()
         val gate = StartupDrawGate(root)

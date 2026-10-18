@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,8 +21,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -62,13 +63,14 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
         dismissButton = { TextButton(onClick = { choosingDate = false }) { Text(stringResource(R.string.action_cancel)) } }) {
             DatePicker(state = datePicker)
         }
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val colors = mapOf(ResetHeatmapKind.Regular to Color(if (dark) 0xFFFF906F else 0xFFEF7655),
-        ResetHeatmapKind.Banked to Color(if (dark) 0xFFE6B18C else 0xFFF5BA8E))
-    val empty = Color(if (dark) 0xFF343943 else 0xFFECE3D0)
+    val palette = resetChartColors()
+    val colors = mapOf(ResetHeatmapKind.Regular to palette.regular, ResetHeatmapKind.Banked to palette.banked)
+    val empty = palette.empty
     val outline = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
     val selectedColor = MaterialTheme.colorScheme.primary
     val gridScroll = rememberScrollState()
+    var positionedRange by rememberSaveable { mutableStateOf<String?>(null) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val cell = 22.dp
     val gap = 4.dp
@@ -79,15 +81,18 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
     val stepPx = with(density) { step.toPx() }
     val cellPx = with(density) { cell.toPx() }
     val headerPx = with(density) { header.toPx() }
-    LaunchedEffect(data.from, data.to) {
-        withFrameNanos { }
-        gridScroll.scrollTo(gridScroll.maxValue)
+    val rangeKey = "${data.from}/${data.to}"
+    LaunchedEffect(rangeKey, viewportWidth) {
+        if (viewportWidth > 0 && positionedRange != rangeKey) {
+            gridScroll.scrollTo((with(density) { gridWidth.roundToPx() } - viewportWidth).coerceAtLeast(0))
+            positionedRange = rangeKey
+        }
     }
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                HeatmapLegend(colors.getValue(ResetHeatmapKind.Regular), stringResource(R.string.reset_heatmap_regular))
-                HeatmapLegend(colors.getValue(ResetHeatmapKind.Banked), stringResource(R.string.reset_heatmap_banked))
+                HeatmapLegend(colors.getValue(ResetHeatmapKind.Regular), stringResource(R.string.reset_dash_regular))
+                HeatmapLegend(colors.getValue(ResetHeatmapKind.Banked), stringResource(R.string.reset_dash_banked))
                 HeatmapLegend(empty, stringResource(R.string.reset_heatmap_no_record))
             }
             OutlinedButton(onClick = { choosingDate = true }, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -101,7 +106,7 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
                     } }
                 }
-                Box(Modifier.weight(1f).horizontalScroll(gridScroll)) {
+                Box(Modifier.weight(1f).onSizeChanged { viewportWidth = it.width }.horizontalScroll(gridScroll)) {
                     Box(Modifier.width(gridWidth).height(gridHeight)) {
                         Canvas(Modifier.fillMaxSize().pointerInput(data, stepPx, cellPx, headerPx) {
                             detectTapGestures { point ->
@@ -155,7 +160,7 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                     }
                 }
             }
-            Text(stringResource(R.string.reset_heatmap_hint), style = MaterialTheme.typography.labelSmall,
+            Text(stringResource(R.string.reset_dash_heatmap_hint), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

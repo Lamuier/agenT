@@ -22,7 +22,7 @@ class EncryptedAccountStore(
 ) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
-    private val crypto = KeystoreCrypto(keyAlias)
+    private val crypto by lazy { KeystoreCrypto(keyAlias) }
 
     init {
         // 界面、小组件和通知各自创建存储对象。锁必须进程内共享，
@@ -128,6 +128,10 @@ class EncryptedAccountStore(
         decryptAccessToken(account)
     }
 
+    internal fun <T> withCurrentRevision(accountId: Int, revision: Long, action: () -> T): T? = synchronized(lock) {
+        if (!isCurrent(accountId, revision)) null else action()
+    }
+
     internal fun isCurrent(accountId: Int, revision: Long): Boolean = synchronized(lock) {
         readStoredAccounts().any { it.id == accountId && it.revision == revision }
     }
@@ -137,6 +141,7 @@ class EncryptedAccountStore(
     }
 
     fun saveSelectedAccountId(accountId: Int?) = synchronized(lock) {
+        if (selectedAccountId() == accountId) return@synchronized
         val editor = preferences.edit()
         if (accountId == null) editor.remove(KEY_SELECTED_ACCOUNT) else editor.putInt(KEY_SELECTED_ACCOUNT, accountId)
         check(editor.commit()) { msg(R.string.error_save_selection) }

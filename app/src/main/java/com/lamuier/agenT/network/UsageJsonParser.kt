@@ -50,7 +50,8 @@ object UsageJsonParser {
                     .putNullable("auto_percent_used", usage.usage.autoPercentUsed)
                     .putNullable("api_percent_used", usage.usage.apiPercentUsed)
                     .putNullable("display_message", usage.usage.displayMessage)
-                    .put("remaining_bonus", usage.usage.remainingBonus),
+                    .put("remaining_bonus", usage.usage.remainingBonus)
+                    .put("available_metrics", JSONArray(usage.usage.availableMetrics.toList())),
             )
             .put(
                 "credits",
@@ -81,6 +82,7 @@ object UsageJsonParser {
                     .put("pooled_limit_dollars", it.pooledLimitDollars)
                     .put("pooled_used_dollars", it.pooledUsedDollars)
                     .put("pooled_remaining_dollars", it.pooledRemainingDollars)
+                    .put("available_metrics", JSONArray(it.availableMetrics.toList()))
             } ?: JSONObject.NULL,
         )
         root.put(
@@ -92,6 +94,8 @@ object UsageJsonParser {
                     .put("total_cache_write_tokens", breakdown.totalCacheWriteTokens)
                     .put("total_cache_read_tokens", breakdown.totalCacheReadTokens)
                     .put("total_cost_dollars", breakdown.totalCostDollars)
+        .put("available_metrics", JSONArray(breakdown.availableMetrics.toList()))
+        .put("models_available", breakdown.modelsAvailable)
                     .put(
                         "models",
                         JSONArray().also { array ->
@@ -104,7 +108,8 @@ object UsageJsonParser {
                                         .put("cache_write_tokens", model.cacheWriteTokens)
                                         .put("cache_read_tokens", model.cacheReadTokens)
                                         .put("cost_dollars", model.costDollars)
-                                        .putNullable("tier", model.tier),
+                                        .putNullable("tier", model.tier)
+                            .put("available_metrics", JSONArray(model.availableMetrics.toList())),
                                 )
                             }
                         },
@@ -180,6 +185,7 @@ object UsageJsonParser {
                 apiPercentUsed = usage.nullableNumber("api_percent_used"),
                 displayMessage = usage.nullableString("display_message"),
                 remainingBonus = usage.optBoolean("remaining_bonus"),
+                availableMetrics = availableMetrics(usage),
             ),
             credits = Credits(
                 totalDollars = credits.number("total_dollars"),
@@ -196,6 +202,7 @@ object UsageJsonParser {
                     pooledLimitDollars = it.number("pooled_limit_dollars"),
                     pooledUsedDollars = it.number("pooled_used_dollars"),
                     pooledRemainingDollars = it.number("pooled_remaining_dollars"),
+                    availableMetrics = availableMetrics(it),
                 )
             },
             subscription = Subscription(
@@ -240,6 +247,8 @@ object UsageJsonParser {
         .put("total_cache_write_tokens", breakdown.totalCacheWriteTokens)
         .put("total_cache_read_tokens", breakdown.totalCacheReadTokens)
         .put("total_cost_dollars", breakdown.totalCostDollars)
+        .put("available_metrics", JSONArray(breakdown.availableMetrics.toList()))
+        .put("models_available", breakdown.modelsAvailable)
         .put(
             "models",
             JSONArray().also { array ->
@@ -252,7 +261,8 @@ object UsageJsonParser {
                             .put("cache_write_tokens", model.cacheWriteTokens)
                             .put("cache_read_tokens", model.cacheReadTokens)
                             .put("cost_dollars", model.costDollars)
-                            .putNullable("tier", model.tier),
+                            .putNullable("tier", model.tier)
+                            .put("available_metrics", JSONArray(model.availableMetrics.toList())),
                     )
                 }
             },
@@ -282,6 +292,7 @@ object UsageJsonParser {
                         cacheReadTokens = item.longNumber("cache_read_tokens"),
                         costDollars = item.number("cost_dollars"),
                         tier = item.nullableInt("tier"),
+                        availableMetrics = availableMetrics(item),
                     ),
                 )
             }
@@ -293,7 +304,14 @@ object UsageJsonParser {
             totalCacheWriteTokens = json.longNumber("total_cache_write_tokens"),
             totalCacheReadTokens = json.longNumber("total_cache_read_tokens"),
             totalCostDollars = json.number("total_cost_dollars"),
+            availableMetrics = availableMetrics(json),
+            modelsAvailable = json.optBoolean("models_available", false),
         )
+    }
+
+    private fun availableMetrics(json: JSONObject): Set<String> {
+        val array = json.optJSONArray("available_metrics") ?: return emptySet()
+        return (0 until array.length()).map { array.optString(it) }.toSet()
     }
 
     private fun parseAccount(json: JSONObject): CursorAccount = CursorAccount(

@@ -16,6 +16,14 @@ internal class CodexPublicResetRepository(context: Context) {
         cache.getString("snapshot", null)?.let(CodexPublicResetJson::decode)
     }.getOrNull()
     fun fetch(force: Boolean): CodexPublicResetSnapshot {
+        if (!force) {
+            val previous = cached()
+            if (previous != null && CodexPublicResetJson.isCurrentCache(cache.getString("snapshot", null)) &&
+                System.currentTimeMillis() - previous.fetchedAt in 0 until 15 * 60_000L) return previous
+        }
+        return requests.run(context.noBackupFilesDir.absolutePath) { fetchOnce(true) }
+    }
+    private fun fetchOnce(force: Boolean): CodexPublicResetSnapshot {
         val now = System.currentTimeMillis()
         val previous = cached()
         // Older caches may have discarded banked grants; fetch the full response before reusing their ETag.
@@ -89,6 +97,10 @@ internal class CodexPublicResetRepository(context: Context) {
         if (safeEtag == null) editor.remove("etag") else editor.putString("etag", safeEtag)
         check(editor.commit()) { context.getString(R.string.reset_public_cache_error) }
         return snapshot
+    }
+
+    private companion object {
+        val requests = com.lamuier.agenT.data.InFlightRequests<String, CodexPublicResetSnapshot>()
     }
 
     /** Header values are echoed back. Reject controls so a bad ETag cannot stick and fail every later request. */

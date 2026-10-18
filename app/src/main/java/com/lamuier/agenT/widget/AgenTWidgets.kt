@@ -310,6 +310,12 @@ object AgenTWidgetUpdater {
     private val refreshMutex = Mutex()
     private val lastManualRefreshAt = AtomicLong(0L)
     private val cacheRenderGeneration = AtomicLong(0L)
+    private val cacheRenders = com.lamuier.agenT.system.CoalescedWork<Pair<Context, Long>>(shortScope) { (context, generation) ->
+        if (hasWidgets(context)) {
+            val snapshot = withContext(Dispatchers.IO) { WidgetLoader.readCached(context) }
+            renderAll(context, snapshot, generation)
+        }
+    }
     private val scheduleLock = Any()
     private val renderLock = Any()
     private var jobRunning = false
@@ -335,12 +341,8 @@ object AgenTWidgetUpdater {
     /** 用本机缓存立刻重绘小组件，不另发网络请求。App 拉到最新用量/状态后走这条。 */
     fun pushFromCache(context: Context) {
         val appContext = context.applicationContext
-        if (!hasWidgets(appContext)) return
         val generation = cacheRenderGeneration.incrementAndGet()
-        shortScope.launch {
-            val snapshot = withContext(Dispatchers.IO) { WidgetLoader.readCached(appContext) }
-            renderAll(appContext, snapshot, generation)
-        }
+        cacheRenders.submit(appContext to generation)
     }
 
     fun ensurePeriodicRefresh(context: Context) {

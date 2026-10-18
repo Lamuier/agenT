@@ -421,7 +421,14 @@ internal data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaU
                 usage = UsageMetrics(99.74, TotalFormat.Percent, 19.95, 19.95, 0.0, 20.0, 0.05, 100.0, 97.0, null, false),
                 credits = Credits(0.0, 0.0, 0.0), onDemand = null, subscription = Subscription(null, null),
                 fetchedAt = stamp, fromCache = false, cacheAgeSeconds = 0,
-                tokenUsage = TokenUsageBreakdown(emptyList(), 800000, 50000, 1000000, 3000000, 19.95),
+                tokenUsage = TokenUsageBreakdown(listOf(
+                    com.lamuier.agenT.model.ModelTokenUsage("claude-sonnet", 400000, 25000, 500000, 1500000, 12.0, 1),
+                    com.lamuier.agenT.model.ModelTokenUsage("composer", 200000, 15000, 300000, 900000, 4.0, 1),
+                    com.lamuier.agenT.model.ModelTokenUsage("gpt", 150000, 5000, 100000, 300000, 2.0, 1),
+                    com.lamuier.agenT.model.ModelTokenUsage("grok", 30000, 3000, 70000, 200000, 1.0, 1),
+                    com.lamuier.agenT.model.ModelTokenUsage("auto", 10000, 1000, 20000, 70000, 0.5, 1),
+                    com.lamuier.agenT.model.ModelTokenUsage("long-model-name-for-accessibility-review", 10000, 1000, 10000, 30000, 0.45, 1)
+                ), 800000, 50000, 1000000, 3000000, 19.95),
             )
             fun status(codex: Boolean) = ServiceStatus(
                 description = "", indicator = if (codex) StatusIndicator.None else StatusIndicator.Minor,
@@ -443,7 +450,11 @@ internal data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaU
                             now.minusSeconds(3600L * index).toEpochMilli(), now.toEpochMilli(), null,
                             com.lamuier.agenT.model.AgentTaskSource.Api)
                     }, stamp, false),
-                    usage = usage, serviceStatus = status(false)),
+                    usage = usage, serviceStatus = status(false), usageHistory = (0..12).map { i ->
+                        com.lamuier.agenT.usage.UsageAnalysis.cursor(usage, now.minusSeconds((12 - i) * 1800L).toEpochMilli()).let { p ->
+                            p.copy(values = p.values.mapValues { (key, value) -> if (key in listOf("own", "other")) value - (12 - i) else value * (0.5 + i / 24.0) })
+                        }
+                    }),
                 CodexQuotaUiState(credential = CodexCredentialInfo(false, false, stamp),
                     usage = CodexQuotaOverview("plus",
                         CodexQuotaWindow(12.0, 18000, 4 * 3600, now.epochSecond + 4 * 3600),
@@ -464,7 +475,11 @@ internal data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaU
                         (1..28).map { index -> CodexPublicReset("fixture-heatmap-$index", if (index % 5 == 0) "banked" else "regular",
                             now.minusSeconds(index * 5L * 86400).epochSecond, "Calendar heatmap fixture.", "observed", null, "https://codex-resets.com") },
                         now.toEpochMilli()),
-                    booting = false, serviceStatus = status(true), loadingStatus = false),
+                    booting = false, serviceStatus = status(true), loadingStatus = false,
+                    usageHistory = (0..12).map { i -> com.lamuier.agenT.usage.UsageObservation(
+                        now.minusSeconds((12 - i) * 300L).toEpochMilli(), mapOf("primary" to i.toDouble(), "weekly" to (36.0 + i)),
+                        mapOf("primary" to "18000:${now.epochSecond + 14400}", "weekly" to "604800:${now.epochSecond + 345600}"),
+                        mapOf("primary" to now.plusSeconds(14400).toEpochMilli(), "weekly" to now.plusSeconds(345600).toEpochMilli())) }),
             )
         }
     }

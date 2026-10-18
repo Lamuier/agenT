@@ -6,7 +6,7 @@
 
 | 类别 | 内容与触发 | 去重 / 保留 |
 | --- | --- | --- |
-| 实时活动（常驻） | Cursor 执行中及刚结束任务，Cursor / Codex 额度、服务和同步关注条目 | 共用一条通知；任务结束结果保留一小时 |
+| 实时活动（常驻） | Cursor 执行中及刚结束任务，Cursor / Codex 额度、服务和同步关注条目 | 共用一条通知；任务结束结果保留 15 分钟，可通过“确认”提前清除 |
 | 用量阈值提醒 | Cursor 周期额度、Codex 5 小时 / 每周窗口的新鲜用量达到 80% / 100% | 按服务、凭据修订与窗口各提醒一次 |
 | Codex 窗口重置 | 新鲜响应确认进入新的 5 小时 / 每周窗口 | 按窗口去重；不因倒计时到点、手动登记或旧缓存补发 |
 
@@ -35,15 +35,19 @@
 
 ## Cursor 任务活动
 
-首次成功同步建立基线，不重放历史结束任务。后续确认创建中 / 执行中转为完成、出错或过期，或在轮询间新创建并结束的任务时，记录本机观察时间。重复同步、重启或文案切换不延长一小时保留期；重跑会清除旧结束状态。
+首次成功同步建立基线，不重放历史结束任务。后续确认创建中 / 执行中转为完成、出错或过期，或在轮询间新创建并结束的任务时，记录本机观察时间。重复同步、重启或文案切换不延长 15 分钟保留期；重跑会清除旧结束状态。
 
-未知状态或从列表消失不推断为结束。观察时间随任务摘要按账号 / 凭据修订号加密缓存。超过新鲜度的执行状态转为待同步，已确认结束结果按独立期限到期。点击任务活动打开任务页。
+未知状态或从列表消失不推断为结束。观察时间随任务摘要按账号 / 凭据修订号加密缓存。超过新鲜度的执行状态转为待同步，已确认结束结果按独立期限到期。点击任务活动打开任务页。有结束任务时，普通通知 / 原生实况操作区与小米超级岛展开态提供“确认”和“任务”按钮；“确认”仅清除按钮对应的当前结束任务提示，不删除任务列表记录，不影响执行中任务或额度 / 服务告警，也不触发网络请求。确认结果保存在同一加密缓存内；后续同步或重启不会重新提示，同一任务重跑结束后仍可再次显示。旧按钮不会清除新一轮结束结果或其他账号 / 凭据修订号下的提示。
+
+保留期从本机首次确认结束时开始计算。结束提示安排无需网络的本地到期刷新；确认、到期或关闭实时活动后取消对应检查。系统节电仍可能推迟后台清理，到期后的下一次本地刷新会移除该条目。
 
 ## 平台展示与图像
 
 [QuotaNotificationRenderer](../app/src/main/java/com/lamuier/agenT/notification/QuotaNotificationRenderer.kt) 生成原生常驻与单次通知；代码在 `BAKLAVA_1` 的完整 SDK 版本门槛后调用公开实况提升 API，旧平台保留兼容请求字段。Android 16+ 授权入口、通知渠道状态和通知是否实际具备提升资格分别判断，系统决定最终展示。
 
-[XiaomiHyperIslandAdapter](../app/src/main/java/com/lamuier/agenT/notification/XiaomiHyperIslandAdapter.kt) 处理小米载荷。图像引用由 [IslandArtwork](../app/src/main/java/com/lamuier/agenT/notification/IslandArtwork.kt) 生成：`miui.focus.pic_agentt_{formal|cat}_{state}[_multi]_v7`。同一状态的单态 / 多态使用独立引用，数量变化只改文字，避免无限生成图像键。图像静态预览见 [界面与资源](ui.md#图标与小组件素材)。
+[XiaomiHyperIslandAdapter](../app/src/main/java/com/lamuier/agenT/notification/XiaomiHyperIslandAdapter.kt) 处理小米载荷。图像引用由 [IslandArtwork](../app/src/main/java/com/lamuier/agenT/notification/IslandArtwork.kt) 生成：`miui.focus.pic_agentt_{formal|cat}_{state}[_multi]_v7`。同一状态的单态 / 多态使用独立引用，数量变化只改文字，避免无限生成图像键。展开态使用官方模板的 `textButton` 引用 `miui.focus.actions` 中与原生通知相同的操作，确认清除后同步更新正文、主状态和条目数。[小米开发指南](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2131)。图像静态预览见 [界面与资源](ui.md#图标与小组件素材)。
+
+通知仓库复用、渠道文案维护与小组件缓存重绘合并见[启动与性能](performance.md)。提醒事件继续立即处理，不进入展示重绘的合并队列。
 
 ## 刷新与验证
 
@@ -51,4 +55,4 @@
 
 实现分层：[AgenTNotificationCoordinator](../app/src/main/java/com/lamuier/agenT/notification/AgenTNotificationCoordinator.kt) 组装缓存与通知；`TaskActivityModel` 负责任务观察；`QuotaNoticeModel` / `CodexResetNoticeModel` 负责单次去重；窗口重置提醒直接比较前后新鲜观察快照，临时生成提醒标识，不写入重置页历史；`NotificationRefreshScheduler` 负责后台检查。
 
-测试覆盖阈值、窗口跨期、首轮基线、任务快速结束 / 重启 / 消失、账号隔离、过期和部分状态、多条目优先级、正式 / 猫语映射、占位符与图像引用。执行结果与 Lint 状态以本次标准构建报告为准，不能沿用历史报告证明当前通过。平台 / OEM 实际展示边界见 [界面验收](ui.md#界面验收)。
+测试覆盖阈值、窗口跨期、首轮基线、任务快速结束 / 重启 / 消失、15 分钟期限、确认持久化与旧按钮隔离、本地到期调度、账号隔离、过期和部分状态、多条目优先级、正式 / 猫语映射、占位符与图像引用。执行结果与 Lint 状态以本次标准构建报告为准，不能沿用历史报告证明当前通过。平台 / OEM 实际展示边界见 [界面验收](ui.md#界面验收)。

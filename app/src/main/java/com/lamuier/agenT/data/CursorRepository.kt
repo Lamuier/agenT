@@ -10,6 +10,7 @@ import com.lamuier.agenT.network.CursorApiClient
 import com.lamuier.agenT.network.AgenTAssembler
 import com.lamuier.agenT.network.TasksJsonParser
 import com.lamuier.agenT.model.UsageWindow
+import com.lamuier.agenT.notification.TaskActivityModel
 import com.lamuier.agenT.network.UsageJsonParser
 import com.lamuier.agenT.util.AppLocale
 import com.lamuier.agenT.util.TokenUtils
@@ -31,28 +32,48 @@ class AccountRevisionChangedException : IOException("Cursor 账号已发生变�
 class CursorRepository(context: Context) {
     private val appContext = context.applicationContext
     private val api = CursorApiClient(appContext)
-    private val accountStore = EncryptedAccountStore(appContext)
-    private val usageCache = UsageCacheStore(appContext)
-    private val tasksCache = TasksCacheStore(appContext)
+    private val accountStore by lazy { EncryptedAccountStore(appContext) }
+    private val usageCache by lazy { UsageCacheStore(appContext) }
+    private val tasksCache by lazy { TasksCacheStore(appContext) }
+    private val historyStore by lazy { com.lamuier.agenT.usage.UsageHistoryStore(appContext) }
+    private val migrationCompleted by lazy { clearMigratedAccountUsageCaches(); true }
 
-    init {
-        clearMigratedAccountUsageCaches()
+    private fun historyOwner(snapshot: EncryptedAccountStore.AccountSnapshot): String =
+        com.lamuier.agenT.usage.UsageHistoryStore.identity("${snapshot.id}:${TokenUtils.userId(snapshot.accessToken).ifBlank { snapshot.accessToken }}")
+
+    fun usageHistory(accountId: Int, days: Int = 90): List<com.lamuier.agenT.usage.UsageObservation> {
+        val snapshot = accountStore.snapshot(accountId)
+        val rows = historyStore.read("cursor", historyOwner(snapshot), days = days)
+        ensureCurrent(snapshot)
+        return rows
     }
 
-    fun listAccounts(): List<CursorAccount> = accountStore.listAccounts()
+    fun listAccounts(): List<CursorAccount> {
+        check(migrationCompleted)
+        return accountStore.listAccounts()
+    }
 
     fun addAccount(alias: String, accessToken: String): CursorAccount =
         accountStore.create(alias, accessToken)
 
     fun updateAccount(accountId: Int, alias: String?, accessToken: String?): CursorAccount {
-        val updated = accountStore.update(accountId, alias, accessToken)
+        val previous = accountStore.snapshot(accountId)
+        val updated = accountStore.withCurrentRevision(accountId, previous.revision) {
+            val next = accountStore.update(accountId, alias, accessToken)
+            if (historyOwner(previous) != historyOwner(accountStore.snapshot(accountId))) historyStore.clear("cursor")
+            next
+        } ?: throw AccountRevisionChangedException()
         invalidateUsage(accountId)
         invalidateTasks(accountId)
         return updated
     }
 
     fun deleteAccount(accountId: Int) {
-        require(accountStore.delete(accountId)) { AppLocale.string(appContext, R.string.error_account_not_found) }
+        val revision = accountStore.revision(accountId)
+        accountStore.withCurrentRevision(accountId, revision) {
+            require(accountStore.delete(accountId)) { AppLocale.string(appContext, R.string.error_account_not_found) }
+            historyStore.clear("cursor")
+        } ?: throw AccountRevisionChangedException()
         invalidateUsage(accountId)
         invalidateTasks(accountId)
     }
@@ -104,6 +125,7 @@ class CursorRepository(context: Context) {
 
         val requestKey = NetworkRequestKey(accountId, snapshot.revision)
         val live = singleFlight(requestKey) {
+            val historyTicket = historyStore.generation()
             try {
                 val fetched = fetchLive(snapshot)
                 ensureCurrent(snapshot)
@@ -118,6 +140,11 @@ class CursorRepository(context: Context) {
                 if (!accountStore.isCurrent(accountId, snapshot.revision)) {
                     usageCache.remove(accountId, snapshot.revision)
                     throw AccountRevisionChangedException()
+                }
+                accountStore.withCurrentRevision(accountId, snapshot.revision) {
+                    runCatching {
+                        historyStore.record("cursor", historyOwner(snapshot), com.lamuier.agenT.usage.UsageAnalysis.cursor(fetched, storedAtMillis), historyTicket)
+                    }.onFailure { historyStore.reportFailure("cursor", historyOwner(snapshot)) }
                 }
                 fetched
             } catch (error: ApiException) {
@@ -173,6 +200,27 @@ class CursorRepository(context: Context) {
         return stored
     }
 
+    /** Persist acknowledgement without refreshing cache age or removing task history. */
+    internal fun acknowledgeTaskCompletions(accountId: Int, revision: Long, completions: Map<String, Long>): Boolean =
+        synchronized(tasksMemoryLock) {
+            if (completions.isEmpty() || !accountStore.isCurrent(accountId, revision)) return@synchronized false
+            val cached = tasksCache.read(accountId, revision) ?: return@synchronized false
+            val tasks = TasksJsonParser.parseStored(cached.rawJson, accountId, "", ageSeconds(cached.storedAtMillis))
+            val acknowledged = TaskActivityModel.acknowledge(tasks, completions)
+            if (tasks.completedAtMillis == acknowledged.completedAtMillis) return@synchronized false
+            if (!accountStore.isCurrent(accountId, revision)) return@synchronized false
+            if (!tasksCache.write(accountId, revision, TasksJsonParser.toJson(acknowledged), cached.storedAtMillis))
+                return@synchronized false
+            if (!accountStore.isCurrent(accountId, revision)) {
+                tasksCache.remove(accountId, revision)
+                return@synchronized false
+            }
+            tasksMemoryCache[accountId]?.takeIf { it.revision == revision }?.let { entry ->
+                tasksMemoryCache[accountId] = entry.copy(tasks = TaskActivityModel.acknowledge(entry.tasks, completions))
+            }
+            true
+        }
+
     suspend fun fetchTasks(accountId: Int, forceRefresh: Boolean): AgenTasks {
         val snapshot = accountStore.snapshot(accountId)
         if (TokenUtils.isExpired(snapshot.accessToken) || (snapshot.tokenInvalid && !forceRefresh)) {
@@ -192,23 +240,28 @@ class CursorRepository(context: Context) {
         val requestKey = NetworkRequestKey(accountId, snapshot.revision)
         val live = singleFlightTasks(requestKey) {
             try {
-                val previous = cachedTasks(accountId)
                 val payload = api.agentTasks(snapshot.accessToken)
                 ensureCurrent(snapshot)
                 if (!accountStore.markTokenInvalid(accountId, snapshot.revision, invalid = false)) {
                     throw AccountRevisionChangedException()
                 }
-                val storedAtMillis = System.currentTimeMillis()
-                val fetched = com.lamuier.agenT.notification.TaskActivityModel.observe(previous,
-                    TasksJsonParser.parse(payload, accountId = snapshot.id), storedAtMillis)
-                runCatching {
-                    tasksCache.write(accountId, snapshot.revision, TasksJsonParser.toJson(fetched), storedAtMillis)
+                val parsed = TasksJsonParser.parse(payload, accountId = snapshot.id)
+                synchronized(tasksMemoryLock) {
+                    ensureCurrent(snapshot)
+                    // Read after the network request: a confirmation during the request must stay cleared.
+                    val previous = cachedTasks(accountId)
+                    val storedAtMillis = System.currentTimeMillis()
+                    val fetched = TaskActivityModel.observe(previous, parsed, storedAtMillis)
+                    runCatching {
+                        tasksCache.write(accountId, snapshot.revision, TasksJsonParser.toJson(fetched), storedAtMillis)
+                    }
+                    if (!accountStore.isCurrent(accountId, snapshot.revision)) {
+                        tasksCache.remove(accountId, snapshot.revision)
+                        throw AccountRevisionChangedException()
+                    }
+                    tasksMemoryCache[accountId] = TasksMemoryEntry(snapshot.revision, storedAtMillis, fetched)
+                    fetched
                 }
-                if (!accountStore.isCurrent(accountId, snapshot.revision)) {
-                    tasksCache.remove(accountId, snapshot.revision)
-                    throw AccountRevisionChangedException()
-                }
-                fetched
             } catch (error: ApiException) {
                 if (error.statusCode == 401 || error.statusCode == 403) {
                     if (accountStore.isCurrent(accountId, snapshot.revision)) {
@@ -223,10 +276,6 @@ class CursorRepository(context: Context) {
             }
         }
         ensureCurrent(snapshot)
-        val storedAtMillis = System.currentTimeMillis()
-        synchronized(tasksMemoryLock) {
-            tasksMemoryCache[accountId] = TasksMemoryEntry(snapshot.revision, storedAtMillis, live)
-        }
         if (!accountStore.isCurrent(accountId, snapshot.revision)) {
             invalidateTasks(accountId, snapshot.revision)
             throw AccountRevisionChangedException()
@@ -306,40 +355,10 @@ class CursorRepository(context: Context) {
         }
 
         val periodUsage = period.await()
-        val prevRange = UsageHistoryWindows.previousBillingCycle(
-            UsageHistoryWindows.parseEpochMillis(periodUsage.opt("billingCycleStart")),
-            UsageHistoryWindows.parseEpochMillis(periodUsage.opt("billingCycleEnd")),
-        )
-        val (monthKeyYm, monthRange) = UsageHistoryWindows.currentCalendarMonth()
-        val previousCycle = async {
-            if (prevRange == null) {
-                OptionalPayload(payload = null, partial = true)
-            } else {
-                optionalPayload(authenticationFailureIsFatal = false) {
-                    api.connectRpc(
-                        snapshot.accessToken,
-                        "GetAggregatedUsageEvents",
-                        aggregationsRangeBody(prevRange.startMs, prevRange.endMs),
-                    )
-                }
-            }
-        }
-        val calendarMonth = async {
-            optionalPayload(authenticationFailureIsFatal = false) {
-                api.connectRpc(
-                    snapshot.accessToken,
-                    "GetAggregatedUsageEvents",
-                    aggregationsRangeBody(monthRange.startMs, monthRange.endMs),
-                )
-            }
-        }
-
         val grantsResult = grants.await()
         val aggregationsResult = aggregations.await()
         val grokBotResult = grokBot.await()
         val stripeResult = stripe.await()
-        val previousCycleResult = previousCycle.await()
-        val calendarMonthResult = calendarMonth.await()
         AgenTAssembler.assemble(
             accountId = snapshot.id,
             alias = snapshot.alias,
@@ -349,13 +368,14 @@ class CursorRepository(context: Context) {
             stripePayload = stripeResult.payload,
             aggregationsPayload = aggregationsResult.payload,
             grokBotPayload = grokBotResult.payload,
-            previousCyclePayload = previousCycleResult.payload,
-            previousCycleStartMs = prevRange?.startMs,
-            previousCycleEndMs = prevRange?.endMs,
-            calendarMonthPayload = calendarMonthResult.payload,
-            calendarMonthStartMs = monthRange.startMs,
-            calendarMonthEndMs = monthRange.endMs,
-            calendarMonthKey = UsageHistoryWindows.yearMonthKey(monthKeyYm),
+            // Additional periods are fetched by the visible usage page with its actual range.
+            previousCyclePayload = null,
+            previousCycleStartMs = null,
+            previousCycleEndMs = null,
+            calendarMonthPayload = null,
+            calendarMonthStartMs = null,
+            calendarMonthEndMs = null,
+            calendarMonthKey = null,
             partialData = grantsResult.partial || stripeResult.partial ||
                 aggregationsResult.partial || grokBotResult.partial,
         )
@@ -375,6 +395,8 @@ class CursorRepository(context: Context) {
                 aggregationsRangeBody(startMs, endMs),
             )
         }
+        ensureCurrent(snapshot)
+        if (payload.payload == null) throw IOException(AppLocale.string(appContext, R.string.error_load_history))
         return AgenTAssembler.usageWindow(
             startMs = startMs,
             endMs = endMs,

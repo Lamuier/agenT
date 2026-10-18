@@ -81,7 +81,7 @@ internal fun TasksTab(
 ) {
     val openUrl = rememberOpenCursorUrl(onOpenFailed)
     when {
-        tasks == null && loading -> DashboardState(
+        tasks == null && (loading || refreshing) -> DashboardState(
             icon = null,
             title = stringResource(R.string.tasks_loading_title),
             description = stringResource(R.string.tasks_loading_body),
@@ -90,13 +90,12 @@ internal fun TasksTab(
         tasks == null -> DashboardState(
             icon = Icons.Outlined.CloudOff,
             title = stringResource(R.string.tasks_unavailable_title),
-            description = error ?: stringResource(R.string.network_retry_hint),
+            description = stringResource(R.string.network_retry_hint),
             primaryActionLabel = stringResource(R.string.action_reload),
             onPrimaryAction = onRetry,
         )
         else -> TasksContent(
-            tasks = tasks,
-            error = error?.takeIf { !refreshing },
+            tasks = tasks.copy(fromCache = tasks.fromCache || error != null),
             openUrl = openUrl,
             onOpenFailed = onOpenFailed,
         )
@@ -107,7 +106,6 @@ internal fun TasksTab(
 @Composable
 private fun TasksContent(
     tasks: AgenTasks,
-    error: String?,
     openUrl: (String) -> Unit,
     onOpenFailed: (String) -> Unit,
 ) {
@@ -146,13 +144,6 @@ private fun TasksContent(
                     (if (hiddenMergedCount > 0) stringResource(R.string.tasks_summary_hidden, hiddenMergedCount) else "")
             },
         )
-        if (error != null) {
-            Text(
-                error,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
         if (visibleTasks.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -498,7 +489,7 @@ internal fun prStatusColor(status: AgentTaskPrStatus): Color {
 }
 
 @Composable
-private fun rememberOpenCursorUrl(onOpenFailed: (String) -> Unit): (String) -> Unit {
+internal fun rememberOpenCursorUrl(onOpenFailed: (String) -> Unit): (String) -> Unit {
     val context = LocalContext.current
     val resources = LocalResources.current
     val toolbarColor = MaterialTheme.colorScheme.surface.toArgb()

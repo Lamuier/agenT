@@ -38,10 +38,16 @@ class CodexQuotaRepository internal constructor(
     private val isolated: Boolean = false,
 ) {
     private val appContext = context.applicationContext
-    private val tokenStore = CodexTokenStore(appContext, isolated)
-    private val cacheStore = CodexQuotaCacheStore(appContext, isolated)
+    private val tokenStore by lazy { CodexTokenStore(appContext, isolated) }
+    private val cacheStore by lazy { CodexQuotaCacheStore(appContext, isolated) }
     private val api = CodexQuotaApiClient(appContext)
-    private val resetStore = if (isolated) {
+    private val usageHistoryStore by lazy { com.lamuier.agenT.usage.UsageHistoryStore(appContext, isolated) }
+
+    fun usageHistory(days: Int = 90): List<com.lamuier.agenT.usage.UsageObservation> = synchronized(CodexStorageLock.monitor) {
+        val snapshot = tokenStore.snapshot() ?: return@synchronized emptyList()
+        usageHistoryStore.read("codex", CodexResetIdentity.key(snapshot.accessToken, snapshot.accountId), days = days)
+    }
+    private val resetStore by lazy { if (isolated) {
         CodexResetHistoryStore(
             appContext,
             preferencesName = QA_RESET_PREFERENCES,
@@ -49,7 +55,7 @@ class CodexQuotaRepository internal constructor(
         )
     } else {
         CodexResetHistoryStore(appContext)
-    }
+    } }
     @Volatile var resetTrackingError: String? = null
         private set
 
@@ -81,13 +87,17 @@ class CodexQuotaRepository internal constructor(
     }
 
     fun saveCredential(accessToken: String, accountId: String): CodexCredentialInfo = synchronized(CodexStorageLock.monitor) {
+        val previous = tokenStore.snapshot()
+        val nextOwner = CodexResetIdentity.key(accessToken, accountId)
         tokenStore.save(accessToken, accountId)
+        if (previous != null && CodexResetIdentity.key(previous.accessToken, previous.accountId) != nextOwner) usageHistoryStore.clear("codex")
         cacheStore.clear()
         resetTrackingError = null
         checkNotNull(credentialInfo())
     }
 
     fun clearCredential() = synchronized(CodexStorageLock.monitor) {
+        usageHistoryStore.clear("codex")
         tokenStore.clear()
         cacheStore.clear()
         resetStore.clear()
@@ -125,6 +135,21 @@ class CodexQuotaRepository internal constructor(
         ?: throw IllegalStateException(appContext.getString(R.string.codex_error_token_missing))
 
     fun fetchUsage(revision: Long, scheduleResetRefresh: Boolean = true): CodexQuotaOverview {
+        val usage = usageRequests.run(Triple(appContext.noBackupFilesDir.absolutePath, isolated, revision)) {
+            fetchUsageOnce(revision, false)
+        }
+        synchronized(CodexStorageLock.monitor) {
+            val current = tokenStore.snapshot()
+            check(current != null && current.revision == revision) { appContext.getString(R.string.codex_error_credential_changed) }
+            if (scheduleResetRefresh) runCatching {
+                com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).onCodexQuotaObserved(
+                    usage, emptyList(), CodexResetIdentity.key(current.accessToken, current.accountId), revision, true)
+            }
+        }
+        return usage
+    }
+
+    private fun fetchUsageOnce(revision: Long, scheduleResetRefresh: Boolean): CodexQuotaOverview {
         val snapshot = tokenStore.snapshot()
             ?: throw CodexQuotaApiException(401, appContext.getString(R.string.codex_error_token_missing))
         if (snapshot.revision != revision) {
@@ -135,6 +160,7 @@ class CodexQuotaRepository internal constructor(
             throw CodexQuotaApiException(401, appContext.getString(R.string.codex_error_token_invalid))
         }
 
+        val historyTicket = usageHistoryStore.generation()
         return try {
             val payload = api.usage(snapshot.accessToken, snapshot.accountId.takeIf(String::isNotBlank))
             val overview = CodexQuotaParser.parse(payload)
@@ -146,6 +172,7 @@ class CodexQuotaRepository internal constructor(
                 tokenStore.markInvalid(revision, false, snapshot.accessToken)
                 cacheStore.write(revision, CodexQuotaParser.toCache(overview), System.currentTimeMillis())
                 val owner = CodexResetIdentity.key(snapshot.accessToken, snapshot.accountId)
+                runCatching { usageHistoryStore.record("codex", owner, com.lamuier.agenT.usage.UsageAnalysis.codex(overview, System.currentTimeMillis()), historyTicket) }.onFailure { usageHistoryStore.reportFailure("codex", owner) }
                 var newlyConfirmed = emptyList<CodexResetEvent>()
                 runCatching {
                     resetStore.update(owner) {
@@ -171,6 +198,7 @@ class CodexQuotaRepository internal constructor(
     }
 
     private companion object {
+        val usageRequests = com.lamuier.agenT.data.InFlightRequests<Triple<String, Boolean, Long>, CodexQuotaOverview>()
         const val QA_RESET_PREFERENCES = "agentt_qa_codex_reset_history_v1"
         const val QA_RESET_KEY_ALIAS = "agentt_qa_codex_reset_history_key_v1"
         val DATE_FORMAT = object : ThreadLocal<SimpleDateFormat>() {
@@ -340,9 +368,9 @@ internal object CodexQuotaParser {
         item ?: return null
         val used = item.optDouble("used_percent", Double.NaN)
         val duration = item.optLong("limit_window_seconds")
-        if (used.isNaN() || duration <= 0L) return null
+        if (!used.isFinite() || used < 0 || duration <= 0L) return null
         return CodexQuotaWindow(
-            usedPercent = used.coerceIn(0.0, 100.0),
+            usedPercent = used,
             limitWindowSeconds = duration,
             resetAfterSeconds = item.optLong("reset_after_seconds").takeIf { it > 0L },
             resetAtEpochSeconds = item.optLong("reset_at").takeIf { it > 0L },
@@ -483,7 +511,7 @@ private class CodexQuotaCacheStore(context: Context, isolated: Boolean = false) 
 }
 
 internal class CodexQuotaCrypto(private val keyAlias: String) {
-    private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    private val keyStore by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
 
     fun encrypt(value: String, aad: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)

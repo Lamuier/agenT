@@ -47,6 +47,26 @@ python3 scripts/ui-review-gallery.py
 
 图库位于 `app/build/reports/ui-review/index.html`。脚本不启动模拟器，不调用 adb，不安装到手机。
 
+### 使用实际 Token 验收用量
+
+可显式启用 [LiveUsageTest](app/src/test/java/com/lamuier/agenT/usage/LiveUsageTest.kt)，通过应用现有 HTTP 客户端查询 Cursor / Codex 真实接口，再检查生产解析、缓存往返、采样条件及 Compose 用量页交互与渲染。外部 UTF-8 文件须包含各一个 Cursor 和 Codex JWT，支持 Markdown 转义的下划线 / 连字符；仅提取凭据，不执行文件中的其他文字。凭据、账号标识和原始响应只留在测试内存，报告仅保存指标、请求状态及不含账号信息的页面图片。
+
+```sh
+AGENT_LIVE_USAGE_CREDENTIAL_FILE="/absolute/path/to/private-tokens.md" ./build.sh --offline
+```
+
+`--offline` 仅控制构建依赖；此验收仍需访问对应官方接口。结果在 `app/build/reports/live-usage/`，包含 `summary.json` 和五张真实数据渲染图（含带图例的消耗节奏、模拟刷新失败后的真实缓存数据）。测试核对十二个自然月、近 7 / 30 天及等长对比，不新增轮询、不执行额度重置。未设置上述变量时标准验收不运行此测试；启用时禁用该次单测结果复用，确保实际发起请求。它验证主机网络和 JVM 上的应用代码，不代替实体 Android 设备上的凭据存储、后台调度或网络行为验证。
+
+### 匿名公共重置数据验收
+
+可启用 [LiveResetDashboardTest](app/src/test/java/com/lamuier/agenT/ui/LiveResetDashboardTest.kt)，通过生产公共 API 客户端检查真实记录的类型统计、按日聚合、缓存往返及仪表盘截图，不读取或发送账号凭据：
+
+```sh
+AGENT_LIVE_RESET_VERIFY=1 ./build.sh --offline
+```
+
+结果保存在 `app/build/reports/live-resets/`，包括仅含汇总值的 `summary.json`、仪表盘、频次、热力图及模拟刷新失败后的真实缓存图；启用时强制发起新查询，不复用旧测试结果。默认标准验收不运行网络测试。
+
 ## 3. 配置统一 Release 签名
 
 本工程按用户在 2026-10-12 的明确要求，统一使用 `../release.keystore`（PKCS12，别名 `release`，与追程和安卓模板一致）。旧独立证书签名的安装包不能直接覆盖升级；原 agenT 独立签名资产已停用并清理。已有 `.signing/release-signing.json` 和统一签名资产时直接复用。Mac / Linux 不会自动生成密钥、绑定 debug.keystore 或重绑证书；升级安装必须使用原密钥。签名元数据、密钥和密码不入库。
@@ -103,7 +123,7 @@ chmod 600 ../release-password.txt
 ./build.sh --release             # 默认离线，测试 → Vital Lint → 签名、校验、时间戳包
 ./build.sh --release --online    # 首次构建或缺少缓存时允许下载依赖
 
-# 用户明确正式发版时：文件名只保留当前版本
+# 用户明确正式发版时：App名称-版本号.apk
 ./build.sh --release --official-release
 ```
 
@@ -115,12 +135,12 @@ chmod 600 ../release-password.txt
 
 | 文件 | 用途 |
 | --- | --- |
-| `<版本>_YYYYMMDD_HHMMSS.apk` / 正式 `<版本>.apk` | 原签名 Release 安装包 |
+| 未归档 `<App名称>-<当前版本>_YYYYMMDD_HHMMSS.apk` / 正式 `<App名称>-<版本号>.apk` | 原签名 Release 安装包 |
 | `<产物名>.sha256` | APK SHA-256 校验文件 |
 | `<产物名>-mapping.txt` | 本次 R8 混淆映射 |
 | `<产物名>-build.json` | 包信息、指纹、校验结果、时间与联网模式；不含密码 |
 
-普通 Release 文件名按编译启动时刻生成，时间为北京时间（Asia/Shanghai，UTC+08:00），例如 `1.1.0_20261012_203000.apk`。正式发版使用 `--official-release` / `-OfficialRelease`，例如 `1.1.0.apk`；这只是命名开关，不授权升版本、归档、提交或推送。
+正式包使用 `App名称-版本号.apk`，未归档包在当前版本包名后追加 `_YYYYMMDD_HHMMSS`。App 名称读取默认 `app/src/main/res/values/strings.xml` 的 `app_name`，版本读取 Gradle；两个平台使用相同规则，不按系统语言改变名称。日期时间按编译启动时刻使用北京时间（Asia/Shanghai，UTC+08:00），例如 `agenT-1.3.0_20261014_160000.apk`。正式发版使用 `--official-release` / `-OfficialRelease`，例如 `agenT-1.3.0.apk`；这只是命名开关，不授权升版本、归档、提交或推送。
 
 同次构建的 APK、校验文件、R8 映射和构建报告共用一个产物名；报告记录启动 / 完成时间和命名模式。两端均保留历史包、拒绝同名覆盖、不自动清理 `dist/`。普通包同秒冲突时稍后重试，或用 `--artifact-suffix` / `-ArtifactSuffix` 在时间戳后追加标识；正式包不接受附加标识。同名正式包存在时须先保留已有文件。
 
@@ -135,15 +155,36 @@ chmod 600 ../release-password.txt
 | `--skip-checks` | `-SkipChecks` | 显式跳过测试和 Lint，仍校验 APK |
 | `--signing-root <目录>` | `-SigningRoot <目录>` | 指定签名元数据位置 |
 | `--java-home <目录>` / `--sdk <目录>` | Windows 脚本内 JBR / SDK 配置 | 指定本机工具路径 |
-| `--official-release`（须与 `--release` 同用） | `-OfficialRelease`（须与 `-Release` 同用） | 正式发版命名，不带编译日期时间 |
+| `--official-release`（须与 `--release` 同用） | `-OfficialRelease`（须与 `-Release` 同用） | 正式发版命名：App 名称-版本号，不带编译日期时间 |
 | `--artifact-suffix <标识>` | `-ArtifactSuffix <标识>` | 普通包时间戳之后追加标识，正式包禁用 |
 | `--doctor` | 无对应参数 | Unix 环境自检 |
+| `--generate-baseline-profile`（须与 `--release` 同用） | `-GenerateBaselineProfile`（须与 `-Release` 同用） | 显式在任务模拟器生成编译配置 |
+| `--performance-review`（须与 `--release` 同用） | `-PerformanceReview`（须与 `-Release` 同用） | 显式在任务模拟器采集冷启动和滚动性能 |
 
 Windows 使用 `build.ps1 -SetupSigning` 配置共享 `release.keystore` 与私有密码文件，同样核验固定证书和私钥签名；不再生成独立密钥、使用 Windows clixml 或自动绑定 Debug 密钥。Windows Release 与 Unix 使用同一命名和历史保留规则。助手不得默认重绑签名或使用 `-Install` 操作实体手机。
 
 `--offline` 控制 Gradle 的依赖解析，不代替首次准备：Wrapper 本体与 Robolectric 的测试 SDK 也须提前缓存。遇到缓存缺失时显式使用 `--online` 准备，再离线重试；不通过跳过检查来掩盖构建失败。
 
 需代理时，在用户自己的 `~/.gradle/gradle.properties`（Windows 为 `%USERPROFILE%\.gradle\gradle.properties`）设置 `systemProp.https.proxyHost` / `proxyPort` 等属性，不把密码或代理私密信息写进仓库。工具路径缺失先用 `--doctor` 检查，不手工改 Gradle Wrapper 版本或绕过证书校验。
+
+## 性能采集与编译配置
+
+业务模块仍为 `app`，`performance` 只用于 Android 性能测试。普通 Debug / Release 构建不会启动模拟器；Release 复用已生成的 Baseline / Startup Profile。性能范围和测量口径统一见[启动与性能](docs/performance.md)。
+
+显式采集前准备任务专用的 ARM64 Android 37 模拟器（API 33+ 可生成配置），在隔离的 adb 服务中只连接此实例，禁用模拟器网络且不使用真实账号。两个参数互斥，须与 Release 同用；入口检查序列号与 qemu 身份，拒绝实体设备或同时存在其他设备。`AGENT_PERFORMANCE_LABEL` 仅命名报告，不改变 APK 命名。Windows 性能入口另外需要 Python 3.9+。
+
+```sh
+# 端口应替换为本任务实际配置；adb 服务与模拟器须使用相同环境。
+export ADB_SERVER_SOCKET=tcp:localhost:5039
+export AGENT_PERFORMANCE_SERIAL=emulator-5582
+export AGENT_PERFORMANCE_LABEL=after
+./build.sh --release --online --generate-baseline-profile
+./build.sh --release --performance-review
+```
+
+Windows 使用 `$env:ADB_SERVER_SOCKET` / `$env:AGENT_PERFORMANCE_SERIAL` / `$env:AGENT_PERFORMANCE_LABEL`，并运行 `.\build.ps1 -Release -Online -GenerateBaselineProfile`、`.\build.ps1 -Release -PerformanceReview`。性能参数只允许抑制模拟器环境限制，不跳过测试失败或其他工具检查。
+
+配置保存在 `app/src/release/generated/baselineProfiles/`；生成后重新构建并校验 Release 中的 `assets/dexopt/baseline.prof` 与 `baseline.profm`。离线夹具、性能测试库、验收入口和可调试标记不得进入正式 APK。报告在 `app/build/reports/performance/`，包含原始 JSON 和跟踪文件；没有有效测量结果时入口失败。运行后关闭任务模拟器，保留报告与历史安装包。
 
 ## 6. 构建工具的回归检查
 

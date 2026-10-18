@@ -3,6 +3,7 @@ package com.lamuier.agenT.notification
 import android.app.Notification
 import android.content.Context
 import android.os.Bundle
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -34,7 +35,8 @@ object XiaomiHyperIslandAdapter {
 
         return runCatching {
             val appContext = context.applicationContext
-            notification.extras.putAll(buildResourceBundle(appContext, monitorState, catLanguageEnabled, additionalCount))
+            val actions = notification.actions.orEmpty().take(2)
+            notification.extras.putAll(buildResourceBundle(appContext, monitorState, catLanguageEnabled, additionalCount, actions))
             notification.extras.putString(
                 PARAM_KEY,
                 buildJsonParam(
@@ -44,22 +46,30 @@ object XiaomiHyperIslandAdapter {
                     monitorState = monitorState,
                     catLanguageEnabled = catLanguageEnabled,
                     additionalCount = additionalCount,
+                    actionReferences = actions.indices.map(::actionReference),
                 ),
             )
             true
         }.getOrDefault(false)
     }
 
-    private fun buildResourceBundle(context: Context, state: IslandMonitorState, catLanguageEnabled: Boolean, additionalCount: Int): Bundle = Bundle().apply {
+    private fun buildResourceBundle(context: Context, state: IslandMonitorState, catLanguageEnabled: Boolean,
+        additionalCount: Int, actions: List<Notification.Action>): Bundle = Bundle().apply {
         // Standard template mode expects image and action bundles under these keys.
         // Only register pictures the payload actually references; unreferenced
         // entries are dead weight the system never reads. The island renders this
         // App artwork in the collapsed capsule; ongoing notifications use its monochrome silhouette.
-        putBundle("miui.focus.actions", Bundle())
+        putBundle("miui.focus.actions", buildActionBundle(actions))
         putBundle("miui.focus.pics", Bundle().apply {
             val icon = IslandArtwork.createIcon(context, state, catLanguageEnabled, additionalCount)
             putParcelable(IslandArtwork.pictureReference(state, catLanguageEnabled, additionalCount), icon)
         })
+    }
+
+    internal fun actionReference(index: Int): String = "miui.focus.action_agentt_$index"
+
+    internal fun buildActionBundle(actions: List<Notification.Action>): Bundle = Bundle().apply {
+        actions.take(2).forEachIndexed { index, action -> putParcelable(actionReference(index), action) }
     }
 
     /**
@@ -73,6 +83,7 @@ object XiaomiHyperIslandAdapter {
         monitorState: IslandMonitorState = IslandMonitorState.Running,
         catLanguageEnabled: Boolean = false,
         additionalCount: Int = 0,
+        actionReferences: List<String> = emptyList(),
     ): String {
         val pictureRef = IslandArtwork.pictureReference(monitorState, catLanguageEnabled, additionalCount)
         val picInfo = JSONObject().apply {
@@ -127,6 +138,11 @@ object XiaomiHyperIslandAdapter {
             put("islandFirstFloat", false)
             put("param_island", paramIsland)
             put("baseInfo", baseInfo)
+            if (actionReferences.isNotEmpty()) put("textButton", JSONArray().apply {
+                actionReferences.take(2).forEach { reference ->
+                    put(JSONObject().put("action", reference).put("clickWithCollapse", true))
+                }
+            })
         }
         return JSONObject().apply {
             put("param_v2", paramV2)

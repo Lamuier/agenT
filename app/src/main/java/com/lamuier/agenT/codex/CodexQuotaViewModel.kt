@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.lamuier.agenT.R
 import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.data.ServiceStatusRepository
+import com.lamuier.agenT.model.RefreshResult
 import com.lamuier.agenT.network.OfficialStatusProvider
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -14,9 +15,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import com.lamuier.agenT.system.performanceTrace
 
 class CodexQuotaViewModel(
     private val repository: CodexQuotaRepository,
@@ -58,86 +66,107 @@ class CodexQuotaViewModel(
         }
     }
 
-    init {
-        bootstrap()
-        refreshPublicResets(force = false)
-        viewModelScope.launch {
-            val cached = withContext(Dispatchers.IO) { statusRepository.cached() }
-            _state.update { it.copy(serviceStatus = cached, loadingStatus = cached == null) }
-            refreshStatus(force = false)
+    private var historyJob: Job? = null
+    private val historyDays = MutableStateFlow(1)
+    fun setHistoryDays(days: Int) { historyDays.value = days.coerceIn(1, 90) }
+
+    fun setHistoryActive(active: Boolean) {
+        if (!active) { historyJob?.cancel(); historyJob = null; return }
+        if (historyJob != null) return
+        historyJob = viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                _state.map { it.credential }.distinctUntilChanged(),
+                com.lamuier.agenT.usage.UsageHistoryStore.changesFor("codex"),
+                historyDays,
+            ) { owner, _, days -> owner to days }.collectLatest { (owner, days) ->
+                val rows = withContext(Dispatchers.IO) { runCatching { if (owner == null) emptyList() else repository.usageHistory(days) } }
+                if (_state.value.credential == owner && historyDays.value == days) _state.update {
+                    it.copy(usageHistory = rows.getOrDefault(emptyList()), usageHistoryError = rows.isFailure)
+                }
+            }
         }
+
     }
 
-    fun refreshStatus(force: Boolean = true, onResult: ((Boolean) -> Unit)? = null) {
-        if (statusRequestInFlight) { onResult?.invoke(false); return }
+    init { bootstrap() }
+
+    fun refreshStatus(force: Boolean = true, onResult: ((RefreshResult) -> Unit)? = null) {
+        if (statusRequestInFlight) { onResult?.invoke(RefreshResult.Failed); return }
         statusRequestInFlight = true
         _state.update {
             it.copy(loadingStatus = it.serviceStatus == null, refreshingStatus = true, statusError = null)
         }
         viewModelScope.launch {
-            var succeeded = false
+            var result = RefreshResult.Failed
             try {
                 val status = statusRepository.fetch(force)
                 _state.update { it.copy(serviceStatus = status, statusError = null) }
-                succeeded = !status.fromCache && !status.partialComponents && !status.partialHistory
+                result = RefreshResult.fromData(status.fromCache, status.partialComponents || status.partialHistory)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 _state.update { it.copy(statusError = error.message ?: appContext.getString(R.string.error_load_status),
                     serviceStatus = it.serviceStatus?.copy(fromCache = true)) }
             } finally {
-                onResult?.invoke(succeeded)
                 statusRequestInFlight = false
                 _state.update { it.copy(loadingStatus = false, refreshingStatus = false) }
+                onResult?.invoke(result)
             }
         }
     }
 
-    fun refresh(force: Boolean = true, onResult: ((Boolean) -> Unit)? = null, includePublicResets: Boolean = true) {
+    fun refresh(force: Boolean = true, onResult: ((RefreshResult) -> Unit)? = null, includePublicResets: Boolean = true) {
         if (includePublicResets && _state.value.publicResets != null) refreshPublicResets(force)
-        if (!force && !DashboardPreferences.get(appContext).readCodexUsageAutoRefresh()) { onResult?.invoke(false); return }
-        val credential = _state.value.credential ?: run { onResult?.invoke(false); return }
-        if (requestInFlight) { if (force) refreshQueued = true; onResult?.invoke(false); return }
-        if ((credential.expired || credential.invalid) && !force) { onResult?.invoke(false); return }
+        if (!force && !DashboardPreferences.get(appContext).readCodexUsageAutoRefresh()) { onResult?.invoke(RefreshResult.Skipped); return }
+        val credential = _state.value.credential ?: run { onResult?.invoke(RefreshResult.Skipped); return }
+        if (requestInFlight) { if (force) refreshQueued = true; onResult?.invoke(RefreshResult.Failed); return }
+        if ((credential.expired || credential.invalid) && !force) { onResult?.invoke(RefreshResult.Skipped); return }
         val elapsedAge = lastSuccessfulElapsed?.let { ((android.os.SystemClock.elapsedRealtime() - it).coerceAtLeast(0) / 1000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
         val snapshot = _state.value.usage?.let { it.copy(cacheAgeSeconds = maxOf(it.cacheAgeSeconds, elapsedAge ?: 0)) }
-        if (!force && !CodexRefreshPolicy.shouldFetch(snapshot, System.currentTimeMillis() / 1000, 60)) { onResult?.invoke(false); return }
+        if (!force && !CodexRefreshPolicy.shouldFetch(snapshot, System.currentTimeMillis() / 1000, 60)) { onResult?.invoke(RefreshResult.Skipped); return }
+        val revision = try {
+            repository.tokenRevision()
+        } catch (error: Exception) {
+            _state.update { it.copy(error = messageFor(error)) }
+            onResult?.invoke(RefreshResult.Failed)
+            return
+        }
         requestInFlight = true
-        val revision = repository.tokenRevision()
         _state.update { it.copy(refreshing = true, error = null) }
         viewModelScope.launch {
-            var succeeded = false
+            var result = RefreshResult.Failed
             try {
                 val usage = withContext(Dispatchers.IO) { repository.fetchUsage(revision) }
                 if (repository.tokenRevision() == revision) {
+                    val credential = withContext(Dispatchers.IO) { repository.credentialInfo() }
                     lastSuccessfulElapsed = android.os.SystemClock.elapsedRealtime()
                     _state.update {
                         it.copy(
-                            credential = repository.credentialInfo(),
+                            credential = credential,
                             usage = usage,
                             error = null,
                         )
                     }
                     reloadResetHistory()
-                succeeded = repository.tokenRevision() == revision && !usage.fromCache
+                    result = if (repository.tokenRevision() == revision) RefreshResult.fromData(usage.fromCache) else RefreshResult.Failed
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (repository.tokenRevision() == revision) {
+                    val credential = withContext(Dispatchers.IO) { runCatching { repository.credentialInfo() }.getOrNull() }
                     _state.update {
                         it.copy(
-                            credential = runCatching { repository.credentialInfo() }.getOrNull()
-                                ?: it.credential,
+                            credential = credential ?: it.credential,
                             error = messageFor(error),
                             usage = it.usage?.copy(fromCache = true),
                         )
                     }
                 }
             } finally {
-                onResult?.invoke(succeeded)
                 requestInFlight = false
                 _state.update { it.copy(refreshing = false, booting = false) }
+                onResult?.invoke(result)
                 if (refreshQueued) {
                     refreshQueued = false
                     if (_state.value.credential != null) refresh(force = true)
@@ -243,7 +272,10 @@ class CodexQuotaViewModel(
     private fun bootstrap() {
         viewModelScope.launch {
             try {
-                val (credential, cached) = withContext(Dispatchers.IO) {
+                val restored = withContext(Dispatchers.IO) { coroutineScope {
+                    val status = async { runCatching { statusRepository.cached() }.getOrNull() }
+                    val public = async { publicResetRepository.cached() }
+                    val account = performanceTrace("agenT.restore.codex") {
                     val credential = runCatching { repository.credentialInfo() }.getOrNull()
                     val revision = repository.tokenRevision()
                     val cached = if (credential != null && !credential.expired) {
@@ -252,15 +284,17 @@ class CodexQuotaViewModel(
                         null
                     }
                     credential to cached
-                }
-                _state.update { it.copy(credential = credential, usage = cached, booting = false) }
+                    }
+                    Triple(account, status.await(), public.await())
+                } }
+                _state.update { it.copy(credential = restored.first.first, usage = restored.first.second,
+                    serviceStatus = restored.second, publicResets = restored.third, loadingStatus = false, booting = false) }
                 reloadResetHistory()
-                if (credential != null && !credential.expired) refresh(force = false)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 // 本地恢复失败也要进入可操作页面，不能一直停留在系统启动画面。
-                _state.update { it.copy(booting = false, error = messageFor(error)) }
+                _state.update { it.copy(booting = false, loadingStatus = false, error = messageFor(error)) }
             }
         }
     }
@@ -269,8 +303,7 @@ class CodexQuotaViewModel(
         is CodexQuotaApiException -> error.message
         is IllegalArgumentException -> error.message
             ?: appContext.getString(R.string.codex_error_save_token)
-        is IOException -> error.message?.takeIf(String::isNotBlank)
-            ?: appContext.getString(R.string.codex_error_network)
+        is IOException -> appContext.getString(R.string.codex_error_network)
         else -> error.message?.takeIf(String::isNotBlank)
             ?: appContext.getString(R.string.codex_error_load_usage)
     }

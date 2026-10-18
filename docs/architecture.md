@@ -1,6 +1,6 @@
 # 项目架构
 
-agenT 是单模块原生 Android 应用，使用 Kotlin、Jetpack Compose 与 Material 3，没有自建后端。构建和原签名配置见 [build.md](../build.md)，产品入口见 [README](../README.md)。
+agenT 的业务代码集中在单一 `app` 模块，使用 Kotlin、Jetpack Compose 与 Material 3，没有自建后端；`performance` 仅用于性能测试。构建和原签名配置见 [build.md](../build.md)，产品入口见 [README](../README.md)。
 
 ## 工程边界
 
@@ -8,7 +8,7 @@ agenT 是单模块原生 Android 应用，使用 Kotlin、Jetpack Compose 与 Ma
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.2.0`，`versionCode=4`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.3.0`，`versionCode=5`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -19,6 +19,7 @@ agenT/
 ├── app/src/main/       生产 Kotlin、Android 资源与系统组件清单
 ├── app/src/debug/      仅 Debug 的验收 Activity 与样例数据
 ├── app/src/test/       JVM 测试与脱敏 JSON 样例
+├── performance/        仅用于性能采集和编译配置生成的 Android 测试模块
 ├── gradle/             依赖版本目录与固定 Gradle Wrapper
 ├── scripts/            构建实现、文档检查、静态预览与界面图库
 ├── docs/               架构、界面和通知的维护说明
@@ -26,7 +27,7 @@ agenT/
 └── build.md            统一构建指南
 ```
 
-根目录的 `settings.gradle.kts` 定义单模块与依赖镜像，`build.gradle.kts` 声明插件，`gradle.properties` 定义构建进程参数；`gradlew.bat` 供 Windows 入口调用 Wrapper。`lint.xml` 仅保留自适应图标限定符的例外，`app/proguard-rules.pro` 保留注解属性。`.gitignore` 排除本机文件，`.gitattributes` 保证 Unix 脚本使用 LF，避免 Windows checkout 改写换行后无法运行。
+根目录的 `settings.gradle.kts` 定义应用 / 性能测试模块与依赖镜像，`build.gradle.kts` 声明插件，`gradle.properties` 定义构建进程参数；`gradlew.bat` 供 Windows 入口调用 Wrapper。`lint.xml` 仅保留自适应图标限定符的例外，`app/proguard-rules.pro` 保留注解属性。`.gitignore` 排除本机文件，`.gitattributes` 保证 Unix 脚本使用 LF，避免 Windows checkout 改写换行后无法运行。
 
 Kotlin 根包是 `app/src/main/java/com/lamuier/agenT`：
 
@@ -38,7 +39,7 @@ Kotlin 根包是 `app/src/main/java/com/lamuier/agenT`：
 | `network/` | 固定 Cursor / 官方状态端点的 HTTP 客户端、JSON 解析、用量组装与 Codex 组件范围筛选 |
 | `codex/` | Codex 凭据、额度、刷新策略、重置券与本机历史、匿名公共重置记录和日历分桶 |
 | `model/` | 跨页面的数据模型、稳定页签 ID、Token 表单与快捷入口规则 |
-| `notification/` | 额度 / 重置提醒去重、任务观察、状态聚合、文案映射、原生通知和小米超级岛适配 |
+| `notification/` | 额度 / 重置提醒去重、任务观察与确认、无网络到期刷新、状态聚合、文案映射、原生通知和小米超级岛适配 |
 | `widget/` | 七个 provider、RemoteViews、主题与位图预算、预览，以及共用 JobService 刷新 |
 | `system/` | 概览快捷设置磁贴；它打开应用，不在磁贴服务中查询账号 |
 | `util/` | 语言与时区、用量和任务显示、允许的外链、设备解锁及敏感内容保护 |
@@ -61,7 +62,7 @@ flowchart LR
   P --> N
 ```
 
-前台刷新由 `AgenTApp` 与 ViewModel 管理，通常五分钟一次；恢复前台时检查新鲜度，Codex 临近重置安排额外检查。小组件与常驻通知各有约十五分钟的 JobScheduler 调度。系统节电和网络条件可能延迟后台任务；到点只触发检查，不代表额度已经恢复。
+前台刷新由 `AgenTApp` 的生命周期会话统一启动，ViewModel 先恢复本地数据。进入 / 恢复前台先等待恢复及在途请求结束，再并行检查用量、任务与服务状态的新鲜度；后续通常五分钟一次，Codex 临近重置安排额外检查。设置面板开关不会重建前台会话或重复触发入口刷新。结果区分实际更新、新鲜缓存 / 跳过和失败，前台反馈规则见[界面文档](ui.md#动效触感与系统入口)。小组件与常驻通知各有约十五分钟的 JobScheduler 调度。系统节电和网络条件可能延迟后台任务；到点只触发检查，不代表额度已经恢复。
 
 `ServiceStatusRepository` 按服务维护缓存与在途请求。Cursor 用量按账号和凭据修订号隔离；Codex 凭据、用量与重置历史共用 `CodexStorageLock`，Cursor 账号读改写共用进程锁。所有系统组件与应用使用同一进程，避免多进程 SharedPreferences 覆盖。
 
@@ -87,7 +88,11 @@ flowchart LR
 
 用量同步只覆盖保存最新窗口观察快照，供独立的窗口重置提醒比较；不再追加窗口到期刷新、提前变化、余额或券事件历史。旧个人历史保持加密存储兼容但不展示，订阅月起始日继续复用；删除 Codex 凭据会删除全部私有历史与观察快照。公共缓存最多 500 条，不计入账号使用次数，重置页不执行兑换。
 
-当前仅支持**重置历史热力图**。应用没有每日使用量采集器、app-server 客户端或导入桥接；限额百分比与重置时间不能推算成真实每日 Token 使用量。缺失与失败也不能写成零。
+重置历史热力图继续使用独立公共数据源。本机用量观察来自成功的实时查询，不提供完整每日 Token 热力图，也不从限额百分比推算 Token；缺失与失败不写成零。
+
+`usage/` 提供用量观察、趋势与条件估算。Cursor / Codex Repository 在实时成功且凭据修订号仍有效时写入；缓存回显不采集。观察文件按 UTC 日、服务和账号身份摘要分组，使用 Keystore AES-GCM 和 AtomicFile 写入 `noBackupFilesDir`，同窗口五分钟合并、保留 90 天，单日最多 1000 个点。清空和采集开关递增 generation，拒绝较早请求写回；进程锁保护多个刷新入口。ViewModel 监听变更读取历史，读写失败只影响历史提示，不阻断当前用量。
+
+Token 与金额模型携带字段可用性标记，旧缓存兼容读取但不猜测字段完整。当前范围的汇总优先使用已取得的数据，其他范围与等长对比按需请求；历史查询失败可重试，凭据修订号变化拒绝旧结果。各查询独立维护加载与错误状态，账号 / 凭据变化清空查询缓存；当前自然月的缓存键包含查询终点，界面不会把旧汇总贴上新时段，内存最多保留 64 个窗口。独立额度池不相加，模型费用份额不是额度百分比，也不代表真实账单。
 
 ## 测试与本机文件
 

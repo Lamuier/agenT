@@ -67,20 +67,7 @@ object UsageHistoryWindows {
         value: String?,
         zone: ZoneId = ZoneId.systemDefault(),
     ): Long? {
-        if (value.isNullOrBlank()) return null
-        val normalized = if (value.length == 10) {
-            value + "T00:00:00"
-        } else {
-            value.replace(' ', 'T')
-        }
-        return try {
-            LocalDateTime.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                .atZone(zone)
-                .toInstant()
-                .toEpochMilli()
-        } catch (_: DateTimeParseException) {
-            null
-        }
+        return DisplayTime.parseStoredLocal(value, zone)?.toEpochMilli()
     }
 
     fun formatRange(

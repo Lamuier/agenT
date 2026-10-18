@@ -10,6 +10,7 @@ import com.lamuier.agenT.data.CursorRepository
 import com.lamuier.agenT.data.ServiceStatusRepository
 import com.lamuier.agenT.model.AppStage
 import com.lamuier.agenT.model.AppUiState
+import com.lamuier.agenT.model.RefreshResult
 import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.model.ServiceStatus
 import com.lamuier.agenT.model.AgenTasks
@@ -24,9 +25,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import com.lamuier.agenT.system.performanceTrace
 
 class AgenTViewModel(
     private val repository: CursorRepository,
@@ -36,6 +44,7 @@ class AgenTViewModel(
     private val activeUsageRequests = mutableSetOf<UsageRequestKey>()
     private var statusRequestInFlight = false
     private var tasksRequestInFlight = false
+    private val activeHistoryRequests = mutableSetOf<Triple<Int, Long, String>>()
 
     private val _state = MutableStateFlow(
         AppUiState(
@@ -45,9 +54,29 @@ class AgenTViewModel(
     )
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
-    init {
-        bootstrap()
+    private var historyJob: Job? = null
+    private val historyDays = MutableStateFlow(1)
+    fun setHistoryDays(days: Int) { historyDays.value = days.coerceIn(1, 90) }
+
+    fun setHistoryActive(active: Boolean) {
+        if (!active) { historyJob?.cancel(); historyJob = null; return }
+        if (historyJob != null) return
+        historyJob = viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                _state.map { it.selectedAccountId }.distinctUntilChanged(),
+                com.lamuier.agenT.usage.UsageHistoryStore.changesFor("cursor"),
+                historyDays,
+            ) { owner, _, days -> owner to days }.collectLatest { (owner, days) ->
+                val rows = withContext(Dispatchers.IO) { runCatching { if (owner == null) emptyList() else repository.usageHistory(owner, days) } }
+                if (_state.value.selectedAccountId == owner && historyDays.value == days) _state.update {
+                    it.copy(usageHistory = rows.getOrDefault(emptyList()), usageHistoryError = rows.isFailure)
+                }
+            }
+        }
+
     }
+
+    init { bootstrap() }
 
     fun selectAccount(accountId: Int) {
         val snapshot = _state.value
@@ -73,6 +102,8 @@ class AgenTViewModel(
                 tasksError = null,
                 extraHistory = emptyMap(),
                 loadingHistoryKey = null,
+                loadingHistoryKeys = emptySet(),
+                historyErrors = emptyMap(),
                 historyError = null,
                 historyErrorKey = null,
             )
@@ -93,10 +124,14 @@ class AgenTViewModel(
         if (key.isBlank() || endMs < startMs) return
         if (snapshot.extraHistory.containsKey(key)) return
         if (yearMonth != null && snapshot.usage?.history?.calendarMonth?.yearMonth == yearMonth) return
-        if (snapshot.loadingHistoryKey == key) return
+        val revision = runCatching { repository.accountRevision(accountId) }.getOrNull() ?: return
+        val request = Triple(accountId, revision, key)
+        if (!activeHistoryRequests.add(request)) return
         _state.update {
             it.copy(
                 loadingHistoryKey = key,
+                loadingHistoryKeys = it.loadingHistoryKeys + key,
+                historyErrors = it.historyErrors - key,
                 historyError = if (it.historyErrorKey == key) null else it.historyError,
                 historyErrorKey = if (it.historyErrorKey == key) null else it.historyErrorKey,
             )
@@ -106,11 +141,13 @@ class AgenTViewModel(
                 val window = withContext(Dispatchers.IO) {
                     repository.fetchHistoryWindow(accountId, startMs, endMs, yearMonth)
                 }
-                if (_state.value.selectedAccountId == accountId) {
+                if (_state.value.selectedAccountId == accountId && runCatching { repository.accountRevision(accountId) == revision }.getOrDefault(false)) {
                     _state.update {
                         it.copy(
-                            extraHistory = it.extraHistory + (key to window),
+                            extraHistory = (it.extraHistory + (key to window)).entries.toList().takeLast(64).associate { it.key to it.value },
+                            historyErrors = it.historyErrors - key,
                             loadingHistoryKey = if (it.loadingHistoryKey == key) null else it.loadingHistoryKey,
+                            loadingHistoryKeys = it.loadingHistoryKeys - key,
                             historyError = if (it.historyErrorKey == key) null else it.historyError,
                             historyErrorKey = if (it.historyErrorKey == key) null else it.historyErrorKey,
                         )
@@ -119,16 +156,18 @@ class AgenTViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (_state.value.selectedAccountId == accountId) {
+                if (_state.value.selectedAccountId == accountId && runCatching { repository.accountRevision(accountId) == revision }.getOrDefault(false)) {
                     _state.update {
                         it.copy(
                             loadingHistoryKey = if (it.loadingHistoryKey == key) null else it.loadingHistoryKey,
+                            loadingHistoryKeys = it.loadingHistoryKeys - key,
                             historyError = messageFor(error, R.string.error_load_history),
+                            historyErrors = (it.historyErrors + (key to messageFor(error, R.string.error_load_history))).entries.toList().takeLast(64).associate { it.key to it.value },
                             historyErrorKey = key,
                         )
                     }
                 }
-            }
+            } finally { activeHistoryRequests.remove(request) }
         }
     }
 
@@ -143,11 +182,11 @@ class AgenTViewModel(
         if (includeStatus) refreshStatus(force = force, silent = silent)
     }
 
-    fun refreshTasks(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
+    fun refreshTasks(force: Boolean, silent: Boolean, onResult: ((RefreshResult) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
-        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(false); return }
-        if (tasksRequestInFlight) { onResult?.invoke(false); return }
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(RefreshResult.Failed); return }
+        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(RefreshResult.Failed); return }
+        if (tasksRequestInFlight) { onResult?.invoke(RefreshResult.Failed); return }
         tasksRequestInFlight = true
 
         _state.update {
@@ -163,7 +202,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
-            var succeeded = false
+            var result = RefreshResult.Failed
             try {
                 val tasks = withContext(Dispatchers.IO) {
                     repository.fetchTasks(accountId, force)
@@ -176,7 +215,7 @@ class AgenTViewModel(
                         )
                     }
                 }
-                succeeded = _state.value.selectedAccountId == accountId && !tasks.fromCache
+                result = if (_state.value.selectedAccountId == accountId) RefreshResult.fromData(tasks.fromCache) else RefreshResult.Failed
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -186,19 +225,19 @@ class AgenTViewModel(
                     }
                 }
             } finally {
-                onResult?.invoke(succeeded)
                 tasksRequestInFlight = false
                 if (_state.value.selectedAccountId == accountId) {
                     _state.update { it.copy(loadingTasks = false, refreshingTasks = false) }
                 }
+                onResult?.invoke(result)
             }
         }
     }
 
-    fun refreshStatus(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
+    fun refreshStatus(force: Boolean, silent: Boolean, onResult: ((RefreshResult) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
-        if (statusRequestInFlight) { onResult?.invoke(false); return }
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(RefreshResult.Failed); return }
+        if (statusRequestInFlight) { onResult?.invoke(RefreshResult.Failed); return }
         statusRequestInFlight = true
 
         _state.update {
@@ -214,7 +253,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
-            var succeeded = false
+            var result = RefreshResult.Failed
             try {
                 val status = withContext(Dispatchers.IO) {
                     statusRepository.fetch(force)
@@ -223,7 +262,7 @@ class AgenTViewModel(
                     it.copy(serviceStatus = status, statusError = null)
                 }
                 syncWidgetsFromCache()
-                succeeded = !status.fromCache && !status.partialComponents && !status.partialHistory
+                result = RefreshResult.fromData(status.fromCache, status.partialComponents || status.partialHistory)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -232,26 +271,26 @@ class AgenTViewModel(
                         serviceStatus = it.serviceStatus?.copy(fromCache = true))
                 }
             } finally {
-                onResult?.invoke(succeeded)
                 statusRequestInFlight = false
                 _state.update { it.copy(loadingStatus = false, refreshingStatus = false) }
+                onResult?.invoke(result)
             }
         }
     }
 
-    fun refreshUsage(force: Boolean, silent: Boolean, onResult: ((Boolean) -> Unit)? = null) {
+    fun refreshUsage(force: Boolean, silent: Boolean, onResult: ((RefreshResult) -> Unit)? = null) {
         val snapshot = _state.value
-        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(false); return }
-        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(false); return }
+        if (snapshot.stage != AppStage.Dashboard || snapshot.submitting) { onResult?.invoke(RefreshResult.Failed); return }
+        val accountId = snapshot.selectedAccountId ?: run { onResult?.invoke(RefreshResult.Failed); return }
         val revision = try {
             repository.accountRevision(accountId)
         } catch (error: Exception) {
             _state.update { it.copy(error = messageFor(error, R.string.error_read_accounts)) }
-            onResult?.invoke(false)
+            onResult?.invoke(RefreshResult.Failed)
             return
         }
         val requestKey = UsageRequestKey(accountId, revision)
-        if (!activeUsageRequests.add(requestKey)) { onResult?.invoke(false); return }
+        if (!activeUsageRequests.add(requestKey)) { onResult?.invoke(RefreshResult.Failed); return }
 
         _state.update {
             if (it.selectedAccountId != accountId) {
@@ -268,7 +307,7 @@ class AgenTViewModel(
         }
 
         viewModelScope.launch {
-            var succeeded = false
+            var result = RefreshResult.Failed
             try {
                 val usage = withContext(Dispatchers.IO) {
                     repository.fetchUsage(accountId, force)
@@ -290,11 +329,11 @@ class AgenTViewModel(
                     )
                 }
                 // 用量刷新成功后同步推送常驻 Live Update 通知与阈值提醒。
-                runCatching {
+                withContext(Dispatchers.IO) { runCatching {
                     AgenTNotificationCoordinator.get(appContext).refresh(usage)
-                }
+                } }
                 syncWidgetsFromCache()
-                succeeded = !usage.fromCache && !usage.partialData
+                result = RefreshResult.fromData(usage.fromCache, usage.partialData)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -314,11 +353,11 @@ class AgenTViewModel(
                     }
                 }
             } finally {
-                onResult?.invoke(succeeded)
                 activeUsageRequests.remove(requestKey)
                 if (isUsageRequestCurrent(requestKey) && _state.value.selectedAccountId == accountId) {
                     _state.update { it.copy(loadingUsage = false, refreshing = false) }
                 }
+                onResult?.invoke(result)
             }
         }
     }
@@ -356,7 +395,7 @@ class AgenTViewModel(
                         refreshingTasks = false,
                         submitting = false,
                         error = result.selectionError,
-                    )
+                    ).withoutUsageHistoryQueries()
                 }
                 runCatching(onSuccess)
                 refreshSelected(force = true, silent = result.cachedUsage != null)
@@ -434,7 +473,7 @@ class AgenTViewModel(
                         refreshingTasks = false,
                         submitting = false,
                         error = null,
-                    )
+                    ).let { next -> if (selected) next.withoutUsageHistoryQueries() else next }
                 }
                 runCatching(onSuccess)
                 if (selected) refreshSelected(force = true, silent = cached != null && cachedTasks != null)
@@ -493,7 +532,7 @@ class AgenTViewModel(
                         refreshingTasks = false,
                         submitting = false,
                         error = result.selectionError,
-                    )
+                    ).withoutUsageHistoryQueries()
                 }
                 runCatching(onSuccess)
                 if (selectionChanged && result.selectedAccountId != null) {
@@ -526,21 +565,28 @@ class AgenTViewModel(
     private fun bootstrap() {
         viewModelScope.launch {
             try {
-                val initial = withContext(Dispatchers.IO) {
+                val initial = withContext(Dispatchers.IO) { coroutineScope {
                     val accounts = repository.listAccounts()
                     val saved = repository.selectedAccountId()
                     val selected = saved
                         ?.takeIf { id -> accounts.any { it.id == id } }
                         ?: accounts.firstOrNull()?.id
+                    val cachedUsage = async { performanceTrace("agenT.restore.cursor.usage") {
+                        selected?.let(repository::cachedUsage)?.takeIf { it.accountId == selected }
+                    } }
+                    val cachedTasks = async { performanceTrace("agenT.restore.cursor.tasks") {
+                        selected?.let(repository::cachedTasks)?.takeIf { it.accountId == selected }
+                    } }
+                    val cachedStatus = async { statusRepository.cached() }
                     BootstrapResult(
                         accounts = accounts,
                         selectedAccountId = selected,
-                        usage = selected?.let(repository::cachedUsage)?.takeIf { it.accountId == selected },
-                        tasks = selected?.let(repository::cachedTasks)?.takeIf { it.accountId == selected },
-                        serviceStatus = statusRepository.cached(),
+                        usage = cachedUsage.await(),
+                        tasks = cachedTasks.await(),
+                        serviceStatus = cachedStatus.await(),
                         selectionError = saveSelection(selected),
                     )
-                }
+                } }
                 _state.value = AppUiState(
                     stage = AppStage.Dashboard,
                     accounts = initial.accounts,
@@ -549,26 +595,17 @@ class AgenTViewModel(
                     tasks = initial.tasks,
                     serviceStatus = initial.serviceStatus,
                     loadingAccounts = false,
-                    loadingUsage = initial.selectedAccountId != null && initial.usage == null,
-                    loadingTasks = initial.selectedAccountId != null && initial.tasks == null,
-                    loadingStatus = initial.serviceStatus == null,
                     error = initial.selectionError,
                 )
-                refreshSelected(
-                    force = false,
-                    silent = initial.usage != null || initial.serviceStatus != null,
-                )
-                syncWidgetsFromCache()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 _state.value = AppUiState(
                     stage = AppStage.Dashboard,
                     loadingAccounts = false,
-                    serviceStatus = runCatching { statusRepository.cached() }.getOrNull(),
+                    serviceStatus = withContext(Dispatchers.IO) { runCatching { statusRepository.cached() }.getOrNull() },
                     error = messageFor(error, R.string.error_load_local_accounts),
                 )
-                refreshStatus(force = false, silent = true)
             }
         }
     }
@@ -654,3 +691,8 @@ class AgenTViewModel(
         }
     }
 }
+
+private fun AppUiState.withoutUsageHistoryQueries(): AppUiState = copy(
+    extraHistory = emptyMap(), loadingHistoryKeys = emptySet(), historyErrors = emptyMap(),
+    loadingHistoryKey = null, historyErrorKey = null, historyError = null,
+)

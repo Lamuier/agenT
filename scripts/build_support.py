@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,6 +57,12 @@ def app_config(root):
         require(match, "无法从 app/build.gradle.kts 读取 " + key)
         result[key] = int(match.group(1))
     require(re.fullmatch(r"[A-Za-z0-9._-]+", result["versionName"]), "versionName 不适合用作产物文件名")
+    try:
+        names = ET.parse(root / "app/src/main/res/values/strings.xml").getroot().findall("string[@name='app_name']")
+    except (OSError, ET.ParseError):
+        raise BuildError("无法从默认 strings.xml 读取 App 名称 app_name") from None
+    require(len(names) == 1, "默认 strings.xml 必须提供唯一的 app_name")
+    result["appName"] = "".join(names[0].itertext()).strip()
     return result
 
 
@@ -197,7 +204,13 @@ def gradle_command(root, java_home, args, offline):
         command.append(":app:clean")
     if not args.skip_checks:
         command.extend([":app:testDebugUnitTest", ":app:lintVitalRelease" if args.release else ":app:lintDebug"])
+    if args.generate_baseline_profile:
+        command.extend([":app:generateReleaseBaselineProfile", "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile"])
     command.append(":app:assemble" + variant)
+    if args.performance_review:
+        command.extend([":performance:connectedBenchmarkReleaseAndroidTest", "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark"])
+    if args.performance_review or args.generate_baseline_profile:
+        command.append("-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR")
     return command
 
 
@@ -248,9 +261,32 @@ def verify_archive(apk, release):
             for name in archive.namelist():
                 if re.fullmatch(r"classes\d*\.dex", name):
                     data = archive.read(name)
-                    require(not any(x in data for x in (b"UiReviewActivity", b"ReviewFixture", b"org/robolectric/")),
+                    require(not any(x in data for x in (b"UiReviewActivity", b"ReviewFixture", b"PerformanceFixtureActivity", b"org/robolectric/", b"androidx/benchmark/", b"androidx/test/runner/")),
                             "Release 混入 Debug 验收代码或测试运行库")
     return elf
+
+
+def verify_application_profiles(root, apk):
+    if not (root / "performance/build.gradle.kts").is_file():
+        return None
+    folder = root / "app/src/release/generated/baselineProfiles"
+    sources = {}
+    for name in ("baseline-prof.txt", "startup-prof.txt"):
+        path = folder / name
+        require(path.is_file() and path.stat().st_size > 0, "缺少应用编译配置，请显式运行 --generate-baseline-profile：" + str(path))
+        source = path.read_text(encoding="utf-8")
+        require("Lcom/lamuier/agenT/MainActivity;" in source, "编译配置未覆盖应用启动入口：" + name)
+        require("Lcom/lamuier/agenT/qa/" not in source, "应用编译配置混入验收夹具")
+        sources[name] = hashlib.sha256(path.read_bytes()).hexdigest().upper()
+    with zipfile.ZipFile(apk) as archive:
+        sizes = {}
+        for name, magic in (("baseline.prof", b"pro\0"), ("baseline.profm", b"prm\0")):
+            path = "assets/dexopt/" + name
+            require(path in archive.namelist(), "Release 缺少编译配置资产：" + path)
+            data = archive.read(path)
+            require(len(data) > 8 and data.startswith(magic), "Release 编译配置资产格式错误：" + path)
+            sizes[name] = len(data)
+    return {"sourceSha256": sources, "assetBytes": sizes}
 
 
 def verify_apk(root, apk, tools, env, config, release, certificate):
@@ -278,7 +314,7 @@ def verify_apk(root, apk, tools, env, config, release, certificate):
         require({"android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"} <= set(permissions), "Release 缺少网络权限")
         manifest = capture([tools / "aapt", "dump", "xmltree", apk, "AndroidManifest.xml"], env, "APK Manifest 校验")
         require(not re.search(r"android:debuggable[^\n]*(?:0xffffffff|0x1\b)", manifest), "Release APK 可调试")
-        require(not any(x in manifest for x in ("UiReviewActivity", "PreviewActivity")), "Release Manifest 混入 Debug 入口")
+        require(not any(x in manifest for x in ("UiReviewActivity", "PreviewActivity", "PerformanceFixtureActivity")), "Release Manifest 混入 Debug 入口")
         for attribute in ("allowBackup", "usesCleartextTraffic"):
             require(re.search(r"android:" + attribute + r"[^\n]*0x0\b", manifest), "Release " + attribute + " 须为 false")
         source = (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
@@ -292,19 +328,26 @@ def verify_apk(root, apk, tools, env, config, release, certificate):
     require(output.get("applicationId") == config["applicationId"] and len(elements) == 1
             and elements[0].get("versionCode") == config["versionCode"] and elements[0].get("versionName") == version
             and elements[0].get("outputFile") == apk.name, "APK 输出元数据与源码不一致")
+    if release:
+        verify_application_profiles(root, apk)
     return verify_archive(apk, release)
 
 
 def artifact_base(config, suffix="", official_release=False, started_at=None):
+    name = config.get("appName")
+    require(isinstance(name, str) and name == name.strip() and name and name not in (".", "..")
+            and not re.search(r'[\x00-\x1f\x7f<>:"/\\|?*]', name) and not name.endswith((".", " ")),
+            "App 名称不适合用作产物文件名")
     version = config["versionName"]
     require(re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version), "版本号不符合安全的 SemVer 文件命名规则")
     require(not suffix or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", suffix), "--artifact-suffix 仅允许字母、数字、点、下划线与短横线")
-    require(not official_release or not suffix, "正式包不接受 --artifact-suffix；文件名只使用当前版本")
+    require(not official_release or not suffix, "正式包不接受 --artifact-suffix；文件名使用 App 名称-版本号")
+    base = name + "-" + version
     if official_release:
-        return version
+        return base
     started_at = started_at or datetime.now(timezone.utc)
     timestamp = started_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y%m%d_%H%M%S")
-    return version + "_" + timestamp + ("_" + suffix if suffix else "")
+    return base + "_" + timestamp + ("_" + suffix if suffix else "")
 
 
 def ensure_destination(root, base):
@@ -322,7 +365,7 @@ def export_release(root, apk, config, certificate, base, elf, checks, offline,
     sha = hashlib.sha256(apk.read_bytes()).hexdigest().upper()
     destination = dist / (base + ".apk")
     report = {
-        "packageName": config["applicationId"], "versionCode": config["versionCode"],
+        "appName": config["appName"], "packageName": config["applicationId"], "versionCode": config["versionCode"],
         "versionName": config["versionName"], "apk": str(destination), "apkSha256": sha,
         "bytes": apk.stat().st_size, "certificateSha256": certificate,
         "builtAt": datetime.now(timezone.utc).isoformat(), "variant": "release",
@@ -334,12 +377,16 @@ def export_release(root, apk, config, certificate, base, elf, checks, offline,
                    "zipalign16KiB": True, "crc": True, "arm64Only": True,
                    "debugFixturesAbsent": True, "manifestAndPermissions": True}, "elf": elf,
     }
+    profiles = verify_application_profiles(root, apk)
+    if profiles is not None:
+        report["applicationProfiles"] = profiles
+        report["checks"]["applicationProfiles"] = True
     # Stage all files after successful verification; failed builds never copy stale APKs.
     with tempfile.TemporaryDirectory(prefix=".build-", dir=dist) as staging:
         stage = Path(staging)
         shutil.copy2(apk, stage / destination.name)
         shutil.copy2(mapping, stage / (base + "-mapping.txt"))
-        (stage / (base + ".sha256")).write_text(sha + "  " + destination.name + "\n", encoding="ascii")
+        (stage / (base + ".sha256")).write_text(sha + "  " + destination.name + "\n", encoding="utf-8")
         (stage / (base + "-build.json")).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         for path in stage.iterdir():
             path.replace(dist / path.name)
@@ -352,7 +399,7 @@ def parser():
     mode = result.add_mutually_exclusive_group()
     mode.add_argument("--debug", action="store_true", help="Debug 构建（默认）")
     mode.add_argument("--release", action="store_true", help="签名 Release 构建、校验与导出")
-    result.add_argument("--official-release", action="store_true", help="正式发版命名：仅版本号，不带日期时间；须同时使用 --release")
+    result.add_argument("--official-release", action="store_true", help="正式发版命名：App 名称-版本号，不带日期时间；须同时使用 --release")
     network = result.add_mutually_exclusive_group()
     network.add_argument("--offline", action="store_true", help="离线依赖解析")
     network.add_argument("--online", action="store_true", help="允许下载依赖（Debug 默认；Release 需显式启用）")
@@ -363,6 +410,8 @@ def parser():
     result.add_argument("--sdk", help="指定 Android SDK 根目录（须与 local.properties 一致）")
     result.add_argument("--signing-root", default=".signing", help="签名元数据目录；默认 .signing")
     result.add_argument("--artifact-suffix", default="", help="普通 Release 的时间戳后追加标识；正式包不支持")
+    result.add_argument("--generate-baseline-profile", action="store_true", help="显式在指定任务模拟器生成编译配置；须同时使用 --release")
+    result.add_argument("--performance-review", action="store_true", help="显式在指定任务模拟器测量冷启动和滚动；须同时使用 --release")
     return result
 
 
@@ -373,6 +422,8 @@ def main(argv=None, root=ROOT):
     require(host in ("Darwin", "Linux"), "build.sh 支持 macOS / Linux；Windows 请使用 build.ps1")
     require(args.release or not args.artifact_suffix, "--artifact-suffix 仅用于 --release")
     require(args.release or not args.official_release, "--official-release 须同时使用 --release")
+    require(args.release or not (args.performance_review or args.generate_baseline_profile), "性能参数须同时使用 --release")
+    require(not (args.performance_review and args.generate_baseline_profile), "生成编译配置与性能测量须分次运行")
     config = app_config(root)
     started_at = datetime.now(timezone.utc)
     base = artifact_base(config, args.artifact_suffix, args.official_release, started_at) if args.release else None
@@ -408,6 +459,10 @@ def main(argv=None, root=ROOT):
         if args.doctor:
             print("环境检查通过；未执行构建或下载依赖", flush=True)
             return 0
+        performance_device = None
+        if args.performance_review or args.generate_baseline_profile:
+            from performance_support import emulator_environment
+            performance_device = emulator_environment(sdk, env)
         if args.release:
             ensure_destination(root, base)
         if args.skip_checks:
@@ -415,6 +470,9 @@ def main(argv=None, root=ROOT):
         print("流程：" + ", ".join(x for x in command if x.startswith(":app:"))
               + ("（离线）" if offline else "（允许联网）"), flush=True)
         run_gradle(command, root, env)
+        if args.performance_review:
+            from performance_support import collect_reports
+            collect_reports(root, performance_device, env)
         variant = "release" if args.release else "debug"
         apk = root / "app/build/outputs/apk" / variant / ("app-" + variant + ".apk")
         elf = verify_apk(root, apk, tools, env, config, args.release, certificate)

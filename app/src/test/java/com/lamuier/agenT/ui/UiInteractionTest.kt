@@ -2,9 +2,16 @@ package com.lamuier.agenT.ui
 
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.RoborazziTaskType
+import com.github.takahirom.roborazzi.captureRoboImage
 import com.lamuier.agenT.R
 import com.lamuier.agenT.data.*
 import com.lamuier.agenT.model.DashboardTab
@@ -31,6 +38,43 @@ class UiInteractionTest {
         override fun selection() { selections++ }
         override fun toggle(enabled: Boolean) { toggles++ }
         override fun success() = Unit
+    }
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Config(qualifiers = "zh-rCN-w320dp-h640dp-notnight-xhdpi")
+    @Test fun automaticRefreshShowsProgressAndRestoresActionAfterTheLastRequest() {
+        val fixture = ReviewFixture.create(ZoneId.systemDefault())
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        var state by mutableStateOf(fixture.cursor.copy(refreshing = true, refreshingTasks = true))
+        var refreshes = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
+                    DashboardScreen(state, fixture.codex, remember { SnackbarHostState() }, DashboardTab.DEFAULT_ORDER,
+                        onLoadHistoryWindow = { _, _, _, _ -> }, onRefresh = { refreshes++ }, onRefreshCodex = {},
+                        onManageCodex = {}, onManageAccount = {}, onShowSettings = {}, onShowTokenHelp = {})
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        val refreshing = context.getString(R.string.action_refreshing)
+        val refresh = context.getString(R.string.action_refresh)
+        compose.onNodeWithContentDescription(refreshing).assertIsDisplayed().assertIsNotEnabled()
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,
+            ProgressBarRangeInfo.Indeterminate), useUnmergedTree = true).assertIsDisplayed()
+        val image = java.io.File("build/reports/ui-review/phone-320-zh-large-foreground-refresh.png")
+        image.parentFile?.mkdirs()
+        compose.onRoot().captureRoboImage(image.absolutePath,
+            roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record))
+        compose.runOnIdle { state = state.copy(refreshing = false) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithContentDescription(refreshing).assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(refreshingTasks = false) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithContentDescription(refreshing).assertDoesNotExist()
+        compose.onNodeWithContentDescription(refresh).assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, refreshes) }
     }
     @Test fun navigationConfirmsOnlyChangedUserSelectionAndKeepsDestinationAfterReorder() {
         val fixture = ReviewFixture.create(ZoneId.systemDefault())

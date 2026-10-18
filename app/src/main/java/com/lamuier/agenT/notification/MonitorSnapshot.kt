@@ -113,12 +113,11 @@ internal data class MonitorSnapshot(val primary: IslandMonitorState, val attenti
                     }
                 }
                 tasks?.let { snapshot ->
+                    val recentCompletions = TaskActivityModel.recentCompletions(snapshot, nowMillis)
                     if (snapshot.cacheAgeSeconds > IslandMonitorState.FRESH_SECONDS) add(MonitorAttention.PendingTasks)
                     snapshot.tasks.distinctBy { it.id }.sortedByDescending { it.latestTimeMs }.forEach { task ->
                         val active = snapshot.cacheAgeSeconds <= IslandMonitorState.FRESH_SECONDS && TaskActivityModel.isActive(task.status)
-                        val ended = TaskActivityModel.isTerminal(task.status) && snapshot.completedAtMillis[task.id]?.let {
-                            nowMillis - it in 0 until TaskActivityModel.COMPLETION_RETENTION_MILLIS
-                        } == true
+                        val ended = task.id in recentCompletions
                         if (active || ended) add(MonitorAttention.Task(task))
                     }
                 }

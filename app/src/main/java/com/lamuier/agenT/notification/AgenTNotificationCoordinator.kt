@@ -44,6 +44,9 @@ class AgenTNotificationCoordinator(
     private val preferences: NotificationPreferences,
 ) {
     private val appContext = context.applicationContext
+    private val cursorRepository by lazy { CursorRepository(appContext) }
+    private val codexRepository by lazy { CodexQuotaRepository(appContext) }
+    private var channelsLocale: String? = null
     private val notificationManager =
         appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -66,6 +69,7 @@ class AgenTNotificationCoordinator(
             NotificationRefreshScheduler.scheduleReset(appContext, codex, revision)
         if (!settings.liveUpdatesEnabled || !canPost) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
+            NotificationRefreshScheduler.cancelTaskExpiry(appContext)
         } else {
             postCombinedLiveUpdate(usage?.takeIf { it.accountId > 0 }, codex, revision)
         }
@@ -97,6 +101,7 @@ class AgenTNotificationCoordinator(
         val settings = preferences.read()
         if (!settings.liveUpdatesEnabled || !canPostNotifications()) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
+            NotificationRefreshScheduler.cancelTaskExpiry(appContext)
             return
         }
         ensureChannels()
@@ -106,22 +111,24 @@ class AgenTNotificationCoordinator(
     }
 
     private fun cachedCursor(): AgenTOverview? = runCatching {
-        val repository = CursorRepository(appContext)
+        val repository = cursorRepository
         val accountId = repository.selectedAccountId()
             ?: repository.listAccounts().firstOrNull()?.id
         accountId?.let { repository.cachedUsage(it) }
     }.getOrNull()
 
-    private fun cachedTasks(): AgenTasks? = runCatching {
-        val repository = CursorRepository(appContext)
+    private fun cachedTasks(): Pair<AgenTasks?, Long> = runCatching {
+        val repository = cursorRepository
         val accountId = repository.selectedAccountId() ?: repository.listAccounts().firstOrNull()?.id
-        accountId?.let { repository.cachedTasks(it) }
-    }.getOrNull()
+        val revision = accountId?.let { repository.accountRevision(it) } ?: 0L
+        val tasks = accountId?.let { repository.cachedTasks(it) }
+        tasks.takeIf { accountId != null && repository.accountRevision(accountId) == revision } to revision
+    }.getOrElse { null to 0L }
 
     private fun renderer() = QuotaNotificationRenderer(appContext, preferences.read().catLanguageEnabled)
 
     private fun cachedCodex(): Pair<CodexQuotaOverview?, Long> = runCatching {
-        val repository = CodexQuotaRepository(appContext)
+        val repository = codexRepository
         val revision = repository.tokenRevision()
         val credential = repository.credentialInfo()
         val usage = if (credential != null && !credential.expired && !credential.invalid) repository.cachedUsage(revision) else null
@@ -223,14 +230,20 @@ class AgenTNotificationCoordinator(
         // Serialize style changes and regular updates; a queued old request must use current preferences.
         if (!preferences.read().liveUpdatesEnabled || !canPostNotifications()) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
+            NotificationRefreshScheduler.cancelTaskExpiry(appContext)
             return
         }
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(appContext).readTimeZoneId())
+        val (tasks, taskRevision) = cachedTasks()
+        val nowMillis = System.currentTimeMillis()
         val notification = renderer().live(cursor, codex, revision,
             preferences.read().percentDisplayMode, zone, overviewIntent(), CHANNEL_ID,
             cursorStatus = runCatching { ServiceStatusRepository(appContext).cached() }.getOrNull(),
             codexStatus = runCatching { ServiceStatusRepository(appContext, OfficialStatusProvider.Codex).cached() }.getOrNull(),
-            tasks = cachedTasks(), tasksIntent = tasksIntent())
+            tasks = tasks, tasksIntent = tasksIntent(),
+            confirmTasksIntent = tasks?.let { TaskCompletionReceiver.pendingIntent(appContext, it, taskRevision, nowMillis) },
+            nowMillis = nowMillis)
+        NotificationRefreshScheduler.scheduleTaskExpiry(appContext, TaskActivityModel.nextExpiry(tasks, nowMillis), nowMillis)
         if (notification == null) { notificationManager.cancel(LIVE_NOTIFICATION_ID); return }
         runCatching { notificationManager.notify(LIVE_NOTIFICATION_ID, notification) }
     }
@@ -258,8 +271,10 @@ class AgenTNotificationCoordinator(
             .onSuccess { THRESHOLDS.filter { percent >= it }.forEach { preferences.markThresholdReminded(cycleKey, it) } }
     }
 
-    private fun ensureChannels() {
+    @Synchronized private fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val locale = strings().resources.configuration.locales.toLanguageTags()
+        if (channelsLocale == locale) return
         notificationManager.createNotificationChannel(
             NotificationChannel(RESET_CHANNEL_ID, strings().getString(R.string.notification_reset_channel_name), NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = strings().getString(R.string.notification_reset_reminders_description) },
@@ -286,6 +301,7 @@ class AgenTNotificationCoordinator(
                 setShowBadge(true)
             },
         )
+        channelsLocale = locale
     }
 
     private fun canPostNotifications(): Boolean =

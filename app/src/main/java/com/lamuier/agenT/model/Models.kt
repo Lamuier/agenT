@@ -46,6 +46,8 @@ data class TokenUsageBreakdown(
     val totalCacheWriteTokens: Long,
     val totalCacheReadTokens: Long,
     val totalCostDollars: Double,
+    val availableMetrics: Set<String> = setOf("input", "output", "read", "write", "cost"),
+    val modelsAvailable: Boolean = true,
 )
 
 @Immutable
@@ -57,6 +59,7 @@ data class ModelTokenUsage(
     val cacheReadTokens: Long,
     val costDollars: Double,
     val tier: Int?,
+    val availableMetrics: Set<String> = setOf("input", "output", "read", "write", "cost"),
 )
 
 @Immutable
@@ -86,6 +89,7 @@ data class UsageMetrics(
     val apiPercentUsed: Double?,
     val displayMessage: String?,
     val remainingBonus: Boolean,
+    val availableMetrics: Set<String> = setOf("total", "included", "bonus", "remaining", "limit"),
 )
 
 enum class TotalFormat {
@@ -131,6 +135,7 @@ data class OnDemandUsage(
     val pooledLimitDollars: Double,
     val pooledUsedDollars: Double,
     val pooledRemainingDollars: Double,
+    val availableMetrics: Set<String> = setOf("total", "individualRemaining", "pooledRemaining"),
 )
 
 @Immutable
@@ -275,7 +280,11 @@ data class AppUiState(
     val error: String? = null,
     val tasksError: String? = null,
     val statusError: String? = null,
+    val usageHistory: List<com.lamuier.agenT.usage.UsageObservation> = emptyList(),
+    val usageHistoryError: Boolean = false,
     val extraHistory: Map<String, UsageWindow> = emptyMap(),
+    val loadingHistoryKeys: Set<String> = emptySet(),
+    val historyErrors: Map<String, String> = emptyMap(),
     val loadingHistoryKey: String? = null,
     val historyError: String? = null,
     val historyErrorKey: String? = null,

@@ -6,7 +6,7 @@
     .\build.ps1                 # Debug 构建
     .\build.ps1 -Install        # Debug 构建 + adb 安装
     .\build.ps1 -Release        # Release 时间戳包到 dist/
-    .\build.ps1 -Release -OfficialRelease  # 正式包，仅当前版本号
+    .\build.ps1 -Release -OfficialRelease  # 正式包，App名称-版本号
     .\build.ps1 -SetupSigning   # 配置/重绑 Release 签名
 
 .PARAMETER Clean
@@ -35,6 +35,8 @@ param(
     [switch]$Offline,
     [switch]$Online,
     [switch]$SkipChecks,
+    [switch]$GenerateBaselineProfile,
+    [switch]$PerformanceReview,
     [string]$SigningRoot = (Join-Path $PSScriptRoot ".signing"),
     [switch]$AdoptDebugKeystore,
     [string]$AdoptKeystore,
@@ -99,7 +101,11 @@ function Get-AppVersion {
     if (-not $versionCodeMatch.Success -or -not $versionNameMatch.Success) {
         throw "无法从 app\build.gradle.kts 读取 versionCode / versionName"
     }
+    [xml]$strings = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $ProjectRoot "app\src\main\res\values\strings.xml")
+    $names = @($strings.SelectNodes("/resources/string[@name='app_name']"))
+    if ($names.Count -ne 1) { throw "默认 strings.xml 必须提供唯一的 app_name" }
     return [pscustomobject]@{
+        AppName = $names[0].InnerText.Trim()
         VersionCode = [int]$versionCodeMatch.Groups[1].Value
         VersionName = $versionNameMatch.Groups[1].Value
     }
@@ -341,7 +347,7 @@ function Test-ReleaseApk {
         throw "签名证书不匹配。期望 $expectedFingerprint，实际 $actualFingerprint"
     }
 
-    [void](Invoke-Native $zipAlign @("-c", "-v", "4", $apkPath))
+    [void](Invoke-Native $zipAlign @("-c", "-P", "16", "-v", "4", $apkPath))
     if ($LASTEXITCODE -ne 0) { throw "zipalign 校验失败" }
 
     $badging = Invoke-Native $aapt @("dump", "badging", $apkPath)
@@ -382,6 +388,34 @@ function Test-ReleaseApk {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($apkPath)
     try {
+        $profileRoot = Join-Path $ProjectRoot "app\src\release\generated\baselineProfiles"
+        foreach ($profileName in @("baseline-prof.txt", "startup-prof.txt")) {
+            $profilePath = Join-Path $profileRoot $profileName
+            if (-not (Test-Path -LiteralPath $profilePath)) { throw "缺少应用编译配置，请先运行 -GenerateBaselineProfile" }
+            $profileText = Get-Content -Raw -LiteralPath $profilePath
+            if (-not $profileText.Contains("Lcom/lamuier/agenT/MainActivity;") -or $profileText.Contains("Lcom/lamuier/agenT/qa/")) {
+                throw "应用编译配置缺少启动路径或混入夹具"
+            }
+        }
+        foreach ($profileName in @("baseline.prof", "baseline.profm")) {
+            $entry = $archive.GetEntry("assets/dexopt/$profileName")
+            if ($null -eq $entry -or $entry.Length -le 8) { throw "Release 缺少有效编译配置资产" }
+            $reader = [IO.BinaryReader]::new($entry.Open())
+            try {
+                $magic = [Text.Encoding]::ASCII.GetString($reader.ReadBytes(4))
+                $expectedMagic = if ($profileName -eq "baseline.prof") { "pro`0" } else { "prm`0" }
+                if ($magic -ne $expectedMagic) { throw "Release 编译配置格式错误" }
+            } finally { $reader.Dispose() }
+        }
+        foreach ($entry in $archive.Entries | Where-Object { $_.FullName -match '^classes\d*\.dex$' }) {
+            $reader = [IO.BinaryReader]::new($entry.Open())
+            try {
+                $dexText = [Text.Encoding]::UTF8.GetString($reader.ReadBytes([int]$entry.Length))
+                foreach ($marker in @("UiReviewActivity", "ReviewFixture", "PerformanceFixtureActivity", "org/robolectric/", "androidx/benchmark/", "androidx/test/runner/")) {
+                    if ($dexText.Contains($marker)) { throw "Release 混入验收入口或测试运行库" }
+                }
+            } finally { $reader.Dispose() }
+        }
         $nativeAbis = $archive.Entries |
             Where-Object { $_.FullName -match '^lib/[^/]+/[^/]+\.so$' } |
             ForEach-Object { $_.FullName.Split('/')[1] } |
@@ -398,6 +432,7 @@ function Test-ReleaseApk {
     $manifestLines = Invoke-Native $aapt @("dump", "xmltree", $apkPath, "AndroidManifest.xml")
     if ($LASTEXITCODE -ne 0) { throw "无法读取 AndroidManifest.xml" }
     $manifest = $manifestLines -join "`n"
+    if ($manifest -match "UiReviewActivity|PreviewActivity|PerformanceFixtureActivity") { throw "Release Manifest 混入验收入口" }
     if ($manifest -match "android:debuggable") { throw "Release APK 可调试" }
     if ($manifest -match "android:networkSecurityConfig") {
         # 资源收缩后 APK 内仅剩数字资源 ID（无 Raw 字符串），
@@ -459,12 +494,34 @@ function Invoke-Assemble {
         }
     }
     $arguments += ":app:assemble$Variant"
+    if ($GenerateBaselineProfile -or $PerformanceReview) {
+        $perfPython = Get-Command python -ErrorAction SilentlyContinue
+        if ($null -eq $perfPython) { $perfPython = Get-Command python3 -ErrorAction Stop }
+        $perfSdk = Resolve-AndroidSdk
+        & $perfPython.Source (Join-Path $ProjectRoot "scripts\performance_support.py") --sdk $perfSdk
+        if ($LASTEXITCODE -ne 0) { throw "性能模拟器身份检查失败" }
+        $env:ANDROID_SERIAL = $env:AGENT_PERFORMANCE_SERIAL
+        if ($GenerateBaselineProfile) {
+            $arguments = @($arguments | Where-Object { $_ -ne ":app:assemble$Variant" })
+            $arguments += ":app:generateReleaseBaselineProfile"
+            $arguments += "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile"
+            $arguments += ":app:assemble$Variant"
+        } else {
+            $arguments += ":performance:connectedBenchmarkReleaseAndroidTest"
+            $arguments += "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark"
+        }
+        $arguments += "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR"
+    }
 
     Write-Step "Gradle assemble$Variant"
     $attempts = 2
     for ($i = 1; $i -le $attempts; $i++) {
         try {
             Invoke-Gradle $arguments
+            if ($PerformanceReview) {
+                & $perfPython.Source (Join-Path $ProjectRoot "scripts\performance_support.py") --sdk $perfSdk --collect
+                if ($LASTEXITCODE -ne 0) { throw "未取得完整性能报告" }
+            }
             break
         } catch {
             $msg = "$_"
@@ -505,19 +562,23 @@ function Invoke-InstallDebug {
     Write-Host "已安装: $apk" -ForegroundColor Green
 }
 
-function Get-ReleaseArtifactBase([string]$VersionName, [DateTimeOffset]$StartedAt) {
+function Get-ReleaseArtifactBase([string]$AppName, [string]$VersionName, [DateTimeOffset]$StartedAt) {
+    if ([string]::IsNullOrWhiteSpace($AppName) -or $AppName -ne $AppName.Trim() -or
+        $AppName -match '[\x00-\x1f\x7f<>:"/\\|?*]' -or $AppName.EndsWith(".") -or $AppName.EndsWith(" ") -or
+        $AppName -in @(".", "..")) { throw "App 名称不适合用作产物文件名" }
     if ($VersionName -notmatch '^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$') {
         throw "版本号不符合安全的 SemVer 文件命名规则"
     }
     if ($ArtifactSuffix -and $ArtifactSuffix -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
         throw "-ArtifactSuffix 仅允许字母、数字、点、下划线与短横线"
     }
+    $base = "${AppName}-${VersionName}"
     if ($OfficialRelease) {
-        if ($ArtifactSuffix) { throw "正式包不接受 -ArtifactSuffix；文件名只使用当前版本" }
-        return $VersionName
+        if ($ArtifactSuffix) { throw "正式包不接受 -ArtifactSuffix；文件名使用 App 名称-版本号" }
+        return $base
     }
     $timestamp = $StartedAt.ToOffset([TimeSpan]::FromHours(8)).ToString("yyyyMMdd_HHmmss", [Globalization.CultureInfo]::InvariantCulture)
-    $base = "${VersionName}_${timestamp}"
+    $base += "_${timestamp}"
     if ($ArtifactSuffix) { $base += "_${ArtifactSuffix}" }
     return $base
 }
@@ -534,7 +595,7 @@ function Invoke-ReleasePackage {
     $version = Get-AppVersion
     $sdk = Resolve-AndroidSdk
     $releaseBuildStartedAt = [DateTimeOffset]::UtcNow
-    $artifactBaseName = Get-ReleaseArtifactBase -VersionName $version.VersionName -StartedAt $releaseBuildStartedAt
+    $artifactBaseName = Get-ReleaseArtifactBase -AppName $version.AppName -VersionName $version.VersionName -StartedAt $releaseBuildStartedAt
     $dist = Join-Path $ProjectRoot "dist"
     Test-ReleaseDestination -Dist $dist -Base $artifactBaseName
 
@@ -597,10 +658,12 @@ function Invoke-ReleasePackage {
         }
 
         $hash = Get-FileHash -LiteralPath $destination -Algorithm SHA256
-        "$($hash.Hash)  $([IO.Path]::GetFileName($destination))" |
-            Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName.sha256") -Encoding ascii
+        [IO.File]::WriteAllText((Join-Path $dist "$artifactBaseName.sha256"),
+            "$($hash.Hash)  $([IO.Path]::GetFileName($destination))" + [Environment]::NewLine,
+            ([System.Text.UTF8Encoding]::new($false)))
 
         [ordered]@{
+            appName = $version.AppName
             packageName = "com.lamuier.agenT"
             versionCode = $version.VersionCode
             versionName = $version.VersionName
@@ -628,6 +691,13 @@ function Invoke-ReleasePackage {
 }
 
 # --- dispatch ---
+
+if (($GenerateBaselineProfile -or $PerformanceReview) -and -not $Release) {
+    throw "性能参数须同时使用 -Release"
+}
+if ($GenerateBaselineProfile -and $PerformanceReview) {
+    throw "生成编译配置与性能测量须分次运行"
+}
 
 if (($OfficialRelease -or $ArtifactSuffix) -and -not $Release) {
     throw "-OfficialRelease / -ArtifactSuffix 须同时使用 -Release"
