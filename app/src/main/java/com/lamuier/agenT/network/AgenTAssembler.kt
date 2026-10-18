@@ -17,11 +17,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 object AgenTAssembler {
+    private val STAMP_FORMATTER: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
     fun assemble(
         accountId: Int,
         alias: String,
@@ -106,7 +109,7 @@ object AgenTAssembler {
                     calendarMonthKey,
                 ),
             ),
-            fetchedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
+            fetchedAt = STAMP_FORMATTER.format(Instant.now().atZone(ZoneId.systemDefault())),
             fromCache = false,
             cacheAgeSeconds = 0,
             partialData = partialData,
@@ -318,7 +321,7 @@ object AgenTAssembler {
     }
 
     private fun formatMillis(milliseconds: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(milliseconds))
+        STAMP_FORMATTER.format(Instant.ofEpochMilli(milliseconds).atZone(ZoneId.systemDefault()))
 
     private fun millisecondsToLocalTime(value: Any?): String? {
         val milliseconds = value?.toString()?.toLongOrNull() ?: return null

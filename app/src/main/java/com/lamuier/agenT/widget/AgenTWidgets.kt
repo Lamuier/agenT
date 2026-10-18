@@ -17,6 +17,7 @@ import android.os.PersistableBundle
 import android.os.SystemClock
 import android.util.SizeF
 import android.widget.RemoteViews
+import com.lamuier.agenT.providers.*
 import com.lamuier.agenT.MainActivity
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexCredentialInfo
@@ -54,6 +55,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+private const val ACTION_NEXT_PAGE = "com.lamuier.agenT.action.NEXT_WIDGET_PAGE"
+private const val EXTRA_WIDGET_PAGE_CAPACITY = "com.lamuier.agenT.extra.WIDGET_PAGE_CAPACITY"
+const val EXTRA_WIDGET_SOURCE = "com.lamuier.agenT.extra.WIDGET_SOURCE"
 private const val ACTION_MANUAL_REFRESH = "com.lamuier.agenT.action.MANUAL_WIDGET_REFRESH"
 const val ACTION_OPEN_FROM_WIDGET = "com.lamuier.agenT.action.OPEN_FROM_WIDGET"
 const val EXTRA_WIDGET_OPEN_TAB = "com.lamuier.agenT.extra.OPEN_TAB"
@@ -173,6 +177,9 @@ private data class WidgetSnapshot(
     val codexRevision: Long? = null,
     val codexServiceStatus: ServiceStatus? = null,
     val codexServiceStatusLine: String = "",
+    val providers: Map<UsageProvider, ProviderUsageSnapshot> = emptyMap(),
+    val providerStatuses: Map<UsageProvider, StatusLoadResult> = emptyMap(),
+    val notice: String? = null,
 )
 
 private data class CodexWidgetLoadResult(
@@ -216,6 +223,12 @@ abstract class BaseCursorWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
+            ACTION_NEXT_PAGE -> {
+                val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                val capacity = intent.getIntExtra(EXTRA_WIDGET_PAGE_CAPACITY, 0)
+                val owned = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, javaClass))
+                if (id in owned) AgenTWidgetUpdater.nextPage(context.applicationContext, javaClass, id, goAsync(), capacity)
+            }
             ACTION_MANUAL_REFRESH -> {
                 val appWidgetId = intent.getIntExtra(
                     AppWidgetManager.EXTRA_APPWIDGET_ID,
@@ -244,6 +257,10 @@ abstract class BaseCursorWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) {
         AgenTWidgetUpdater.scheduleRefresh(context.applicationContext, force = false)
         AgenTWidgetUpdater.ensurePeriodicRefresh(context.applicationContext)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        WidgetPages(context).clear(appWidgetIds)
     }
 
     override fun onDisabled(context: Context) {
@@ -280,9 +297,9 @@ object AgenTWidgetUpdater {
         WidgetSnapshot(null, null, "", serviceStatus = cursor, codexServiceStatus = codex),
         compact = compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
     /** Preview rendering never loads accounts or cached credentials. */
-    internal fun samplePreview(context: Context, provider: Class<*>, widthDp: Int = 334, heightDp: Int = 252): RemoteViews {
+    internal fun samplePreview(context: Context, provider: Class<*>, widthDp: Int = 0, heightDp: Int = 0): RemoteViews {
         val spec = providerSpecs.first { it.providerClass == provider }
-        val stamp = "2026-10-12 12:00:00"
+        val stamp = com.lamuier.agenT.network.StatusJsonParser.nowStamp()
         val sample = com.lamuier.agenT.model.AgenTOverview(1, "Sample", false,
             com.lamuier.agenT.model.PlanInfo("Pro", "$20", 20.0, "2026-11-01T00:00:00Z"),
             com.lamuier.agenT.model.BillingCycle("2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"),
@@ -296,16 +313,30 @@ object AgenTWidgetUpdater {
                 com.lamuier.agenT.model.ComponentStatus.Operational, index) }, emptyList(), emptyList(), emptyList(), stamp, false)
         val status = sampleStatus(listOf("Automations", "Review Agents", "CLI", "Cloud Agents", "cursor.com", "IDE", "Origin", "Grok Bot"))
         val codexStatus = sampleStatus(listOf("Codex Web", "Codex API", "CLI", "Codex in ChatGPT Desktop", "VS Code extension"))
+        val extras = mapOf(
+            UsageProvider.DeepSeek to ProviderUsageSnapshot(ProviderCredentialInfo("preview"), ProviderUsageParser.parse(UsageProvider.DeepSeek,
+                org.json.JSONObject("""{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"128.50","granted_balance":"0","topped_up_balance":"128.50"}]}"""), stamp)),
+            UsageProvider.KimiCode to ProviderUsageSnapshot(ProviderCredentialInfo("preview"), ProviderUsageParser.parse(UsageProvider.KimiCode,
+                org.json.JSONObject("""{"usages":{"limit_5h":{"used_ratio":0.18},"limit_7d":{"used_ratio":0.36}}}"""), stamp)),
+            UsageProvider.Antigravity to ProviderUsageSnapshot(ProviderCredentialInfo("preview"), ProviderUsage(UsageProvider.Antigravity,
+                stamp, windows = listOf(QuotaWindow("weekly", java.math.BigDecimal("0.32"), null, label = "Gemini Models · Weekly")))),
+        )
         val snapshot = WidgetSnapshot(CursorAccount(1, "Sample", false, stamp, stamp), sample, "", serviceStatus = status,
-            codexUsage = codex, codexServiceStatus = codexStatus)
-        val views = if (spec.kind == WidgetKind.StatusTall) renderStatusTall(context, spec, 0, snapshot,
-            compact = compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
-            else if (spec.kind.isStatus) renderStatus(context, spec, 0, snapshot)
-            else renderUsage(context, spec, 0, snapshot, compact = spec.kind.hasUsageDetails && compactUsageSize(widthDp, heightDp, context.resources.configuration.fontScale),
-                large = spec.kind.hasUsageDetails && largeUsageSize(widthDp, heightDp, context.resources.configuration.fontScale))
-        views.setOnClickPendingIntent(R.id.widget_root, null)
-        return views
+            codexCredential = CodexCredentialInfo(false, false, stamp), codexUsage = codex, codexServiceStatus = codexStatus,
+            providers = extras, providerStatuses = UsageProvider.entries.associateWith { StatusLoadResult(
+                if (it.statusProvider != null) sampleStatus(listOf("API")) else null, "") })
+        val width = widthDp.takeIf { it > 0 } ?: if (spec.kind in listOf(WidgetKind.Tall, WidgetKind.StatusTall)) 334 else spec.kind.fallbackWidthDp
+        val height = heightDp.takeIf { it > 0 } ?: if (spec.kind in listOf(WidgetKind.Tall, WidgetKind.StatusTall)) 252 else spec.kind.fallbackHeightDp
+        return renderSourcesPreview(context, sources(context, snapshot), provider, width, height)
     }
+
+    internal fun renderSourcesPreview(context: Context, sources: List<WidgetSource>, provider: Class<*>,
+        width: Int, height: Int, anchor: String? = null): RemoteViews {
+        val kind = providerSpecs.first { it.providerClass == provider }.kind
+        val capacity = WidgetSourcePolicy.capacity(kind.name, width, height, context.resources.configuration.fontScale, sources.size)
+        return WidgetSourceRenderer.render(context, sources, kind.isStatus, width, height, capacity, anchor)
+    }
+
     private val shortScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val refreshMutex = Mutex()
     private val lastManualRefreshAt = AtomicLong(0L)
@@ -381,7 +412,7 @@ object AgenTWidgetUpdater {
                 renderAll(
                     context,
                     statusOverride?.let {
-                        snapshot.copy(status = it, serviceStatusLine = it)
+                        snapshot.copy(status = it, serviceStatusLine = it, notice = it)
                     } ?: snapshot,
                     generation,
                 )
@@ -498,64 +529,142 @@ object AgenTWidgetUpdater {
     ) {
         synchronized(renderLock) {
             if (expectedGeneration != cacheRenderGeneration.get()) return
-            val usageCurrent = WidgetLoader.isCurrent(context, snapshot)
+            val stable = if (WidgetLoader.isCurrent(context, snapshot)) snapshot else
+                WidgetLoader.readCached(context).takeIf { WidgetLoader.isCurrent(context, it) } ?: return
+            if (expectedGeneration != cacheRenderGeneration.get()) return
             val manager = AppWidgetManager.getInstance(context)
             providerSpecs.forEach { spec ->
-                if (!spec.kind.isStatus && !usageCurrent) return@forEach
                 manager.getAppWidgetIds(ComponentName(context, spec.providerClass)).forEach { widgetId ->
-                    val views = render(context, spec, widgetId, snapshot)
+                    val views = render(context, spec, widgetId, stable)
                     manager.updateAppWidget(widgetId, views)
                 }
             }
         }
     }
 
-    private fun render(
-        context: Context,
-        spec: ProviderSpec,
-        widgetId: Int,
-        snapshot: WidgetSnapshot,
-    ): RemoteViews {
-        if (spec.kind == WidgetKind.StatusTall) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val fullHeight = fullWidgetHeight(context.resources.configuration.fontScale).toFloat()
-                return RemoteViews(mapOf(
-                    SizeF(250f, 180f) to renderStatusTall(context, spec, widgetId, snapshot, compact = true),
-                    SizeF(250f, fullHeight) to renderStatusTall(context, spec, widgetId, snapshot, compact = false),
-                ))
-            }
-            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
-            val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            val widthKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
-            val heightKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
-            return renderStatusTall(context, spec, widgetId, snapshot, compact = compactUsageSize(
-                options.getInt(widthKey, spec.kind.fallbackWidthDp),
-                options.getInt(heightKey, spec.kind.fallbackHeightDp), context.resources.configuration.fontScale))
+    internal fun nextPage(context: Context, provider: Class<*>, widgetId: Int,
+        pending: android.content.BroadcastReceiver.PendingResult, requestedCapacity: Int = 0) {
+        shortScope.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) { WidgetLoader.readCached(context) }
+                if (!WidgetLoader.isCurrent(context, snapshot)) return@launch
+                val spec = providerSpecs.first { it.providerClass == provider }
+                val size = widgetSize(context, spec, widgetId)
+                val ids = sources(context, snapshot).map { it.id }
+                val pages = WidgetPages(context)
+                val capacity = requestedCapacity.takeIf { it > 0 } ?: WidgetSourcePolicy.capacity(spec.kind.name, size.first, size.second,
+                    context.resources.configuration.fontScale, ids.size)
+                pages.advance(widgetId, ids, capacity)
+                val generation = cacheRenderGeneration.incrementAndGet()
+                renderAll(context, snapshot, generation)
+            } finally { pending.finish() }
         }
-        if (spec.kind.isStatus) return renderStatus(context, spec, widgetId, snapshot)
-        if (!spec.kind.hasUsageDetails) return renderUsage(context, spec, widgetId, snapshot)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Let the launcher select the fitting layout, including after rotation without an app wake-up.
-            val fullHeight = fullWidgetHeight(context.resources.configuration.fontScale).toFloat()
-            val layouts = linkedMapOf(
-                SizeF(250f, 180f) to renderUsage(context, spec, widgetId, snapshot, compact = true),
-                SizeF(250f, fullHeight) to renderUsage(context, spec, widgetId, snapshot, compact = false),
-            )
-            if (context.resources.configuration.fontScale <= 1.3f) {
-                layouts[SizeF(330f, largeUsageHeight(context.resources.configuration.fontScale).toFloat())] =
-                    renderUsage(context, spec, widgetId, snapshot, large = true)
-            }
-            return RemoteViews(layouts)
-        }
-        val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+    }
+
+    private fun widgetSize(context: Context, spec: ProviderSpec, id: Int): Pair<Int, Int> {
+        val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(id)
         val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val widthKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
-        val heightKey = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
-        val width = options.getInt(widthKey, spec.kind.fallbackWidthDp)
-        val height = options.getInt(heightKey, spec.kind.fallbackHeightDp)
-        val fontScale = context.resources.configuration.fontScale
-        return renderUsage(context, spec, widgetId, snapshot, compact = compactUsageSize(width, height, fontScale),
-            large = largeUsageSize(width, height, fontScale))
+        val w = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
+        val h = if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
+        return options.getInt(w, spec.kind.fallbackWidthDp) to options.getInt(h, spec.kind.fallbackHeightDp)
+    }
+
+    private fun render(context: Context, spec: ProviderSpec, widgetId: Int, snapshot: WidgetSnapshot): RemoteViews {
+        val sources = sources(context, snapshot)
+        val pages = WidgetPages(context)
+        val storedAnchor = pages.anchor(widgetId)
+        val anchor = storedAnchor?.takeIf { value -> sources.any { it.id == value } } ?: sources.firstOrNull()?.id
+        if (widgetId != 0 && sources.isNotEmpty() && storedAnchor != anchor) pages.select(widgetId, anchor)
+        val size = widgetSize(context, spec, widgetId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+            val sizes = options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES).orEmpty()
+            val layouts = if (sizes.isNotEmpty()) sizes.take(16).map { it.width.toInt() to it.height.toInt() }
+                else listOf(size, 330 to maxOf(size.second, 240)).distinct()
+            return RemoteViews(layouts.associate { (w, h) -> SizeF(w.toFloat(), h.toFloat()) to
+                renderSources(context, spec, widgetId, snapshot, sources, anchor, w, h) })
+        }
+        return renderSources(context, spec, widgetId, snapshot, sources, anchor, size.first, size.second)
+    }
+
+    private fun renderSources(context: Context, spec: ProviderSpec, id: Int, snapshot: WidgetSnapshot,
+        sources: List<WidgetSource>, anchor: String?, width: Int, height: Int): RemoteViews {
+        val font = context.resources.configuration.fontScale
+        val capacity = WidgetSourcePolicy.capacity(spec.kind.name, width, height, font, sources.size)
+        val legacyPair = sources.map { it.id } == listOf("cursor", "codex") && font <= 1.3f && capacity >= 2
+        if (legacyPair && spec.kind == WidgetKind.Tall) return renderUsage(context, spec, id, snapshot,
+            compact = compactUsageSize(width, height, font), large = largeUsageSize(width, height, font))
+        if (legacyPair && spec.kind == WidgetKind.StatusTall) return renderStatusTall(context, spec, id, snapshot,
+            compact = compactUsageSize(width, height, font))
+        val open = openAppPendingIntent(context, spec, id, configure = sources.isEmpty(),
+            sourceId = sources.firstOrNull { it.id == anchor }?.id)
+        val next = Intent(context, spec.providerClass).apply {
+            action = ACTION_NEXT_PAGE
+            data = widgetUri("page-$capacity", spec, id)
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            putExtra(EXTRA_WIDGET_PAGE_CAPACITY, capacity)
+        }.let { PendingIntent.getBroadcast(context, spec.kind.requestBase + id * 10 + capacity, it,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
+        return WidgetSourceRenderer.render(context, sources, spec.kind.isStatus, width, height, capacity, anchor,
+            open, next, if (spec.kind.hasRefresh && sources.isNotEmpty()) refreshPendingIntent(context, spec, id) else null, snapshot.notice,
+            openSource = { source -> openAppPendingIntent(context, spec, id, sourceId = source) })
+    }
+
+    private fun sources(context: Context, snapshot: WidgetSnapshot): List<WidgetSource> = buildList {
+        val strings = loc(context)
+        val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
+        fun reset(epoch: Long?) = epoch?.let { strings.getString(R.string.widget_reset_short,
+            java.time.Instant.ofEpochSecond(it).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"))) }
+        snapshot.account?.let { account ->
+            val usage = snapshot.usage?.takeUnless { account.tokenExpired }
+            add(WidgetSource("cursor", "Cursor", usage?.let { listOf(WidgetMetric(strings.getString(R.string.widget_current_cycle),
+                WidgetCalculations.totalLabel(it), WidgetCalculations.totalPercent(it), billingLabel(strings, it))) }.orEmpty(),
+                if (usage == null) snapshot.status else strings.getString(R.string.widget_pool_summary,
+                    AssistantPresentation.percent(usage.usage.autoPercentUsed), AssistantPresentation.percent(usage.usage.apiPercentUsed)),
+                usage?.fetchedAt, usage?.fromCache != false, snapshot.serviceStatus, snapshot.serviceStatusLine,
+                if (account.tokenExpired) strings.getString(R.string.widget_connection_issue) else null))
+        }
+        snapshot.codexCredential?.let { credential ->
+            val usage = snapshot.codexUsage?.takeUnless { credential.expired || credential.invalid }
+            val metrics = usage?.let { listOfNotNull(
+                it.primary?.let { w -> WidgetMetric(strings.getString(R.string.quota_five_hour_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds)) },
+                it.secondary?.let { w -> WidgetMetric(strings.getString(R.string.quota_weekly_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds)) }) }.orEmpty()
+            add(WidgetSource("codex", "Codex", metrics, if (usage == null) snapshot.codexUsageLine else "",
+                usage?.fetchedAt, usage?.fromCache != false, snapshot.codexServiceStatus, snapshot.codexServiceStatusLine,
+                if (credential.expired || credential.invalid) strings.getString(R.string.widget_connection_issue) else null))
+        }
+        UsageProvider.entries.forEach { provider ->
+            val state = snapshot.providers[provider] ?: return@forEach
+            if (state.credential == null) return@forEach
+            val usage = state.usage
+            val metrics = if (provider == UsageProvider.DeepSeek) usage?.balances.orEmpty().map {
+                WidgetMetric(it.currency, it.total?.stripTrailingZeros()?.toPlainString() ?: "—")
+            } else usage?.windows.orEmpty().map { window ->
+                val label = window.label ?: strings.getString(when (window.id) {
+                    "limit_5h" -> R.string.quota_five_hour_short
+                    "limit_7d" -> R.string.quota_weekly_short
+                    "limit_month_total" -> R.string.provider_month_total
+                    "limit_month_code" -> R.string.provider_month_code
+                    else -> R.string.provider_plan_quota
+                }).let { if (window.id.startsWith("legacy_") && window.durationMinutes != null)
+                    strings.getString(R.string.provider_window_minutes, window.durationMinutes) else it }
+                val percent = window.usedRatio?.multiply(java.math.BigDecimal(100))?.toDouble()
+                val reset = window.resetAt?.let { runCatching { reset(java.time.Instant.parse(it).epochSecond) }.getOrNull() }
+                WidgetMetric(label, if (window.inconsistent) strings.getString(R.string.provider_inconsistent) else AssistantPresentation.percent(percent),
+                    if (window.inconsistent) null else percent, reset)
+            } + listOfNotNull(usage?.booster?.let { wallet ->
+                WidgetMetric(strings.getString(R.string.provider_booster), listOfNotNull(wallet.currency,
+                    wallet.remaining?.stripTrailingZeros()?.toPlainString() ?: "—").joinToString(" "))
+            })
+            val status = snapshot.providerStatuses[provider]
+            val attention = state.failure?.let { strings.getString(if (it in listOf(ProviderFailure.Authentication, ProviderFailure.Permission)) R.string.widget_connection_issue else R.string.widget_refresh_failed) }
+            val note = attention ?: if (usage == null) strings.getString(R.string.widget_waiting_first)
+                else if (provider == UsageProvider.DeepSeek) strings.getString(when (usage.available) {
+                    true -> R.string.widget_credit_available; false -> R.string.widget_credit_unavailable; null -> R.string.label_data_unavailable
+                }) else ""
+            add(WidgetSource(provider.id, provider.title, metrics, note, usage?.fetchedAt,
+                usage?.fromCache != false || state.failure != null, status?.status, if (provider.statusProvider == null) strings.getString(R.string.antigravity_status_unknown) else status?.line.orEmpty(), attention))
+        }
     }
 
     private fun fullWidgetHeight(fontScale: Float): Int = when {
@@ -685,6 +794,10 @@ object AgenTWidgetUpdater {
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context, spec, widgetId))
             views.setImageViewBitmap(R.id.widget_refresh, WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant))
         }
+        if (kind.hasUsageDetails) {
+            views.setOnClickPendingIntent(R.id.widget_cursor_section, openAppPendingIntent(context, spec, widgetId, sourceId = "cursor"))
+            views.setOnClickPendingIntent(R.id.widget_codex_section, openAppPendingIntent(context, spec, widgetId, sourceId = "codex"))
+        }
         views.setContentDescription(R.id.widget_root, listOf("Cursor $cursorValue", snapshot.status,
             "Codex 5h $codexValue", strings.getString(R.string.widget_codex_weekly,
                 AssistantPresentation.percent(codex?.secondary?.usedPercent)), snapshot.codexUsageLine).joinToString(" · "))
@@ -697,7 +810,7 @@ object AgenTWidgetUpdater {
         val strings = loc(context)
         val colors = WidgetThemeColors.resolve(context)
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
-        val indicator = WidgetCalculations.combinedIndicator(snapshot.serviceStatus, snapshot.codexServiceStatus)
+        val indicator = WidgetSourcePolicy.indicator(sources(context, snapshot))
         val accent = indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
         views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
         views.setInt(R.id.widget_outline, "setColorFilter", colors.surfaceVariant)
@@ -721,6 +834,10 @@ object AgenTWidgetUpdater {
                 R.id.widget_codex_components, R.id.widget_codex_overflow, R.id.widget_codex_incident, R.id.widget_codex_panel, colors.tertiary),
         )
         panels.forEach { panel ->
+            val panelIntent = openAppPendingIntent(context, spec, widgetId, sourceId = panel.name.lowercase(java.util.Locale.ROOT))
+            listOf(panel.surface, panel.title, panel.summary, panel.body, panel.overflow, panel.incident).forEach { viewId ->
+                views.setOnClickPendingIntent(viewId, panelIntent)
+            }
             views.setInt(panel.surface, "setColorFilter", WidgetAppearance.blend(colors.surface, panel.tint, 0.055f))
             views.setTextViewText(panel.title, panel.name)
             views.setTextColor(panel.title, colors.onSurface)
@@ -955,14 +1072,17 @@ object AgenTWidgetUpdater {
         context: Context,
         spec: ProviderSpec,
         widgetId: Int,
+        configure: Boolean = false,
+        sourceId: String? = null,
     ): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_OPEN_FROM_WIDGET
-            data = widgetUri("open", spec, widgetId)
+            action = if (configure) com.lamuier.agenT.model.ShortcutAction.ManageTokens.intentAction else ACTION_OPEN_FROM_WIDGET
+            putExtra(EXTRA_WIDGET_SOURCE, sourceId)
+            data = widgetUri("open-${sourceId.orEmpty()}-${if (configure) "configure" else "content"}", spec, widgetId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(
                 EXTRA_WIDGET_OPEN_TAB,
-                if (spec.kind.isStatus) DashboardTab.Status.id else DashboardTab.Overview.id,
+                if (spec.kind.isStatus) DashboardTab.Status.id else DashboardTab.Usage.id,
             )
         }
         return PendingIntent.getActivity(
@@ -1107,40 +1227,44 @@ private object WidgetLoader {
         return attachCachedStatus(context, usageSnapshot.copy(
             codexCredential = codex.credential, codexUsage = codex.usage,
             codexUsageLine = codex.line, codexRevision = codex.revision,
+            providers = UsageProvider.entries.associateWith { ProviderUsageRepository(context, it).cached() },
+            providerStatuses = UsageProvider.entries.associateWith { provider ->
+                val status = runCatching { provider.statusProvider?.let { ServiceStatusRepository(context, it).cached() } }.getOrNull()
+                StatusLoadResult(status, status?.let { cachedServiceLine(context, it) }.orEmpty())
+            },
         ))
     }
 
-    suspend fun load(
-        context: Context,
-        force: Boolean,
-        loadUsageData: Boolean = true,
-        loadStatusData: Boolean = true,
-    ): WidgetLoadResult = coroutineScope {
-        val usageRequest = async {
-            if (loadUsageData) loadUsage(context, force) else WidgetLoadResult(WidgetSnapshot(null, null, ""))
+    suspend fun load(context: Context, force: Boolean, loadUsageData: Boolean = true,
+        loadStatusData: Boolean = true): WidgetLoadResult = coroutineScope {
+        val base = readCached(context)
+        val usageRequest = async { if (loadUsageData && base.account != null) loadUsage(context, force) else WidgetLoadResult(base) }
+        val codexRequest = async { if (loadUsageData) loadCodexUsage(context, force) else readCodexCached(context) }
+        val statusRequests = listOf(OfficialStatusProvider.Cursor to (base.account != null),
+            OfficialStatusProvider.Codex to (base.codexCredential != null)).associate { (provider, configured) ->
+            provider to async { if (loadStatusData && configured) loadServiceStatus(context, force, provider) else
+                StatusLoadResult(if (provider == OfficialStatusProvider.Cursor) base.serviceStatus else base.codexServiceStatus, "") }
         }
-        val codexRequest = async { if (loadUsageData) loadCodexUsage(context, force) else null }
-        val cursorStatusRequest = async {
-            if (loadStatusData) loadServiceStatus(context, force) else StatusLoadResult(null, "")
-        }
-        val codexStatusRequest = async {
-            if (loadStatusData) loadServiceStatus(context, force, OfficialStatusProvider.Codex) else StatusLoadResult(null, "")
-        }
-        val usageResult = usageRequest.await()
+        val providerRequests = UsageProvider.entries.associateWith { provider -> async {
+            if (loadUsageData && base.providers[provider]?.credential != null) ProviderUsageRepository(context, provider).refresh(force, CACHE_FRESH_SECONDS.toLong())
+            else base.providers.getValue(provider)
+        } }
+        val extraStatusRequests = UsageProvider.entries.associateWith { provider -> async {
+            if (loadStatusData && base.providers[provider]?.credential != null && provider.statusProvider != null) loadServiceStatus(context, force, provider.statusProvider)
+            else base.providerStatuses.getValue(provider)
+        } }
+        val usage = usageRequest.await()
         val codex = codexRequest.await()
-        val statusResult = cursorStatusRequest.await()
-        val codexStatus = codexStatusRequest.await()
-        WidgetLoadResult(
-            snapshot = usageResult.snapshot.copy(
-                serviceStatus = statusResult.status,
-                serviceStatusLine = statusResult.line,
-                codexCredential = codex?.credential, codexUsage = codex?.usage,
-                codexUsageLine = codex?.line.orEmpty(), codexRevision = codex?.revision,
-                codexServiceStatus = codexStatus.status, codexServiceStatusLine = codexStatus.line,
-            ),
-            shouldRetry = usageResult.shouldRetry || statusResult.shouldRetry ||
-                codex?.shouldRetry == true || codexStatus.shouldRetry,
-        )
+        val cursorStatus = statusRequests.getValue(OfficialStatusProvider.Cursor).await()
+        val codexStatus = statusRequests.getValue(OfficialStatusProvider.Codex).await()
+        val extras = providerRequests.mapValues { it.value.await() }
+        val statuses = extraStatusRequests.mapValues { it.value.await() }
+        WidgetLoadResult(usage.snapshot.copy(serviceStatus = cursorStatus.status, serviceStatusLine = cursorStatus.line,
+            codexCredential = codex.credential, codexUsage = codex.usage, codexUsageLine = codex.line,
+            codexRevision = codex.revision, codexServiceStatus = codexStatus.status, codexServiceStatusLine = codexStatus.line,
+            providers = extras, providerStatuses = statuses),
+            usage.shouldRetry || codex.shouldRetry || cursorStatus.shouldRetry || codexStatus.shouldRetry ||
+                (loadUsageData && extras.values.any { it.shouldRetry }) || statuses.values.any { it.shouldRetry })
     }
 
     private fun readCodexCached(context: Context): CodexWidgetLoadResult = try {
@@ -1256,6 +1380,8 @@ private object WidgetLoader {
                 ),
                 shouldRetry = true,
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             val latestAccount = accountAtRevision(repository, stableAccount.id, revision)
                 ?: return WidgetLoadResult(readCached(context))
@@ -1292,6 +1418,8 @@ private object WidgetLoader {
                 line = if (cached != null) str(context, R.string.widget_cache_offline) else str(context, R.string.widget_offline),
                 shouldRetry = true,
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             StatusLoadResult(
                 status = cached,
@@ -1315,6 +1443,9 @@ private object WidgetLoader {
 
     fun isCurrent(context: Context, snapshot: WidgetSnapshot): Boolean {
         return try {
+            if (snapshot.providers.any { (provider, cached) ->
+                ProviderUsageRepository(context, provider).cached().credential != cached.credential
+            }) return false
             if (snapshot.codexRevision != null && CodexQuotaRepository(context).tokenRevision() != snapshot.codexRevision) {
                 return false
             }

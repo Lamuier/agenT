@@ -10,15 +10,17 @@ import com.lamuier.agenT.util.TokenUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.KeyStore
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class EncryptedAccountStore(
     context: Context,
-    preferencesName: String = PREFERENCES_NAME,
-    keyAlias: String = KEY_ALIAS,
+    private val preferencesName: String = PREFERENCES_NAME,
+    private val keyAlias: String = KEY_ALIAS,
 ) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
@@ -97,11 +99,14 @@ class EncryptedAccountStore(
         val accounts = readStoredAccounts()
         val remaining = accounts.filterNot { it.id == accountId }
         if (remaining.size == accounts.size) return@synchronized false
-        val editor = preferences.edit().putString(KEY_ACCOUNTS, serializeAccounts(remaining).toString())
+        val serialized = serializeAccounts(remaining).toString()
+        val editor = preferences.edit().putString(KEY_ACCOUNTS, serialized)
         if (preferences.getInt(KEY_SELECTED_ACCOUNT, -1) == accountId) {
             editor.remove(KEY_SELECTED_ACCOUNT)
         }
         check(editor.commit()) { msg(R.string.error_delete_account_secure) }
+        storedAccountsCache[preferencesName] = serialized to remaining
+        retainCachedDecryptions(remaining)
         true
     }
 
@@ -191,16 +196,38 @@ class EncryptedAccountStore(
         )
     }
 
-    private fun decryptAlias(account: StoredAccount): String = try {
-        crypto.decrypt(account.encryptedAlias, aad(account.uuid, "alias"))
-    } catch (error: Exception) {
-        throw IllegalStateException(msg(R.string.error_alias_decrypt), error)
+    private fun decryptAlias(account: StoredAccount): String {
+        val cacheKey = "$keyAlias|${account.uuid}|alias|${account.encryptedAlias}"
+        decryptedFieldCache[cacheKey]?.let { return it }
+        return try {
+            crypto.decrypt(account.encryptedAlias, aad(account.uuid, "alias")).also {
+                decryptedFieldCache[cacheKey] = it
+            }
+        } catch (error: Exception) {
+            throw IllegalStateException(msg(R.string.error_alias_decrypt), error)
+        }
     }
 
-    private fun decryptAccessToken(account: StoredAccount): String = try {
-        crypto.decrypt(account.encryptedAccessToken, aad(account.uuid, "access_token"))
-    } catch (error: Exception) {
-        throw IllegalStateException(msg(R.string.error_credential_decrypt), error)
+    private fun decryptAccessToken(account: StoredAccount): String {
+        val cacheKey = "$keyAlias|${account.uuid}|token|${account.encryptedAccessToken}"
+        decryptedFieldCache[cacheKey]?.let { return it }
+        return try {
+            crypto.decrypt(account.encryptedAccessToken, aad(account.uuid, "access_token")).also {
+                decryptedFieldCache[cacheKey] = it
+            }
+        } catch (error: Exception) {
+            throw IllegalStateException(msg(R.string.error_credential_decrypt), error)
+        }
+    }
+
+    private fun retainCachedDecryptions(accounts: List<StoredAccount>) {
+        val activeKeys = buildSet {
+            accounts.forEach { account ->
+                add("$keyAlias|${account.uuid}|alias|${account.encryptedAlias}")
+                add("$keyAlias|${account.uuid}|token|${account.encryptedAccessToken}")
+            }
+        }
+        decryptedFieldCache.keys.removeIf { it.startsWith("$keyAlias|") && it !in activeKeys }
     }
 
     private fun normalizeAlias(alias: String): String {
@@ -211,7 +238,12 @@ class EncryptedAccountStore(
     }
 
     private fun readStoredAccounts(): List<StoredAccount> {
-        val raw = preferences.getString(KEY_ACCOUNTS, null) ?: return emptyList()
+        val raw = preferences.getString(KEY_ACCOUNTS, null)
+        if (raw == null) {
+            storedAccountsCache.remove(preferencesName)
+            return emptyList()
+        }
+        storedAccountsCache[preferencesName]?.takeIf { it.first == raw }?.let { return it.second }
         return try {
             val array = JSONArray(raw)
             buildList(array.length()) {
@@ -230,18 +262,24 @@ class EncryptedAccountStore(
                         ),
                     )
                 }
+            }.also { parsed ->
+                storedAccountsCache[preferencesName] = raw to parsed
             }
         } catch (error: Exception) {
+            storedAccountsCache.remove(preferencesName)
             throw IllegalStateException(msg(R.string.error_account_corrupt), error)
         }
     }
 
     private fun saveStoredAccounts(accounts: List<StoredAccount>, nextId: Int? = null) {
-        val editor = preferences.edit().putString(KEY_ACCOUNTS, serializeAccounts(accounts).toString())
+        val serialized = serializeAccounts(accounts).toString()
+        val editor = preferences.edit().putString(KEY_ACCOUNTS, serialized)
         if (nextId != null) editor.putInt(KEY_NEXT_ID, nextId)
         check(editor.commit()) {
             msg(R.string.error_save_account_secure)
         }
+        storedAccountsCache[preferencesName] = serialized to accounts
+        retainCachedDecryptions(accounts)
     }
 
     private fun serializeAccounts(accounts: List<StoredAccount>): JSONArray {
@@ -278,8 +316,9 @@ class EncryptedAccountStore(
             readPendingUsageCacheCleanupAccountIds() + evictedAccountIds
         ).distinct()
 
+        val serialized = serializeAccounts(listOf(retainedAccount)).toString()
         val editor = preferences.edit()
-            .putString(KEY_ACCOUNTS, serializeAccounts(listOf(retainedAccount)).toString())
+            .putString(KEY_ACCOUNTS, serialized)
             .putInt(KEY_SELECTED_ACCOUNT, retainedAccount.id)
         if (pendingCleanupIds.isEmpty()) {
             editor.remove(KEY_PENDING_USAGE_CACHE_CLEANUP)
@@ -290,6 +329,8 @@ class EncryptedAccountStore(
             )
         }
         check(editor.commit()) { msg(R.string.error_migrate_account_secure) }
+        storedAccountsCache[preferencesName] = serialized to listOf(retainedAccount)
+        retainCachedDecryptions(listOf(retainedAccount))
     }
 
     private fun readPendingUsageCacheCleanupAccountIds(): List<Int> {
@@ -325,10 +366,8 @@ class EncryptedAccountStore(
         preferences.edit().putBoolean(KEY_MIGRATED_FROM_PULSE, true).apply()
     }
 
-    private fun formatTime(epochMillis: Long): String = SimpleDateFormat(
-        "yyyy-MM-dd HH:mm:ss",
-        Locale.getDefault(),
-    ).format(Date(epochMillis))
+    private fun formatTime(epochMillis: Long): String =
+        Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(TIMESTAMP_FORMATTER)
 
     private fun aad(uuid: String, field: String): String =
         "${BuildConfig.APPLICATION_ID}|accounts-v2|$uuid|$field"
@@ -354,6 +393,9 @@ class EncryptedAccountStore(
 
     private companion object {
         private val lock = Any()
+        private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
+        private val storedAccountsCache = ConcurrentHashMap<String, Pair<String, List<StoredAccount>>>()
+        private val decryptedFieldCache = ConcurrentHashMap<String, String>()
         const val PREFERENCES_NAME = "cursor_direct_accounts_v2"
         const val KEY_ACCOUNTS = "accounts"
         const val KEY_SELECTED_ACCOUNT = "selected_account"

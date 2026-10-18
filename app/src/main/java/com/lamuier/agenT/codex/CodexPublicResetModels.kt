@@ -1,13 +1,16 @@
 package com.lamuier.agenT.codex
 
+import androidx.compose.runtime.Immutable
 import java.net.URI
 import java.time.Instant
 import org.json.JSONObject
 import org.json.JSONArray
 
 /** Public announcements, never account redemption records or official quota balances. */
+@Immutable
 data class CodexPublicReset(val id: String, val type: String, val at: Long, val text: String,
     val sourceType: String, val author: String?, val url: String?)
+@Immutable
 data class CodexPublicResetSnapshot(val events: List<CodexPublicReset>, val fetchedAt: Long,
     val truncated: Boolean = false, val fromCache: Boolean = false)
 internal data class CodexPublicResetPage(val events: List<CodexPublicReset>, val hasMore: Boolean, val cursor: String?)
@@ -81,6 +84,7 @@ internal object CodexPublicResetLinks {
     }.getOrDefault(false)
 }
 
+@Immutable
 internal data class CodexResetTimelineEntry(val at: Long, val public: CodexPublicReset)
 internal object CodexResetTimeline {
     fun entries(public: List<CodexPublicReset>, range: CodexResetRange?,

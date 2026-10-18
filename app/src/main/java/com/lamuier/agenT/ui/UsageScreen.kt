@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.lamuier.agenT.providers.*
+import androidx.compose.foundation.horizontalScroll
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.*
 import com.lamuier.agenT.model.*
@@ -36,7 +38,7 @@ import kotlinx.coroutines.delay
 
 internal val LocalUsageNow = staticCompositionLocalOf<Long?> { null }
 
-/** Both services remain addressable when only one credential or cached result exists. */
+/** Only configured sources are listed; cached results do not make a deleted connection visible. */
 @Composable
 internal fun UsageScreen(
     state: AppUiState, codex: CodexQuotaUiState,
@@ -45,15 +47,31 @@ internal fun UsageScreen(
     onManageCursor: () -> Unit, onManageCodex: () -> Unit,
     active: Boolean = true,
     onHistoryDaysChange: (String, Int) -> Unit = { _, _ -> },
+    onOpenFailed: (String) -> Unit = {},
+    providers: ProvidersUiState = ProvidersUiState(false),
+    onManageProvider: (UsageProvider) -> Unit = {}, onRefreshProvider: (UsageProvider) -> Unit = {},
 ) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("usage-page-v1", 0) }
     var provider by rememberSaveable { mutableStateOf(preferences.getString("provider", null)) }
     var explaining by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(state.loadingAccounts, codex.booting) {
-        if (provider == null && !state.loadingAccounts && !codex.booting) provider = if (state.usage != null || codex.usage == null) "cursor" else "codex"
+    val visibleSources = configuredSourceIds(state.accounts.isNotEmpty(), codex.credential != null, providers)
+    val selected = provider?.takeIf { it in visibleSources } ?: visibleSources.firstOrNull()
+    LaunchedEffect(visibleSources, state.loadingAccounts, codex.booting, providers.booting) {
+        if (!state.loadingAccounts && !codex.booting && !providers.booting && provider != selected) {
+            provider = selected
+            preferences.edit().apply { if (selected == null) remove("provider") else putString("provider", selected) }.apply()
+        }
     }
-    val selected = provider ?: if (state.usage == null && codex.usage != null) "codex" else "cursor"
+    val destination by com.lamuier.agenT.widget.WidgetNavigation.destination.collectAsState()
+    LaunchedEffect(destination, active, visibleSources, state.loadingAccounts, codex.booting, providers.booting) {
+        val target = destination
+        if (target?.tab == DashboardTab.Usage && active && !state.loadingAccounts && !codex.booting && !providers.booting) {
+            provider = target.source.takeIf { it in visibleSources } ?: visibleSources.firstOrNull()
+            preferences.edit().apply { if (provider == null) remove("provider") else putString("provider", provider) }.apply()
+            com.lamuier.agenT.widget.WidgetNavigation.consume(target)
+        }
+    }
     val now = rememberUsageTime(active)
     val feedback = LocalAppFeedback.current
     val cursorFilters = rememberSaveable(state.selectedAccountId, saver = UsagePageFilters.Saver) { UsagePageFilters() }
@@ -67,6 +85,8 @@ internal fun UsageScreen(
     val statistics = if (selected == "cursor" && state.usage != null) usageStatistics(state, now, onLoadHistory, cursorFilters, active) else null
     val summaryScroll = rememberLazyListState()
     val cursorScroll = rememberLazyListState(); val codexScroll = rememberLazyListState()
+    val deepSeekScroll = rememberLazyListState(); val kimiScroll = rememberLazyListState(); val antigravityScroll = rememberLazyListState()
+    val detailScroll = when (selected) { "antigravity" -> antigravityScroll; "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "codex" -> codexScroll; else -> cursorScroll }
     val select: (String) -> Unit = { next ->
         if (next != selected) { provider = next; preferences.edit().putString("provider", next).apply(); feedback.selection() }
     }
@@ -79,25 +99,41 @@ internal fun UsageScreen(
             val fontScale = LocalDensity.current.fontScale
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 if (maxWidth >= 320.dp && fontScale <= 1.3f) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CursorSummary(state, now, selected == "cursor", Modifier.weight(1f)) { select("cursor") }
-                        CodexSummary(codex, now, selected == "codex", Modifier.weight(1f)) { select("codex") }
+                    val cardWidth = if (visibleSources.size <= 1) maxWidth else (maxWidth - 12.dp) / 2
+                    val sourceScroll = rememberScrollState()
+                    val density = LocalDensity.current
+                    LaunchedEffect(selected, cardWidth, visibleSources) {
+                        val index = visibleSources.indexOf(selected)
+                        sourceScroll.scrollTo(with(density) { ((cardWidth + 12.dp) * (index - 1).coerceAtLeast(0)).roundToPx() })
+                    }
+                    if (visibleSources.isEmpty()) ConfigureSourcesCard(onManageCursor)
+                    Row(Modifier.horizontalScroll(sourceScroll), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if ("cursor" in visibleSources) CursorSummary(state, now, selected == "cursor", Modifier.width(cardWidth)) { select("cursor") }
+                        if ("codex" in visibleSources) CodexSummary(codex, now, selected == "codex", Modifier.width(cardWidth)) { select("codex") }
+                        UsageProvider.entries.filter { it.id in visibleSources }.forEach { source -> OfficialProviderSummary(source, providers[source], selected == source.id,
+                            Modifier.width(cardWidth)) { select(source.id) } }
                     }
                 } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CursorSummary(state, now, selected == "cursor") { select("cursor") }
-                    CodexSummary(codex, now, selected == "codex") { select("codex") }
+                    if (visibleSources.isEmpty()) ConfigureSourcesCard(onManageCursor)
+                    if ("cursor" in visibleSources) CursorSummary(state, now, selected == "cursor") { select("cursor") }
+                    if ("codex" in visibleSources) CodexSummary(codex, now, selected == "codex") { select("codex") }
+                    UsageProvider.entries.filter { it.id in visibleSources }.forEach { source -> OfficialProviderSummary(source, providers[source], selected == source.id) { select(source.id) } }
                 }
             }
         }
     }
     val details: LazyListScope.(Boolean) -> Unit = {
         if (selected == "cursor") cursorDetails(state, now, onLoadHistory, onManageCursor, onRefresh, cursorFilters, statistics)
-        else codexDetails(codex, now, onManageCodex, onRefreshCodex, codexFilters)
+        else if (selected == "codex") codexDetails(codex, now, onManageCodex, onRefreshCodex, codexFilters)
+        else UsageProvider.entries.firstOrNull { it.id == selected }?.let { source ->
+            item("official-provider-${source.id}") { OfficialProviderDetails(source, providers[source],
+                { onManageProvider(source) }, { onRefreshProvider(source) }) }
+        }
     }
-    AdaptivePaneLayout(primaryFraction = 0.34f, maxContentWidthDp = 1440f,
-        single = { AdaptiveLazyTabContent(state = if (selected == "cursor") cursorScroll else codexScroll, modifier = Modifier.testTag("usage-detail-list")) { compact -> summary(); details(compact) } },
+    AdaptivePaneLayout(allowPair = visibleSources.isNotEmpty(), primaryFraction = 0.34f, maxContentWidthDp = 1440f,
+        single = { AdaptiveLazyTabContent(state = detailScroll, modifier = Modifier.testTag("usage-detail-list")) { compact -> summary(); details(compact) } },
         primary = { AdaptiveLazyTabContent(state = summaryScroll, modifier = Modifier.testTag("usage-summary-list")) { summary() } },
-        secondary = { AdaptiveLazyTabContent(state = if (selected == "cursor") cursorScroll else codexScroll, modifier = Modifier.testTag("usage-detail-list"), content = details) })
+        secondary = { AdaptiveLazyTabContent(state = detailScroll, modifier = Modifier.testTag("usage-detail-list"), content = details) })
     if (explaining) FoldSafeAlertDialog(onDismissRequest = { explaining = false },
         title = { Text(stringResource(R.string.u_explanation)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -119,8 +155,8 @@ private fun UsageCard(title: String, modifier: Modifier = Modifier, content: @Co
 }
 
 @Composable
-private fun SummaryCard(title: String, selected: Boolean, modifier: Modifier, onSelect: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Surface(onClick = onSelect, modifier = modifier.fillMaxWidth().testTag("usage-summary-" + title.lowercase(Locale.ROOT))
+internal fun SummaryCard(title: String, selected: Boolean, modifier: Modifier, onSelect: () -> Unit, tag: String = "usage-summary-" + title.lowercase(Locale.ROOT), content: @Composable ColumnScope.() -> Unit) {
+    Surface(onClick = onSelect, modifier = modifier.fillMaxWidth().testTag(tag)
         .semantics { this.selected = selected; role = Role.Tab },
         shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null) {
@@ -137,6 +173,8 @@ private fun SummaryCard(title: String, selected: Boolean, modifier: Modifier, on
 @Composable
 private fun CursorSummary(state: AppUiState, now: Long, selected: Boolean, modifier: Modifier = Modifier, onSelect: () -> Unit) {
     val usage = state.usage
+    val selectedAccount = state.accounts.firstOrNull { it.id == state.selectedAccountId } ?: state.accounts.firstOrNull()
+    val tokenExpired = selectedAccount?.tokenExpired == true
     SummaryCard("Cursor", selected, modifier, onSelect) {
         if (usage == null) Text(stringResource(if (state.accounts.isEmpty()) R.string.connection_not_configured else if (state.loadingUsage) R.string.label_history_loading else R.string.label_data_unavailable), style = MaterialTheme.typography.bodySmall)
         else {
@@ -147,7 +185,7 @@ private fun CursorSummary(state: AppUiState, now: Long, selected: Boolean, modif
             }
             Updated(usage.fetchedAt, usage.fromCache || state.error != null, usage.partialData)
         }
-        if (state.accounts.any { it.tokenExpired }) Text(stringResource(R.string.codex_token_needs_update), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        if (tokenExpired) Text(stringResource(R.string.connection_token_expired), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
     }
 }
 
@@ -171,17 +209,19 @@ private fun CodexSummary(state: CodexQuotaUiState, now: Long, selected: Boolean,
 
 private fun LazyListScope.cursorDetails(state: AppUiState, now: Long, load: (String, Long, Long, String?) -> Unit, manage: () -> Unit, refresh: () -> Unit, filters: UsagePageFilters, statistics: UsageStatistics?) {
     val usage = state.usage
+    val selectedAccount = state.accounts.firstOrNull { it.id == state.selectedAccountId } ?: state.accounts.firstOrNull()
+    val tokenExpired = selectedAccount?.tokenExpired == true
     if (usage == null) {
         item("cursor-state") { ServiceMessage(state.loadingUsage, stringResource(if (state.accounts.isEmpty()) R.string.dashboard_add_account_usage_body else R.string.label_data_unavailable),
-            if (state.accounts.isEmpty() || state.accounts.any { it.tokenExpired }) manage else refresh, manage = state.accounts.isEmpty() || state.accounts.any { it.tokenExpired }) }
+            if (state.accounts.isEmpty() || tokenExpired) manage else refresh, manage = state.accounts.isEmpty() || tokenExpired) }
         return
     }
-    if (state.accounts.any { it.tokenExpired }) item("cursor-connection") {
+    if (tokenExpired) item("cursor-connection") {
         ServiceMessage(false, stringResource(R.string.dashboard_token_expired_usage_body), manage, manage = true)
     }
     item("usage-statistics") { statistics?.let { CursorStatistics(state, load, filters, it) } }
     item("usage-trend") { Trend(state.usageHistory, true, now, filters) }
-    item("cursor-plan") { CursorPlan(usage, state.usageHistory, now, state.error != null || state.usageHistoryError || usage.fromCache || state.accounts.any { it.tokenExpired }) }
+    item("cursor-plan") { CursorPlan(usage, state.usageHistory, now, state.error != null || state.usageHistoryError || usage.fromCache || tokenExpired) }
     item("usage-financial") { CursorFinancials(usage) }
 }
 
@@ -304,13 +344,15 @@ private fun usageStatistics(state: AppUiState, now: Long, load: (String, Long, L
     val currentTokens = if (rangeMode == 0) usage.tokenUsage else key?.let { state.extraHistory[it]?.tokenUsage }
     val comparison = comparisonKey?.let { state.extraHistory[it]?.tokenUsage }
     val compareExpanded = filters.compareExpanded
-    LaunchedEffect(key, active) {
-        if (active && rangeMode != 0 && key != null && stableRange != null && state.extraHistory[key] == null && state.historyErrorKey != key)
+    val hasCurrent = key != null && state.extraHistory[key] != null
+    val hasComparison = comparisonKey != null && state.extraHistory[comparisonKey] != null
+    LaunchedEffect(key, active, state.selectedAccountId, hasCurrent) {
+        if (active && rangeMode != 0 && key != null && !hasCurrent && state.historyErrorKey != key && key !in state.historyErrors)
             load(key, stableRange.startMs, stableRange.endMs, null)
     }
     // Comparison requests start on explicit expansion, rather than fetching invisible pager pages.
-    LaunchedEffect(compareExpanded, comparisonKey, active) {
-        if (active && compareExpanded && comparisonKey != null && comparisonRange != null && state.extraHistory[comparisonKey] == null && state.historyErrorKey != comparisonKey)
+    LaunchedEffect(compareExpanded, comparisonKey, active, state.selectedAccountId, hasComparison) {
+        if (active && compareExpanded && comparisonKey != null && !hasComparison && state.historyErrorKey != comparisonKey && comparisonKey !in state.historyErrors)
             load(comparisonKey, comparisonRange.startMs, comparisonRange.endMs, null)
     }
     return UsageStatistics(stableRange, key, currentTokens, comparisonRange, comparisonKey, comparison)

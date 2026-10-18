@@ -11,7 +11,12 @@ internal enum class QuotaNoticeSource(val titleRes: Int, val notificationOffset:
     CodexWeekly(R.string.notification_codex_weekly, 1100),
 }
 
-internal data class QuotaNoticeMetric(val source: QuotaNoticeSource, val usedPercent: Double, val cycleKey: String?)
+internal data class QuotaNoticeMetric(
+    val source: QuotaNoticeSource,
+    val usedPercent: Double,
+    val cycleKey: String?,
+    val resetAtEpochSeconds: Long? = null,
+)
 
 internal object QuotaNoticeModel {
     fun metrics(cursor: AgenTOverview?, codex: CodexQuotaOverview?, credentialRevision: Long): List<QuotaNoticeMetric> = buildList {
@@ -21,11 +26,13 @@ internal object QuotaNoticeModel {
         }
         codex?.primary?.let {
             add(QuotaNoticeMetric(QuotaNoticeSource.CodexPrimary, it.usedPercent,
-                it.resetAtEpochSeconds?.let { reset -> "codex:$credentialRevision:primary:$reset" }))
+                it.resetAtEpochSeconds?.let { reset -> "codex:$credentialRevision:primary:$reset" },
+                resetAtEpochSeconds = it.resetAtEpochSeconds))
         }
         codex?.secondary?.let {
             add(QuotaNoticeMetric(QuotaNoticeSource.CodexWeekly, it.usedPercent,
-                it.resetAtEpochSeconds?.let { reset -> "codex:$credentialRevision:weekly:$reset" }))
+                it.resetAtEpochSeconds?.let { reset -> "codex:$credentialRevision:weekly:$reset" },
+                resetAtEpochSeconds = it.resetAtEpochSeconds))
         }
     }.filter { it.usedPercent.isFinite() }
 

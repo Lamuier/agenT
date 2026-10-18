@@ -6,7 +6,11 @@ internal object CodexRefreshPolicy {
     fun shouldFetch(usage: CodexQuotaOverview?, now: Long, maxAge: Long): Boolean {
         usage ?: return true
         val fetched = DisplayTime.parseStoredLocal(usage.fetchedAt)?.epochSecond
-        val age = maxOf(usage.cacheAgeSeconds.toLong(), fetched?.let { (now - it).coerceAtLeast(0) } ?: Long.MAX_VALUE)
+        val fetchedAge = fetched?.let {
+            val diff = now - it
+            if (diff < -5L) Long.MAX_VALUE else diff.coerceAtLeast(0L)
+        } ?: Long.MAX_VALUE
+        val age = maxOf(usage.cacheAgeSeconds.toLong(), fetchedAge)
         if (age >= maxAge) return true
         // Retry an elapsed window even if the generic cache freshness interval has not elapsed.
         return age >= 60 && listOfNotNull(usage.primary?.resetAtEpochSeconds, usage.secondary?.resetAtEpochSeconds).any { it <= now }

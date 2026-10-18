@@ -51,7 +51,8 @@ object CursorCustomTabs {
 
     private fun isAllowed(url: String): Boolean =
         AgentTaskPresentation.isAllowedCustomTabUrl(url) || StatusPresentation.isSafeStatusUrl(url) ||
-            com.lamuier.agenT.codex.CodexPublicResetLinks.isAllowed(url)
+            com.lamuier.agenT.codex.CodexPublicResetLinks.isAllowed(url) || AntigravityLinks.isAllowed(url) ||
+            com.lamuier.agenT.providers.UsageProvider.entries.any { it.consoleUrl == url }
 
     private fun openExternal(context: Context, uri: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, uri)

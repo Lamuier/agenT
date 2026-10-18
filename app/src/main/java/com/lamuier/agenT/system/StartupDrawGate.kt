@@ -32,6 +32,7 @@ internal class StartupDrawGate(private val view: View, private val onFirstDraw: 
         released = true
         // View 附着到窗口后 observer 可能已替换，应从当前 observer 移除监听。
         view.viewTreeObserver.takeIf { it.isAlive }?.removeOnPreDrawListener(listener)
+        view.postInvalidateOnAnimation()
     }
 
     fun dispose() {

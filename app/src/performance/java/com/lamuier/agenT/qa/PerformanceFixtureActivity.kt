@@ -6,6 +6,7 @@ import android.widget.TextView
 import com.lamuier.agenT.codex.*
 import com.lamuier.agenT.data.*
 import com.lamuier.agenT.network.*
+import com.lamuier.agenT.providers.*
 import com.lamuier.agenT.usage.*
 import com.lamuier.agenT.util.TokenUtils
 import org.json.JSONArray
@@ -33,11 +34,12 @@ class PerformanceFixtureActivity : Activity() {
         UsageCacheStore(this).clear(); TasksCacheStore(this).clear()
         val codex = CodexQuotaRepository(this)
         codex.clearCredential()
+        UsageProvider.entries.forEach { ProviderStore(this, it).clear() }
         UsageHistoryStore(this).clear()
         DashboardPreferences.get(this).setCodexUsageAutoRefresh(false)
         ThemePreferences.get(this).update(ThemeSettings())
         getSharedPreferences("codex_public_resets_v1", 0).edit().clear().commit()
-        StatusCacheStore(this).clear(); StatusCacheStore(this, OfficialStatusProvider.Codex.cacheName).clear()
+        OfficialStatusProvider.entries.forEach { StatusCacheStore(this, it.cacheName).clear() }
         if (!cached) return
         val now = Instant.now(); val millis = now.toEpochMilli()
         val fixture = ReviewFixture.create(ZoneId.systemDefault(), now)

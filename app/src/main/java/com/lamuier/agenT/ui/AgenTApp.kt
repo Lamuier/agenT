@@ -31,6 +31,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.lamuier.agenT.providers.*
+import com.lamuier.agenT.model.TokenProvider
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaViewModel
 import com.lamuier.agenT.data.NotificationSettings
@@ -58,6 +60,7 @@ private const val FOREGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1_000L
 fun AgenTApp(
     viewModel: AgenTViewModel,
     codexViewModel: CodexQuotaViewModel,
+    providersViewModel: ProvidersViewModel,
     themeSettings: ThemeSettings,
     notificationSettings: NotificationSettings,
     pendingShortcutAction: ShortcutAction?,
@@ -88,7 +91,8 @@ fun AgenTApp(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val codexState by codexViewModel.state.collectAsStateWithLifecycle()
-    if (state.stage == AppStage.Dashboard && !codexState.booting && pendingShortcutAction == null) {
+    val providers by providersViewModel.state.collectAsStateWithLifecycle()
+    if (state.stage == AppStage.Dashboard && !codexState.booting && !providers.booting && pendingShortcutAction == null) {
         // 成功组合出本地恢复后的首页，才放行首帧；后续网络刷新不再拦截绘制。
         SideEffect(onInitialContentReady)
     }
@@ -107,9 +111,10 @@ fun AgenTApp(
     var settingsSection by rememberSaveable { mutableStateOf<String?>(null) }
     val dashboardStates = rememberSaveableStateHolder()
     var deleteTarget by remember { mutableStateOf<CursorAccount?>(null) }
-    var showCodexDeleteDialog by remember { mutableStateOf(false) }
+    var deleteProvider by rememberSaveable { mutableStateOf<UsageProvider?>(null) }
+    var showCodexDeleteDialog by rememberSaveable { mutableStateOf(false) }
     val sheetOpen = manageTokens || showTokenHelp || showSettings
-    var visibleTab by remember { mutableStateOf(pendingOpenTab ?: tabOrder.firstOrNull() ?: DashboardTab.Overview) }
+    var visibleTab by rememberSaveable { mutableStateOf(pendingOpenTab ?: tabOrder.firstOrNull() ?: DashboardTab.Overview) }
     LaunchedEffect(firstFrameDrawn, visibleTab, sheetOpen, lifecycleOwner) {
         val active = firstFrameDrawn && visibleTab == DashboardTab.Usage && !sheetOpen
         if (!active) { viewModel.setHistoryActive(false); codexViewModel.setHistoryActive(false); return@LaunchedEffect }
@@ -127,18 +132,24 @@ fun AgenTApp(
     }
     val displayZone = remember(timeZoneId) { DisplayTimeZones.resolve(timeZoneId) }
     val appContext = LocalContext.current.applicationContext
-    LaunchedEffect(firstFrameDrawn, codexState.credential, codexState.usage, codexState.serviceStatus, codexState.statusError,
+    val providerCacheSnap = remember(providers.sources) {
+        providers.sources.mapValues { (_, v) -> listOf(v.credential, v.usage, v.serviceStatus, v.error, v.statusError) }
+    }
+    LaunchedEffect(firstFrameDrawn, providerCacheSnap, codexState.credential, codexState.usage, codexState.serviceStatus, codexState.statusError,
         state.serviceStatus, state.statusError) {
         if (!firstFrameDrawn) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            com.lamuier.agenT.widget.AgenTWidgetUpdater.requestUpdate(appContext)
+            com.lamuier.agenT.widget.AgenTWidgetUpdater.pushFromCache(appContext)
             com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshFromCache()
         }
     }
     fun openTokenManagement(fromSettings: Boolean = false, preferred: com.lamuier.agenT.model.TokenProvider? = null) {
-        if (!manageTokens) tokenProvider = com.lamuier.agenT.model.TokenProvider.initial(account != null, codexState.credential != null, preferred)
+        if (!manageTokens || preferred != null) {
+            tokenProvider = com.lamuier.agenT.model.TokenProvider.initial(account != null, codexState.credential != null, preferred)
+        }
         viewModel.clearError()
         codexViewModel.clearError()
+        UsageProvider.entries.forEach(providersViewModel::clearError)
         showSettings = false
         showTokenHelp = false
         returnToSettings = fromSettings
@@ -152,6 +163,7 @@ fun AgenTApp(
             state.submitting || codexState.saving) return@LaunchedEffect
         onShortcutActionConsumed()
         deleteTarget = null
+        deleteProvider = null
         showCodexDeleteDialog = false
         when (action) {
             ShortcutAction.Overview, ShortcutAction.Tasks -> Unit // Consumed as a tab destination by MainActivity.
@@ -171,6 +183,8 @@ fun AgenTApp(
             showTokenHelp = false
             showSettings = false
             deleteTarget = null
+            deleteProvider = null
+            showCodexDeleteDialog = false
         }
     }
 
@@ -186,6 +200,10 @@ fun AgenTApp(
         if (codexState.publicResetsError != null) add("public-resets")
         if (codexState.resetError != null) add("codex-reset-settings")
         if (codexState.usageHistoryError) add("codex-observations")
+        UsageProvider.entries.forEach { source ->
+            if (providers[source].error != null) add("${source.id}-usage")
+            if (providers[source].statusError != null) add("${source.id}-status")
+        }
     }, sheetOpen, snackbarHostState)
 
     LaunchedEffect(state.stage, state.loadingAccounts, account?.id, state.selectedAccountId) {
@@ -201,23 +219,29 @@ fun AgenTApp(
 
     val currentState by rememberUpdatedState(state)
     val currentCodexState by rememberUpdatedState(codexState)
+    val currentProviders by rememberUpdatedState(providers)
     val currentAccount by rememberUpdatedState(account)
     val currentSheetOpen by rememberUpdatedState(sheetOpen)
     val currentFirstFrameDrawn by rememberUpdatedState(firstFrameDrawn)
-    LaunchedEffect(lifecycleOwner, viewModel, codexViewModel) {
+    LaunchedEffect(lifecycleOwner, viewModel, codexViewModel, providersViewModel) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             // Restore both local stores, and let surviving requests from a previous foreground finish.
             // Opening or closing settings does not create another foreground session.
             snapshotFlow {
                 currentFirstFrameDrawn && currentState.stage == AppStage.Dashboard && !currentState.loadingAccounts &&
                     !currentState.submitting && !currentSheetOpen &&
-                    !dashboardRefreshBusy(currentState, currentCodexState)
+                    !dashboardRefreshBusy(currentState, currentCodexState) && !currentProviders.busy
             }.first { it }
             val entryAccount = currentAccount
             val entryCredential = currentCodexState.credential
+            val entryProviders = currentProviders.sources.mapValues { it.value.credential }
             val requests = buildList<RefreshRequest> {
                 add { result -> viewModel.refreshStatus(false, true, result) }
                 add { result -> codexViewModel.refreshStatus(false, result) }
+                UsageProvider.entries.forEach { source ->
+                    if (source.statusProvider != null) add { result -> providersViewModel.refreshStatus(source, false, result) }
+                    if (entryProviders[source] != null) add { result -> providersViewModel.refresh(source, false, result) }
+                }
                 if (entryAccount != null && !entryAccount.tokenExpired) {
                     add { result -> viewModel.refreshUsage(false, true, result) }
                     add { result -> viewModel.refreshTasks(false, true, result) }
@@ -229,6 +253,7 @@ fun AgenTApp(
             if (refreshOnForeground(requests) && !currentSheetOpen &&
                 currentAccount?.id == entryAccount?.id &&
                 currentCodexState.credential?.updatedAt == entryCredential?.updatedAt &&
+                currentProviders.sources.all { (source, value) -> value.credential == entryProviders[source] } &&
                 lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 OperationFeedback.success()
             }
@@ -248,6 +273,10 @@ fun AgenTApp(
                         if (!currentSheetOpen) {
                             viewModel.refreshStatus(force = false, silent = true)
                             codexViewModel.refreshStatus(force = false)
+                            UsageProvider.entries.forEach { source ->
+                                providersViewModel.refreshStatus(source)
+                                providersViewModel.refresh(source)
+                            }
                         }
                     }
                 }
@@ -270,7 +299,9 @@ fun AgenTApp(
         AppStage.Booting -> Unit
         AppStage.Dashboard -> if (!showSettings) dashboardStates.SaveableStateProvider("dashboard") { DashboardScreen(
             state = state,
-            codexState = codexState,
+            codexState = codexState, providers = providers,
+            onManageProvider = { openTokenManagement(preferred = it.tokenProvider) },
+            onRefreshProvider = { source -> providersViewModel.refresh(source, true) { if (it == RefreshResult.Updated) OperationFeedback.success() } },
             snackbarHostState = snackbarHostState,
             tabOrder = tabOrder,
             pendingOpenTab = pendingOpenTab,
@@ -282,16 +313,24 @@ fun AgenTApp(
             onOpenTabConsumed = onOpenTabConsumed,
             onLoadHistoryWindow = viewModel::loadHistoryWindow,
             onRefresh = {
-                val cursorConnected = account != null
-                val codexConnected = codexState.credential != null
+                val cursorConnected = account != null && !account.tokenExpired
+                val codexConnected = codexState.credential?.let { !it.expired && !it.invalid } == true
                 val publicLoaded = codexState.publicResets != null
                 val parts = buildSet {
                     add("cursor-status"); add("codex-status")
+                    UsageProvider.entries.forEach { source ->
+                        if (source.statusProvider != null) add("${source.id}-status")
+                        if (providers[source].credential != null) add("${source.id}-usage")
+                    }
                     if (cursorConnected) { add("cursor-usage"); add("cursor-tasks") }
                     if (codexConnected) add("codex-usage")
                     if (publicLoaded) add("public-resets")
                 }
                 val batch = OperationFeedback.batch(parts)
+                UsageProvider.entries.forEach { source ->
+                    if (source.statusProvider != null) providersViewModel.refreshStatus(source, true) { batch.finish("${source.id}-status", it == RefreshResult.Updated) }
+                    if (providers[source].credential != null) providersViewModel.refresh(source, true) { batch.finish("${source.id}-usage", it == RefreshResult.Updated) }
+                }
                 if (cursorConnected) {
                     viewModel.refreshUsage(true, true) { batch.finish("cursor-usage", it == RefreshResult.Updated) }
                     viewModel.refreshTasks(true, true) { batch.finish("cursor-tasks", it == RefreshResult.Updated) }
@@ -314,16 +353,24 @@ fun AgenTApp(
     if (manageTokens && state.stage == AppStage.Dashboard) {
         TokenManagementSheet(
             provider = tokenProvider, cursorAccount = account, codexCredential = codexState.credential,
-            busy = state.submitting || state.loadingAccounts || codexState.saving || codexState.booting || codexState.resetSaving,
-            error = if (tokenProvider == com.lamuier.agenT.model.TokenProvider.Cursor) state.error else codexState.error,
+            extraCredentials = providers.sources.mapNotNull { (source, value) -> value.credential?.let { source.tokenProvider to it } }.toMap(),
+            busy = state.submitting || state.loadingAccounts || codexState.saving || codexState.booting || codexState.resetSaving ||
+                providers.booting || providers.sources.values.any { it.saving },
+            error = when (tokenProvider) {
+                TokenProvider.Cursor -> state.error
+                TokenProvider.Codex -> codexState.error
+                else -> providers[UsageProvider.entries.first { it.tokenProvider == tokenProvider }].error
+            },
             onProviderChange = { selected ->
                 tokenProvider = selected
                 viewModel.clearError()
                 codexViewModel.clearError()
+                UsageProvider.entries.forEach(providersViewModel::clearError)
             },
             onClearError = {
                 if (tokenProvider == com.lamuier.agenT.model.TokenProvider.Cursor) viewModel.clearError()
-                else codexViewModel.clearError()
+                else if (tokenProvider == TokenProvider.Codex) codexViewModel.clearError()
+                else providersViewModel.clearError(UsageProvider.entries.first { it.tokenProvider == tokenProvider })
             },
             onDismiss = {
                 manageTokens = false
@@ -335,16 +382,20 @@ fun AgenTApp(
                     val current = account
                     if (current == null) viewModel.addAccount(metadata, token, confirmed)
                     else viewModel.updateAccount(current.id, metadata.takeIf { it != current.alias }, token.ifBlank { null }, confirmed)
-                } else codexViewModel.saveCredential(token, metadata, confirmed)
+                } else if (provider == TokenProvider.Codex) codexViewModel.saveCredential(token, metadata, confirmed)
+                else providersViewModel.save(UsageProvider.entries.first { it.tokenProvider == provider }, token,
+                    KimiRegion.fromId(metadata), confirmed)
             },
             onDeleteRequest = { provider ->
                 if (provider == com.lamuier.agenT.model.TokenProvider.Cursor) deleteTarget = account
-                else showCodexDeleteDialog = true
+                else if (provider == TokenProvider.Codex) showCodexDeleteDialog = true
+                else deleteProvider = UsageProvider.entries.first { it.tokenProvider == provider }
             },
             onRevealSavedToken = { provider ->
                 if (provider == com.lamuier.agenT.model.TokenProvider.Cursor)
                     viewModel.revealAccessToken(requireNotNull(account).id)
-                else codexViewModel.revealToken()
+                else if (provider == TokenProvider.Codex) codexViewModel.revealToken()
+                else providersViewModel.reveal(UsageProvider.entries.first { it.tokenProvider == provider })
             },
         )
     }
@@ -377,7 +428,7 @@ fun AgenTApp(
             onTabOrderReset = onTabOrderReset,
             onManageTokens = { openTokenManagement(fromSettings = true) },
             cursorAccount = account,
-            codexState = codexState,
+            codexState = codexState, providers = providers,
             onCodexResetRemindersToggle = onCodexResetRemindersToggle,
             onCatLanguageToggle = onCatLanguageToggle,
             codexUsageAutoRefresh = codexUsageAutoRefresh,
@@ -386,6 +437,15 @@ fun AgenTApp(
     }
 
 
+    deleteProvider?.let { source ->
+        FoldSafeAlertDialog(onDismissRequest = { if (!providers[source].saving) deleteProvider = null },
+            title = { Text(stringResource(R.string.provider_delete_title, source.title)) },
+            text = { Text(stringResource(R.string.provider_delete_body)) },
+            confirmButton = { TextButton(enabled = !providers[source].saving, onClick = {
+                providersViewModel.delete(source) { OperationFeedback.success(); deleteProvider = null }
+            }) { Text(stringResource(R.string.action_delete)) } },
+            dismissButton = { TextButton(enabled = !providers[source].saving, onClick = { deleteProvider = null }) { Text(stringResource(R.string.action_cancel)) } })
+    }
     if (showCodexDeleteDialog) {
         FoldSafeAlertDialog(
             onDismissRequest = { if (!codexState.saving) showCodexDeleteDialog = false },

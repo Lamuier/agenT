@@ -2,6 +2,7 @@ package com.lamuier.agenT.data
 
 import android.content.Context
 import com.lamuier.agenT.BuildConfig
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 
 /** 云端任务列表缓存：与用量缓存同为账号敏感数据，按 账号+凭据修订号 加密存储。 */
@@ -10,43 +11,73 @@ class TasksCacheStore(context: Context) {
     private val crypto by lazy { KeystoreCrypto(KEY_ALIAS) }
 
     fun read(accountId: Int, revision: Long): CacheEntry? {
-        val encrypted = preferences.getString(key(accountId, revision), null) ?: return null
+        val storageKey = key(accountId, revision)
+        val encrypted = preferences.getString(storageKey, null) ?: return null
+        decryptedCache[storageKey]?.takeIf { it.first == encrypted }?.let { return it.second }
         return try {
             val wrapper = JSONObject(crypto.decrypt(encrypted, aad(accountId, revision)))
             if (wrapper.optInt("schema") != CACHE_SCHEMA) return null
             CacheEntry(
                 rawJson = wrapper.getJSONObject("tasks").toString(),
                 storedAtMillis = wrapper.getLong("stored_at"),
-            )
+            ).also {
+                decryptedCache[storageKey] = encrypted to it
+            }
         } catch (_: Exception) {
-            preferences.edit().remove(key(accountId, revision)).apply()
+            synchronized(lock) {
+                decryptedCache.remove(storageKey)
+                preferences.edit().remove(storageKey).apply()
+            }
             null
         }
     }
 
-    fun write(accountId: Int, revision: Long, rawJson: String, storedAtMillis: Long): Boolean {
+    fun write(accountId: Int, revision: Long, rawJson: String, storedAtMillis: Long): Boolean = synchronized(lock) {
+        val prefix = prefix(accountId)
+        val hasNewerRevision = preferences.all.keys.any { existingKey ->
+            existingKey.startsWith(prefix) &&
+                (existingKey.removePrefix(prefix).toLongOrNull() ?: Long.MIN_VALUE) > revision
+        }
+        if (hasNewerRevision) return@synchronized false
+        val normalized = JSONObject(rawJson).toString()
         val wrapper = JSONObject()
             .put("schema", CACHE_SCHEMA)
             .put("stored_at", storedAtMillis)
-            .put("tasks", JSONObject(rawJson))
+            .put("tasks", JSONObject(normalized))
         val encrypted = crypto.encrypt(wrapper.toString(), aad(accountId, revision))
-        val prefix = prefix(accountId)
         val editor = preferences.edit()
-        preferences.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
-        return editor.putString(key(accountId, revision), encrypted).commit()
+        preferences.all.keys.filter { it.startsWith(prefix) }.forEach { oldKey ->
+            decryptedCache.remove(oldKey)
+            editor.remove(oldKey)
+        }
+        val targetKey = key(accountId, revision)
+        val committed = editor.putString(targetKey, encrypted).commit()
+        if (committed) {
+            decryptedCache[targetKey] = encrypted to CacheEntry(rawJson = normalized, storedAtMillis = storedAtMillis)
+        }
+        committed
     }
 
-    fun remove(accountId: Int): Boolean {
+    fun remove(accountId: Int): Boolean = synchronized(lock) {
         val prefix = prefix(accountId)
         val editor = preferences.edit()
-        preferences.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
-        return editor.commit()
+        preferences.all.keys.filter { it.startsWith(prefix) }.forEach { oldKey ->
+            decryptedCache.remove(oldKey)
+            editor.remove(oldKey)
+        }
+        editor.commit()
     }
 
-    fun remove(accountId: Int, revision: Long): Boolean =
-        preferences.edit().remove(key(accountId, revision)).commit()
+    fun remove(accountId: Int, revision: Long): Boolean = synchronized(lock) {
+        val targetKey = key(accountId, revision)
+        decryptedCache.remove(targetKey)
+        preferences.edit().remove(targetKey).commit()
+    }
 
-    fun clear(): Boolean = preferences.edit().clear().commit()
+    fun clear(): Boolean = synchronized(lock) {
+        decryptedCache.clear()
+        preferences.edit().clear().commit()
+    }
 
     private fun key(accountId: Int, revision: Long): String = "tasks_${accountId}_r$revision"
 
@@ -59,6 +90,8 @@ class TasksCacheStore(context: Context) {
         const val CACHE_SCHEMA = 1
         const val PREFERENCES_NAME = "cursor_tasks_cache_v1"
         const val KEY_ALIAS = "cursor_tasks_cache_key_v1"
+        val lock = Any()
+        val decryptedCache = ConcurrentHashMap<String, Pair<String, CacheEntry>>()
     }
 
     data class CacheEntry(

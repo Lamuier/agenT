@@ -74,20 +74,38 @@ class NotificationPreferences internal constructor(private val preferences: Shar
         _settings.value = _settings.value.copy(catLanguageEnabled = enabled)
     }
 
+    @Synchronized
     fun resetAlreadyNotified(key: String): Boolean = key in preferences.getStringSet(KEY_RESET_NOTIFIED, emptySet()).orEmpty()
+
+    @Synchronized
     fun markResetNotified(key: String) {
-        val keys = preferences.getStringSet(KEY_RESET_NOTIFIED, emptySet()).orEmpty().toMutableSet()
-        keys += key
-        preferences.edit().putStringSet(KEY_RESET_NOTIFIED, keys.toList().takeLast(500).toSet()).apply()
+        val existingSet = preferences.getStringSet(KEY_RESET_NOTIFIED, emptySet()).orEmpty()
+        val ordered = preferences.getString(KEY_RESET_NOTIFIED_ORDER, null)
+            ?.lineSequence()
+            ?.filter { it.isNotEmpty() && it in existingSet }
+            ?.toMutableList()
+            ?: mutableListOf()
+        existingSet.forEach { item ->
+            if (item !in ordered) ordered.add(item)
+        }
+        ordered.remove(key)
+        ordered.add(key)
+        val bounded = ordered.takeLast(500)
+        preferences.edit()
+            .putStringSet(KEY_RESET_NOTIFIED, bounded.toSet())
+            .putString(KEY_RESET_NOTIFIED_ORDER, bounded.joinToString("\n"))
+            .apply()
     }
 
     /** 本计费周期内已发过提醒的阈值档位（去重用）。 */
+    @Synchronized
     fun remindedThresholds(cycleKey: String?): Set<Int> {
         val raw = preferences.getStringSet(thresholdKey(cycleKey), emptySet()) ?: emptySet()
         return raw.mapNotNull { it.toIntOrNull() }.toSet()
     }
 
     /** 标记某阈值档位已提醒；周期切换（cycleKey 变化）后自动清零。 */
+    @Synchronized
     fun markThresholdReminded(cycleKey: String?, threshold: Int) {
         val updated = remindedThresholds(cycleKey).toMutableSet().apply { add(threshold) }
         preferences.edit()
@@ -106,6 +124,7 @@ class NotificationPreferences internal constructor(private val preferences: Shar
         private const val KEY_CODEX_RESET_REMINDERS = "codex_reset_reminders"
         private const val KEY_CAT_LANGUAGE = "cat_language_enabled"
         private const val KEY_RESET_NOTIFIED = "codex_reset_notified_v1"
+        private const val KEY_RESET_NOTIFIED_ORDER = "codex_reset_notified_order_v1"
         private const val KEY_THRESHOLDS_PREFIX = "reminded_thresholds_"
         private const val KEY_THRESHOLDS_DEFAULT = "reminded_thresholds_default"
 

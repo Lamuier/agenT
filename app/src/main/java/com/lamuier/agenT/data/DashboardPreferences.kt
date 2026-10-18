@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** 主界面功能页签顺序、任务分组方式、展示时区与界面语言，保存在本机 SharedPreferences。 */
-class DashboardPreferences(private val context: Context) {
-    private val preferences = context.applicationContext
+class DashboardPreferences(context: Context) {
+    private val context: Context = context.applicationContext
+    private val preferences = this.context
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     init {

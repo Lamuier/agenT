@@ -86,19 +86,16 @@ class AgenTViewModel(
             return
         }
 
-        val selectionError = saveSelection(accountId)
-        val cached = repository.cachedUsage(accountId)?.takeIf { it.accountId == accountId }
-        val cachedTasks = repository.cachedTasks(accountId)?.takeIf { it.accountId == accountId }
         _state.update {
             it.copy(
                 selectedAccountId = accountId,
-                usage = cached,
-                tasks = cachedTasks,
-                loadingUsage = cached == null,
-                loadingTasks = cachedTasks == null,
+                usage = null,
+                tasks = null,
+                loadingUsage = true,
+                loadingTasks = true,
                 refreshing = false,
                 refreshingTasks = false,
-                error = selectionError,
+                error = null,
                 tasksError = null,
                 extraHistory = emptyMap(),
                 loadingHistoryKey = null,
@@ -108,8 +105,26 @@ class AgenTViewModel(
                 historyErrorKey = null,
             )
         }
-        refreshSelected(force = false, silent = cached != null)
-        syncWidgetsFromCache()
+        viewModelScope.launch {
+            val (selectionError, cached, cachedTasks) = withContext(Dispatchers.IO) {
+                val err = saveSelection(accountId)
+                val usage = repository.cachedUsage(accountId)?.takeIf { it.accountId == accountId }
+                val tasks = repository.cachedTasks(accountId)?.takeIf { it.accountId == accountId }
+                Triple(err, usage, tasks)
+            }
+            if (_state.value.selectedAccountId != accountId) return@launch
+            _state.update {
+                it.copy(
+                    usage = cached ?: it.usage,
+                    tasks = cachedTasks ?: it.tasks,
+                    loadingUsage = (cached ?: it.usage) == null,
+                    loadingTasks = (cachedTasks ?: it.tasks) == null,
+                    error = selectionError ?: it.error,
+                )
+            }
+            refreshSelected(force = false, silent = cached != null)
+            syncWidgetsFromCache()
+        }
     }
 
     fun loadHistoryWindow(

@@ -16,6 +16,24 @@ for profile, title in labels.items():
         if (root / file).is_file():
             cards.append(f'<figure><figcaption>{caption}</figcaption><a href="{file}"><img src="{file}" alt="{html.escape(title)} {caption}"></a></figure>')
     sections.append('<section><h2>' + html.escape(title) + '</h2><div class="pair">' + ''.join(cards) + '</div></section>')
+for profile in ['zh', 'en', 'dark', 'compact', 'font200', 'compact-font200']:
+    cards = []
+    for file in sorted(root.glob('four-' + profile + '-*.png')):
+        caption = file.stem.removeprefix('four-' + profile + '-')
+        if caption.split('-', 1)[0] not in {'2x1', '2x2', '4x1', '4x2', '4x3'}:
+            continue
+        cards.append(f'<figure><figcaption>{html.escape(caption)}</figcaption><a href="{file.name}"><img src="{file.name}" alt="{html.escape(caption)}"></a></figure>')
+    if cards:
+        sections.append('<section><h2>四来源 · ' + html.escape(profile) + '</h2><div class="pair">' + ''.join(cards) + '</div></section>')
+antigravity = root.parent / 'antigravity-review'
+for pattern, title in [('usage-*.png', 'Antigravity · 用量页'), ('widget-*.png', 'Antigravity · 第五来源分页')]:
+    cards = []
+    for file in sorted(antigravity.glob(pattern)):
+        href = '../antigravity-review/' + file.name
+        caption = file.stem
+        cards.append(f'<figure><figcaption>{html.escape(caption)}</figcaption><a href="{href}"><img src="{href}" alt="{html.escape(caption)}"></a></figure>')
+    if cards:
+        sections.append('<section><h2>' + title + '</h2><div class="pair">' + ''.join(cards) + '</div></section>')
 page = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>agenT 小组件验收</title><style>body{margin:0;padding:32px;background:#eef2f5;color:#192332;font:15px system-ui,sans-serif}h1{margin:0 0 12px}p{color:#5b6979;max-width:850px;line-height:1.7}section{margin-top:32px}.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;max-width:1100px}figure{margin:0;background:white;border-radius:22px;padding:16px}figcaption{margin-bottom:12px;font-weight:600}img{width:100%;height:auto;display:block}a{display:block}@media(max-width:700px){body{padding:18px}.pair{grid-template-columns:1fr}}</style>
 <h1>agenT 小组件验收</h1><p>真实 Android RemoteViews 的 JVM 原生绘制，使用公开服务名称与样例用量。覆盖中英文、深浅色、紧凑尺寸和大字号；不代表实际桌面宿主截图。测试同时检查文字和父视图边界，原图可点击查看。</p>SECTIONS</html>'''

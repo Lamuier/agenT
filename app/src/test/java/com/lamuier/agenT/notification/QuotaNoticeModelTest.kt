@@ -14,6 +14,7 @@ class QuotaNoticeModelTest {
         val metrics = QuotaNoticeModel.metrics(null, quota(), 1)
         assertEquals(listOf(QuotaNoticeSource.CodexPrimary, QuotaNoticeSource.CodexWeekly), metrics.map { it.source })
         assertEquals(listOf(85.0, 100.0), metrics.map { it.usedPercent })
+        assertEquals(listOf(100L, 200L), metrics.map { it.resetAtEpochSeconds })
     }
 
     @Test fun windowAndCredentialChangesHaveIndependentReminderKeys() {

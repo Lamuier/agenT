@@ -42,7 +42,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
     var period by rememberSaveable { mutableStateOf(CodexResetPeriod.Week) }
     var clock by remember { mutableStateOf(Instant.now()) }
     val now = fixedNow ?: clock
-    var configuring by remember { mutableStateOf(false) }
+    var configuring by rememberSaveable { mutableStateOf(false) }
     var explaining by rememberSaveable { mutableStateOf(false) }
     var heatmapMonths by rememberSaveable { mutableIntStateOf(6) }
     var heatmapEnd by rememberSaveable(zone.id) { mutableStateOf(now.atZone(zone).toLocalDate()) }
@@ -59,16 +59,18 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
     val anchor = state.resetLedger?.subscriptionDay
     val range = CodexResetPeriods.range(period, now, zone, anchor)
     val snapshot = state.publicResets
-    val periodEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), range)
+    val periodEntries = remember(snapshot?.events, range) { CodexResetTimeline.entries(snapshot?.events.orEmpty(), range) }
     val metrics = remember(snapshot?.events, range, now.atZone(zone).toLocalDate(), zone) {
         if (snapshot != null && range != null) resetDashboardData(snapshot.events, range, now, zone) else null
     }
-    val allEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), null, allPublicHistory = true)
+    val allEntries = remember(snapshot?.events) { CodexResetTimeline.entries(snapshot?.events.orEmpty(), null, allPublicHistory = true) }
     val chartFrom = heatmapEnd.minusMonths(heatmapMonths.toLong()).plusDays(1)
     val chartRange = CodexResetRange(chartFrom.atStartOfDay(zone).toEpochSecond(), heatmapEnd.plusDays(1).atStartOfDay(zone).toEpochSecond())
-    val chartEntries = CodexResetTimeline.entries(snapshot?.events.orEmpty(), chartRange)
+    val chartEntries = remember(snapshot?.events, chartRange) { CodexResetTimeline.entries(snapshot?.events.orEmpty(), chartRange) }
     val chart = remember(chartEntries, chartFrom, heatmapEnd, zone) { CodexResetHeatmap.build(chartEntries, chartFrom, heatmapEnd, zone) }
-    val dayEntries = selectedDay?.let { day -> allEntries.filter { Instant.ofEpochSecond(it.at).atZone(zone).toLocalDate() == day } }.orEmpty()
+    val dayEntries = remember(allEntries, selectedDay, zone) {
+        selectedDay?.let { day -> allEntries.filter { Instant.ofEpochSecond(it.at).atZone(zone).toLocalDate() == day } }.orEmpty()
+    }
     val visibleEntries = if (selectedDay == null) periodEntries else dayEntries
     AdaptiveLazyServiceContent(primary = {
         item(key = "summary") {
@@ -90,6 +92,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
                     TextButton(onClick = { configuring = true }, enabled = state.credential != null && !state.resetSaving) {
                         Text(anchor?.let { stringResource(R.string.reset_dash_anchor, it) } ?: stringResource(R.string.reset_set_anchor))
                     }
+                    if (state.credential == null) Text(stringResource(R.string.reset_connect_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (range == null) Text(stringResource(R.string.reset_anchor_missing), style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -132,7 +135,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { heatmapEnd = heatmapEnd.minusMonths(heatmapMonths.toLong()); selectedDay = null }) { Text(stringResource(R.string.reset_heatmap_earlier)) }
-                    Text(chartFrom.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")) + " — " + heatmapEnd.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
+                    Text(chartFrom.format(HEATMAP_RANGE_FORMATTER) + " — " + heatmapEnd.format(HEATMAP_RANGE_FORMATTER),
                         Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     TextButton(onClick = { heatmapEnd = minOf(heatmapEnd.plusMonths(heatmapMonths.toLong()), today); selectedDay = null }, enabled = heatmapEnd < today) {
                         Text(stringResource(R.string.reset_heatmap_later)) }
@@ -219,7 +222,7 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
 }
 
 @Composable private fun ResetAnchorDialog(initial: Int?, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
-    var day by remember { mutableStateOf(initial?.toString().orEmpty()) }
+    var day by rememberSaveable(initial) { mutableStateOf(initial?.toString().orEmpty()) }
     FoldSafeAlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.reset_set_anchor)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.reset_anchor_help), style = MaterialTheme.typography.bodySmall)
@@ -228,8 +231,11 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
         confirmButton = { TextButton(onClick = { onSave(day.toInt()) }, enabled = day.toIntOrNull()?.let { it in 1..31 } == true) { Text(stringResource(R.string.action_save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } })
 }
+private val HEATMAP_RANGE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd")
+private val RESET_DATE_ONLY_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd")
+private val RESET_DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd HH:mm")
 private fun resetStamp(epoch: Long, zone: ZoneId, dateOnly: Boolean = false): String =
-    Instant.ofEpochSecond(epoch).atZone(zone).format(DateTimeFormatter.ofPattern(if (dateOnly) "yyyy/MM/dd" else "MM/dd HH:mm"))
+    Instant.ofEpochSecond(epoch).atZone(zone).format(if (dateOnly) RESET_DATE_ONLY_FORMATTER else RESET_DATE_TIME_FORMATTER)
 private fun periodLabel(period: CodexResetPeriod) = when (period) {
     CodexResetPeriod.Week -> R.string.reset_period_week
     CodexResetPeriod.Month -> R.string.reset_period_month

@@ -27,11 +27,15 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@Immutable
 internal data class ResetDailyCount(val date: LocalDate, val regular: Int, val banked: Int)
+@Immutable
 internal data class ResetDashboardData(val regular: Int, val banked: Int, val latest: Long?, val days: List<ResetDailyCount>) {
     val total get() = regular + banked
     val recordedDays get() = days.count { it.regular + it.banked > 0 }
 }
+
+private val CHART_AXIS_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd")
 
 /** Counts supplied public records, never credits, account redemptions or inferred quota-window resets. */
 internal fun resetDashboardData(events: List<CodexPublicReset>, range: CodexResetRange, now: Instant, zone: ZoneId): ResetDashboardData {
@@ -47,6 +51,7 @@ internal fun resetDashboardData(events: List<CodexPublicReset>, range: CodexRese
     return ResetDashboardData(entries.count { it.public.type == "regular" }, entries.count { it.public.type == "banked" }, latest, days)
 }
 
+@Immutable
 internal data class ResetChartColors(val regular: Color, val banked: Color, val empty: Color)
 @Composable internal fun resetChartColors() = ResetChartColors(MaterialTheme.colorScheme.primary,
     MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.surfaceContainerHighest)
@@ -158,7 +163,7 @@ internal fun ResetFrequencyChart(data: ResetDashboardData?, selected: LocalDate?
                 }
             }
             Row(Modifier.fillMaxWidth()) {
-                val formatter = DateTimeFormatter.ofPattern("MM/dd")
+                val formatter = CHART_AXIS_DATE_FORMATTER
                 Text(days.first().date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
                 if (days.size > 2) Text(days[days.size / 2].date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
                 if (days.size > 1) Text(days.last().date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End)

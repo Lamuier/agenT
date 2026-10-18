@@ -98,10 +98,18 @@ class CursorRepository(context: Context) {
             if (!allowInvalidCredential) return null
         }
         val cached = usageCache.read(accountId, snapshot.revision) ?: return null
-        val overview = runCatching { UsageJsonParser.parseUsage(cached.rawJson, isLocalCache = true) }
+        val overview = synchronized(memoryLock) {
+            parsedUsageCache[accountId]?.takeIf {
+                it.revision == snapshot.revision && it.rawJson == cached.rawJson
+            }?.overview
+        } ?: runCatching { UsageJsonParser.parseUsage(cached.rawJson, isLocalCache = true) }
             .getOrElse {
                 usageCache.remove(accountId)
                 return null
+            }.also { parsed ->
+                synchronized(memoryLock) {
+                    parsedUsageCache[accountId] = ParsedUsageCacheEntry(snapshot.revision, cached.rawJson, parsed)
+                }
             }
         if (overview.accountId != accountId || !accountStore.isCurrent(accountId, snapshot.revision)) {
             usageCache.remove(accountId)
@@ -134,9 +142,11 @@ class CursorRepository(context: Context) {
                 }
                 val storedAtMillis = System.currentTimeMillis()
                 val normalizedJson = UsageJsonParser.toJson(fetched)
-                runCatching {
-                    usageCache.write(accountId, snapshot.revision, normalizedJson, storedAtMillis)
-                }
+                accountStore.withCurrentRevision(accountId, snapshot.revision) {
+                    runCatching {
+                        usageCache.write(accountId, snapshot.revision, normalizedJson, storedAtMillis)
+                    }
+                } ?: throw AccountRevisionChangedException()
                 if (!accountStore.isCurrent(accountId, snapshot.revision)) {
                     usageCache.remove(accountId, snapshot.revision)
                     throw AccountRevisionChangedException()
@@ -182,17 +192,29 @@ class CursorRepository(context: Context) {
             if (!allowInvalidCredential) return null
         }
         val cached = tasksCache.read(accountId, snapshot.revision) ?: return null
-        val stored = runCatching {
+        val baseTasks = synchronized(tasksMemoryLock) {
+            parsedTasksCache[accountId]?.takeIf {
+                it.revision == snapshot.revision && it.rawJson == cached.rawJson
+            }?.tasks
+        } ?: runCatching {
             TasksJsonParser.parseStored(
                 cached.rawJson,
                 accountId = accountId,
-                fetchedAt = TasksJsonParser.nowStamp(),
-                cacheAgeSeconds = ageSeconds(cached.storedAtMillis),
+                fetchedAt = "",
+                cacheAgeSeconds = 0,
             )
         }.getOrElse {
             tasksCache.remove(accountId)
             return null
+        }.also { parsed ->
+            synchronized(tasksMemoryLock) {
+                parsedTasksCache[accountId] = ParsedTasksCacheEntry(snapshot.revision, cached.rawJson, parsed)
+            }
         }
+        val stored = baseTasks.copy(
+            fetchedAt = TasksJsonParser.nowStamp(),
+            cacheAgeSeconds = ageSeconds(cached.storedAtMillis),
+        )
         if (stored.accountId != accountId || !accountStore.isCurrent(accountId, snapshot.revision)) {
             tasksCache.remove(accountId)
             return null
@@ -208,9 +230,10 @@ class CursorRepository(context: Context) {
             val tasks = TasksJsonParser.parseStored(cached.rawJson, accountId, "", ageSeconds(cached.storedAtMillis))
             val acknowledged = TaskActivityModel.acknowledge(tasks, completions)
             if (tasks.completedAtMillis == acknowledged.completedAtMillis) return@synchronized false
-            if (!accountStore.isCurrent(accountId, revision)) return@synchronized false
-            if (!tasksCache.write(accountId, revision, TasksJsonParser.toJson(acknowledged), cached.storedAtMillis))
-                return@synchronized false
+            val written = accountStore.withCurrentRevision(accountId, revision) {
+                tasksCache.write(accountId, revision, TasksJsonParser.toJson(acknowledged), cached.storedAtMillis)
+            } ?: return@synchronized false
+            if (!written) return@synchronized false
             if (!accountStore.isCurrent(accountId, revision)) {
                 tasksCache.remove(accountId, revision)
                 return@synchronized false
@@ -252,9 +275,11 @@ class CursorRepository(context: Context) {
                     val previous = cachedTasks(accountId)
                     val storedAtMillis = System.currentTimeMillis()
                     val fetched = TaskActivityModel.observe(previous, parsed, storedAtMillis)
-                    runCatching {
-                        tasksCache.write(accountId, snapshot.revision, TasksJsonParser.toJson(fetched), storedAtMillis)
-                    }
+                    accountStore.withCurrentRevision(accountId, snapshot.revision) {
+                        runCatching {
+                            tasksCache.write(accountId, snapshot.revision, TasksJsonParser.toJson(fetched), storedAtMillis)
+                        }
+                    } ?: throw AccountRevisionChangedException()
                     if (!accountStore.isCurrent(accountId, snapshot.revision)) {
                         tasksCache.remove(accountId, snapshot.revision)
                         throw AccountRevisionChangedException()
@@ -460,24 +485,32 @@ class CursorRepository(context: Context) {
     private fun invalidateUsage(accountId: Int, revision: Long) {
         synchronized(memoryLock) {
             if (memoryCache[accountId]?.revision == revision) memoryCache.remove(accountId)
+            if (parsedUsageCache[accountId]?.revision == revision) parsedUsageCache.remove(accountId)
         }
         usageCache.remove(accountId, revision)
     }
 
     private fun invalidateUsage(accountId: Int) {
-        synchronized(memoryLock) { memoryCache.remove(accountId) }
+        synchronized(memoryLock) {
+            memoryCache.remove(accountId)
+            parsedUsageCache.remove(accountId)
+        }
         usageCache.remove(accountId)
     }
 
     private fun invalidateTasks(accountId: Int, revision: Long) {
         synchronized(tasksMemoryLock) {
             if (tasksMemoryCache[accountId]?.revision == revision) tasksMemoryCache.remove(accountId)
+            if (parsedTasksCache[accountId]?.revision == revision) parsedTasksCache.remove(accountId)
         }
         tasksCache.remove(accountId, revision)
     }
 
     private fun invalidateTasks(accountId: Int) {
-        synchronized(tasksMemoryLock) { tasksMemoryCache.remove(accountId) }
+        synchronized(tasksMemoryLock) {
+            tasksMemoryCache.remove(accountId)
+            parsedTasksCache.remove(accountId)
+        }
         tasksCache.remove(accountId)
     }
 
@@ -506,9 +539,21 @@ class CursorRepository(context: Context) {
         val overview: AgenTOverview,
     )
 
+    private data class ParsedUsageCacheEntry(
+        val revision: Long,
+        val rawJson: String,
+        val overview: AgenTOverview,
+    )
+
     private data class TasksMemoryEntry(
         val revision: Long,
         val storedAtMillis: Long,
+        val tasks: AgenTasks,
+    )
+
+    private data class ParsedTasksCacheEntry(
+        val revision: Long,
+        val rawJson: String,
         val tasks: AgenTasks,
     )
 
@@ -525,8 +570,10 @@ class CursorRepository(context: Context) {
     private companion object {
         const val MEMORY_TTL_MILLIS = 60_000L
         val memoryCache = mutableMapOf<Int, MemoryCacheEntry>()
+        val parsedUsageCache = mutableMapOf<Int, ParsedUsageCacheEntry>()
         val memoryLock = Any()
         val tasksMemoryCache = mutableMapOf<Int, TasksMemoryEntry>()
+        val parsedTasksCache = mutableMapOf<Int, ParsedTasksCacheEntry>()
         val tasksMemoryLock = Any()
         val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val activeUsageRequests = ConcurrentHashMap<

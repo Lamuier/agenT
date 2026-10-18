@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/widget_surface" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_assistants_surface" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:id="@+id/widget_multi_contents" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:padding="10dp">
+        <LinearLayout android:id="@+id/widget_multi_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_multi_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="@string/app_name" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="1" />
+            <ImageView android:id="@+id/widget_refresh" android:layout_width="32dp" android:layout_height="32dp"
+                android:padding="8dp" android:background="@drawable/widget_refresh_background" android:contentDescription="@string/widget_refresh_description" />
+            <TextView android:id="@+id/widget_next_page" android:layout_width="wrap_content" android:layout_height="32dp"
+                android:minWidth="38dp" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_multi_empty" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+            android:gravity="center" android:text="@string/widget_configure_sources" android:textSize="14sp" android:visibility="gone" />
+        <LinearLayout android:id="@+id/widget_source_rows" android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:orientation="vertical" />
+    </LinearLayout>
+</FrameLayout>

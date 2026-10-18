@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -69,6 +71,18 @@ import com.lamuier.agenT.util.AgentTaskPresentation
 import com.lamuier.agenT.util.CursorCustomTabs
 import com.lamuier.agenT.util.DisplayTime
 import java.util.Locale
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TaskProviderSelector(antigravity: Boolean, onSelect: (Boolean) -> Unit) {
+    val feedback = LocalAppFeedback.current
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !antigravity, onClick = { if (antigravity) { onSelect(false); feedback.selection() } }, label = { Text("Cursor") }, modifier = Modifier.testTag("tasks-provider-cursor"))
+        FilterChip(selected = antigravity, onClick = { if (!antigravity) { onSelect(true); feedback.selection() } },
+            label = { Text(stringResource(R.string.antigravity_service_name)) },
+            modifier = Modifier.testTag("tasks-provider-antigravity"))
+    }
+}
 
 @Composable
 internal fun TasksTab(
@@ -270,7 +284,7 @@ private fun TaskCard(
         else R.string.tasks_show_detail_a11y, displayName, statusLabel)
     val prUrl = task.prUrl?.takeIf(AgentTaskPresentation::isSafeAgentUrl)
     val statusColor = taskStatusColor(task.status)
-    Surface(
+    TaskCardContainer(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
@@ -288,14 +302,9 @@ private fun TaskCard(
                 }
                 }
             },
-        shape = MaterialTheme.shapes.large,
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-        shadowElevation = 1.dp,
+        compact = compact,
+        selected = selected,
     ) {
-        Column(
-            modifier = Modifier.padding(if (compact) 14.dp else 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -418,7 +427,21 @@ private fun TaskCard(
                     }
                 }
             }
-        }
+    }
+}
+
+/** Shared task surface for native tasks and the official Antigravity entry. */
+@Composable
+internal fun TaskCardContainer(
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    selected: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        shadowElevation = 1.dp) {
+        Column(Modifier.padding(if (compact) 14.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
 

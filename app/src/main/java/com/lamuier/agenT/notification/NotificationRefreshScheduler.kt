@@ -49,7 +49,7 @@ object NotificationRefreshScheduler {
     /** Best-effort reset-time refresh. No exact-alarm permission; Doze may defer execution. */
     fun scheduleReset(context: Context, usage: CodexQuotaOverview, revision: Long) {
         val now = System.currentTimeMillis() / 1000
-        val deadline = CodexRefreshPolicy.nextReset(usage, now) ?: return
+        val deadline = CodexRefreshPolicy.nextReset(usage, now) ?: run { cancelReset(context); return }
         val scheduler = context.getSystemService(JobScheduler::class.java)
         val old = scheduler.getPendingJob(RESET_JOB_ID)
         if (old?.extras?.getLong("deadline") == deadline && old.extras.getLong("revision") == revision) return
@@ -96,6 +96,7 @@ class TaskCompletionExpiryJob : JobService() {
     private var expiryJob: Job? = null
 
     override fun onStartJob(params: JobParameters?): Boolean {
+        expiryJob?.cancel()
         expiryJob = scope.launch {
             try {
                 AgenTNotificationCoordinator.get(applicationContext).refreshCopyFromCache()
@@ -112,21 +113,25 @@ class TaskCompletionExpiryJob : JobService() {
 
 class NotificationRefreshJob : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var refreshJob: Job? = null
+    private val activeJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
     override fun onStartJob(params: JobParameters?): Boolean {
-        refreshJob = scope.launch {
+        val jobId = params?.jobId ?: 0
+        activeJobs.remove(jobId)?.cancel()
+        val job = scope.launch {
             try {
                 AgenTNotificationCoordinator
                     .get(applicationContext)
                     .refreshLive(forceCodex = params?.jobId == NotificationRefreshScheduler.RESET_JOB_ID,
                         scheduleWindowRefresh = params?.jobId != NotificationRefreshScheduler.RESET_JOB_ID)
             } finally {
+                activeJobs.remove(jobId, kotlinx.coroutines.currentCoroutineContext()[Job])
                 if (kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive == true) jobFinished(params, false)
             }
         }
+        activeJobs[jobId] = job
         return true
     }
 
-    override fun onStopJob(params: JobParameters?): Boolean { refreshJob?.cancel(); return true }
+    override fun onStopJob(params: JobParameters?): Boolean { activeJobs.remove(params?.jobId ?: 0)?.cancel(); return true }
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
 }

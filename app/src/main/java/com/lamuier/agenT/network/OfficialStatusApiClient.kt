@@ -14,6 +14,8 @@ import org.json.JSONObject
 enum class OfficialStatusProvider(val baseUrl: String, val cacheName: String) {
     Cursor("https://status.cursor.com", "cursor_status_cache_v1"),
     Codex("https://status.openai.com", "codex_status_cache_v1"),
+    DeepSeek("https://status.deepseek.com", "deepseek_status_cache_v1"),
+    KimiCode("https://status.moonshot.cn", "kimi_code_status_cache_v1"),
 }
 
 enum class StatusResource(val filename: String) {
@@ -25,7 +27,18 @@ class OfficialStatusApiClient(context: Context, private val provider: OfficialSt
     private val appContext = context.applicationContext
 
     suspend fun fetch(resource: StatusResource): JSONObject = withContext(Dispatchers.IO) {
-        val connection = URL("${provider.baseUrl}/api/v2/${resource.filename}")
+        val url = if (provider == OfficialStatusProvider.DeepSeek) {
+            val base = "${provider.baseUrl}/api/status-page/${ProviderStatusAdapters.DEEPSEEK_PAGE_ID}"
+            when (resource) {
+                StatusResource.Summary -> "$base/summary/active"
+                StatusResource.Incidents -> {
+                    val end = System.currentTimeMillis() / 1000
+                    "$base/change/list?start_at_seconds=${end - 90L * 86400}&end_at_seconds=$end"
+                }
+                StatusResource.Components -> error("Components are included in the DeepSeek summary")
+            }
+        } else "${provider.baseUrl}/api/v2/${resource.filename}"
+        val connection = URL(url)
             .openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "GET"

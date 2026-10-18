@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lamuier.agenT.providers.*
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaUiState
 import com.lamuier.agenT.model.AppUiState
@@ -49,7 +50,9 @@ import com.lamuier.agenT.util.UsageCalculations
 
 @Composable
 internal fun UnifiedOverviewTab(state: AppUiState, codex: CodexQuotaUiState, onOpenSettings: () -> Unit, onManageCursor: () -> Unit = onOpenSettings, onManageCodex: () -> Unit = onOpenSettings,
-    onOpenTab: (com.lamuier.agenT.model.DashboardTab) -> Unit = {}) {
+    onOpenTab: (com.lamuier.agenT.model.DashboardTab) -> Unit = {},
+    providers: ProvidersUiState = ProvidersUiState(false), onManageProvider: (UsageProvider) -> Unit = {}) {
+    val visibleSources = configuredSourceIds(state.accounts.isNotEmpty(), codex.credential != null, providers)
     val zone = LocalDisplayZone.current
     val fontScale = LocalDensity.current.fontScale
     val cursorCard: @Composable (Modifier) -> Unit = { modifier ->
@@ -111,45 +114,56 @@ internal fun UnifiedOverviewTab(state: AppUiState, codex: CodexQuotaUiState, onO
             }
         }
     }
+    val cards = buildList<@Composable (Modifier) -> Unit> {
+        if ("cursor" in visibleSources) add(cursorCard)
+        if ("codex" in visibleSources) add(codexCard)
+        UsageProvider.entries.filter { it.id in visibleSources }.forEach { source -> add { modifier ->
+            OfficialProviderOverview(source, providers[source], modifier) { onManageProvider(source) }
+        } }
+    }
+    if (cards.isEmpty()) {
+        AdaptiveTabContent { ConfigureSourcesCard(onManageCursor) }
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        // A tablet dashboard shows six modules in two rows, with readable card widths.
         if (LocalWindowFolds.current.isEmpty() && maxWidth >= 1180.dp && fontScale <= 1.15f) {
+            val modules = cards + buildList<@Composable (Modifier) -> Unit> {
+                if ("cursor" in visibleSources) add { modifier -> Box(modifier) { OverviewTasksCard(state) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Tasks) } } }
+                if ("codex" in visibleSources) add { modifier -> Box(modifier) { OverviewResetCard(codex) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Resets) } } }
+                if ("cursor" in visibleSources) add { modifier -> Box(modifier) { OverviewStatusCard("Cursor", state.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) } } }
+                if ("codex" in visibleSources) add { modifier -> Box(modifier) { OverviewStatusCard("Codex", codex.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) } } }
+            }
             AdaptiveTabContent {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    cursorCard(Modifier.weight(1f))
-                    codexCard(Modifier.weight(1f))
-                    Box(Modifier.weight(1f)) { OverviewTasksCard(state) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Tasks) } }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Box(Modifier.weight(1f)) { OverviewResetCard(codex) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Resets) } }
-                    Box(Modifier.weight(1f)) { OverviewStatusCard("Cursor", state.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) } }
-                    Box(Modifier.weight(1f)) { OverviewStatusCard("Codex", codex.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) } }
+                modules.chunked(3).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        row.forEach { card -> card(Modifier.weight(1f)) }
+                    }
                 }
             }
         } else {
-    AdaptiveServiceContent(
-        primary = {
-            cursorCard(Modifier.fillMaxWidth())
-            if (LocalPaneArrangement.current == PaneArrangement.Columns) {
-                OverviewTasksCard(state) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Tasks) }
-                OverviewStatusCard("Cursor", state.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) }
-            }
-        },
-        secondary = {
-            codexCard(Modifier.fillMaxWidth())
-            if (LocalPaneArrangement.current == PaneArrangement.Columns) {
-                OverviewResetCard(codex) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Resets) }
-                OverviewStatusCard("Codex", codex.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) }
-            }
-        },
-    )
+            AdaptiveServiceContent(allowPair = cards.size > 1,
+                primary = {
+                    cards.filterIndexed { index, _ -> index % 2 == 0 }.forEach { it(Modifier.fillMaxWidth()) }
+                    if (LocalPaneArrangement.current == PaneArrangement.Columns && "cursor" in visibleSources) {
+                        OverviewTasksCard(state) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Tasks) }
+                        OverviewStatusCard("Cursor", state.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) }
+                    }
+                },
+                secondary = {
+                    cards.filterIndexed { index, _ -> index % 2 == 1 }.forEach { it(Modifier.fillMaxWidth()) }
+                    if (LocalPaneArrangement.current == PaneArrangement.Columns && "codex" in visibleSources) {
+                        OverviewResetCard(codex) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Resets) }
+                        OverviewStatusCard("Codex", codex.serviceStatus) { onOpenTab(com.lamuier.agenT.model.DashboardTab.Status) }
+                    }
+                },
+            )
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AssistantOverviewCard(name: String, plan: String?, status: ServiceStatus?, modifier: Modifier,
+internal fun AssistantOverviewCard(name: String, plan: String?, status: ServiceStatus?, modifier: Modifier,
     content: @Composable ColumnScope.() -> Unit) {
     val colors = LocalPulseChartColors.current
     val statusColor = when (status?.indicator) {
@@ -207,7 +221,7 @@ private fun OverviewPoolMeter(title: String, percent: Double?) {
 }
 
 @Composable
-private fun OverviewFreshness(updatedAt: String, cached: Boolean) {
+internal fun OverviewFreshness(updatedAt: String, cached: Boolean) {
     val clock = AssistantPresentation.updatedClock(updatedAt, LocalDisplayZone.current) ?: "—"
     Text(listOfNotNull(stringResource(R.string.codex_updated_at, clock),
         if (cached) stringResource(R.string.overview_cached) else null).joinToString(" · "),
@@ -297,10 +311,13 @@ private fun OverviewStatusCard(name: String, status: ServiceStatus?, onOpen: () 
 
 @Composable
 private fun OverviewResetCard(state: CodexQuotaUiState, onOpen: () -> Unit) {
-    val week = com.lamuier.agenT.codex.CodexResetPeriods.range(com.lamuier.agenT.codex.CodexResetPeriod.Week,
-        java.time.Instant.now(), LocalDisplayZone.current, null)
+    val zone = LocalDisplayZone.current
     val snapshot = state.publicResets
-    val events = com.lamuier.agenT.codex.CodexResetTimeline.entries(snapshot?.events.orEmpty(), week)
+    val events = remember(snapshot?.events, zone) {
+        val week = com.lamuier.agenT.codex.CodexResetPeriods.range(com.lamuier.agenT.codex.CodexResetPeriod.Week,
+            java.time.Instant.now(), zone, null)
+        com.lamuier.agenT.codex.CodexResetTimeline.entries(snapshot?.events.orEmpty(), week)
+    }
     OverviewPanel(stringResource(R.string.overview_weekly_resets), stringResource(R.string.overview_open_resets), onOpen) {
         listOf(R.string.reset_official_regular_count to "regular", R.string.reset_official_banked_count to "banked").forEach { (label, type) ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

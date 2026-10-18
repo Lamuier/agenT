@@ -136,7 +136,9 @@ internal fun SettingsSheet(
     onHapticFeedbackChange: (Boolean) -> Unit = {},
     codexUsageAutoRefresh: Boolean = true,
     onCodexUsageAutoRefreshChange: (Boolean) -> Unit = {},
+    providers: com.lamuier.agenT.providers.ProvidersUiState = com.lamuier.agenT.providers.ProvidersUiState(false),
 ) {
+    val connectionResources = LocalResources.current
     val systemPaletteAvailable = Build.VERSION.SDK_INT >= 31
     var localSection by rememberSaveable { mutableStateOf<String?>(null) }
     val currentId = if (onSectionChange != null) sectionId else localSection
@@ -159,9 +161,9 @@ internal fun SettingsSheet(
         }
         val categoriesScroll = rememberScrollState()
         val detailScroll = rememberScrollState()
-        val current = SettingsSection.entries.firstOrNull { it.name == currentId }
-            ?: if (wide) SettingsSection.Connections else null
-        fun back() { if (!wide && current != null) select(null) else onDismiss() }
+        val explicitCurrent = SettingsSection.entries.firstOrNull { it.name == currentId }
+        val current = explicitCurrent ?: if (wide) SettingsSection.Connections else null
+        fun back() { if (!wide && explicitCurrent != null) select(null) else onDismiss() }
         var backProgress by remember { mutableFloatStateOf(0f) }
         PredictiveBackHandler { events ->
             try { events.collect { backProgress = it.progress }; back() }
@@ -230,7 +232,10 @@ internal fun SettingsSheet(
                             codexState.credential == null -> R.string.connection_not_configured
                             codexState.credential.expired || codexState.credential.invalid -> R.string.connection_token_expired
                             else -> R.string.token_management_saved
-                        })),
+                        })) + "\n" + com.lamuier.agenT.providers.UsageProvider.entries.joinToString(" · ") { source ->
+                            source.title + ": " + connectionResources.getString(if (providers[source].credential == null)
+                                R.string.connection_not_configured else R.string.token_management_saved)
+                        },
                     icon = Icons.Outlined.Key,
                     onClick = onManageTokens,
                 )
@@ -240,6 +245,8 @@ internal fun SettingsSheet(
                     checked = codexUsageAutoRefresh,
                     onCheckedChange = onCodexUsageAutoRefreshChange,
                 )
+                Text(stringResource(R.string.antigravity_connection_description),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 UsageHistorySettings()
             }
                             }
@@ -420,7 +427,7 @@ internal fun SettingsSheet(
             }
             AdaptivePaneLayout(modifier = Modifier.padding(padding), allowPair = wide,
                 minPaneWidthDp = 240f, preferredPrimaryWidthDp = 280f, maxContentWidthDp = 1440f,
-                single = { if (current == null) categories() else detail() },
+                single = { if (explicitCurrent == null) categories() else detail() },
                 primary = categories, secondary = detail)
         }
     }
@@ -774,7 +781,7 @@ private fun TimeZoneOption(
             .semantics {
                 role = Role.RadioButton
                 this.selected = selected
-                contentDescription = "$label，$supporting"
+                contentDescription = "$label, $supporting"
             }
             .clip(MaterialTheme.shapes.medium)
             .clickable { if (!selected) { feedback.selection(); onClick() } },
@@ -908,7 +915,7 @@ private fun ThemeModeOption(
             .semantics {
                 role = Role.RadioButton
                 this.selected = selected
-                contentDescription = "$label，$description"
+                contentDescription = "$label, $description"
             }
             .clip(MaterialTheme.shapes.medium)
             .clickable { if (!selected) { feedback.selection(); onClick() } },

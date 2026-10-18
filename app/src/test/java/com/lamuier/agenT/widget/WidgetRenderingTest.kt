@@ -43,7 +43,8 @@ class WidgetRenderingTest(private val profile: String, private val kind: String)
             setLocale(if (spec.english) Locale.ENGLISH else Locale.SIMPLIFIED_CHINESE)
         })
         val views = if (kind == "usage") {
-            AgenTWidgetUpdater.samplePreview(context, TallCursorWidgetProvider::class.java, spec.width, spec.height)
+            val fixture = com.lamuier.agenT.qa.ReviewFixture.create(java.time.ZoneId.of("UTC"), java.time.Instant.parse("2026-10-12T12:14:00Z"))
+            AgenTWidgetUpdater.renderUsagePreview(context, fixture.cursor.usage, fixture.codex.usage, false, spec.width, spec.height)
         } else {
             fun service(names: List<String>) = ServiceStatus("", StatusIndicator.None, null, "https://status.cursor.com",
                 names.mapIndexed { index, name -> StatusComponent("sample-$index", name, ComponentStatus.Operational, index) },

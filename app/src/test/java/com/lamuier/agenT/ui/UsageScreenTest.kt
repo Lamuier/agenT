@@ -34,14 +34,14 @@ class UsageScreenTest {
     private val now = Instant.parse("2026-10-12T04:00:00Z").toEpochMilli()
     private fun label(id: Int) = context.getString(id)
     @Before fun clearPreference() { context.getSharedPreferences("usage-page-v1", 0).edit().clear().commit() }
-    @Test fun bothSummariesFitAndCodexWorksWithoutCursor() {
+    @Test fun onlyConfiguredCodexIsShownWithoutCursor() {
         val fixture = ReviewFixture.create(ZoneId.of("UTC"), Instant.ofEpochMilli(now))
         compose.setContent {
             CompositionLocalProvider(LocalUsageNow provides now, LocalDisplayZone provides ZoneId.of("UTC")) {
                 AgenTTheme(ThemeSettings()) { UsageScreen(fixture.cursor.copy(accounts = emptyList(), usage = null), fixture.codex, { _, _, _, _ -> }, {}, {}, {}, {}) }
             }
         }
-        compose.onNodeWithTag("usage-summary-cursor").assertIsDisplayed()
+        compose.onNodeWithTag("usage-summary-cursor").assertDoesNotExist()
         compose.onNodeWithTag("usage-summary-codex").assertIsDisplayed()
         compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
         compose.onNodeWithTag("usage-detail-list").performScrollToKey("window-primary")

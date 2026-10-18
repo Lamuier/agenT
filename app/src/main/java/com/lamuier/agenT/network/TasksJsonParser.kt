@@ -7,8 +7,9 @@ import com.lamuier.agenT.model.AgentTaskStatus
 import com.lamuier.agenT.model.AgenTasks
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
@@ -19,6 +20,8 @@ import java.util.Locale
  * 解析全部采用防御式读取：字段缺失或结构变化时降级为空值而不是崩溃。
  */
 object TasksJsonParser {
+    private val STAMP_FORMATTER: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
     fun parse(
         payload: JSONObject,
         accountId: Int,
@@ -67,7 +70,7 @@ object TasksJsonParser {
     }
 
     fun nowStamp(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        STAMP_FORMATTER.format(Instant.now().atZone(ZoneId.systemDefault()))
 
     fun parseStatus(raw: String?): AgentTaskStatus =
         when (normalize(raw)?.removePrefix(STATUS_PREFIX)) {

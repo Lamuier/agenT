@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,12 +54,16 @@ fun AgenTTheme(
     val useDynamic = settings.colorPalette == ColorPalette.System &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    val colorScheme = when {
-        useDynamic && darkTheme -> dynamicDarkColorScheme(context)
-        useDynamic -> dynamicLightColorScheme(context)
-        else -> staticScheme(settings.colorPalette, darkTheme)
+    val colorScheme = remember(settings.colorPalette, darkTheme, context) {
+        when {
+            useDynamic && darkTheme -> dynamicDarkColorScheme(context)
+            useDynamic -> dynamicLightColorScheme(context)
+            else -> staticScheme(settings.colorPalette, darkTheme)
+        }
     }
-    val chartColors = chartColorsFor(settings.colorPalette, darkTheme, colorScheme)
+    val chartColors = remember(settings.colorPalette, darkTheme, colorScheme) {
+        chartColorsFor(settings.colorPalette, darkTheme, colorScheme)
+    }
 
     val animatedBackground by animateColorAsState(
         targetValue = colorScheme.background,

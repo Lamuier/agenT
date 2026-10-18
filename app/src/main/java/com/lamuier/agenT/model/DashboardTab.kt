@@ -15,7 +15,7 @@ enum class DashboardTabScope(@StringRes val labelRes: Int) {
 enum class DashboardTab(val id: String, @StringRes val labelRes: Int, val scope: DashboardTabScope) {
     Overview("overview", R.string.tab_overview, DashboardTabScope.Common),
     Usage("usage", R.string.tab_usage, DashboardTabScope.Common),
-    Tasks("tasks", R.string.tab_tasks, DashboardTabScope.Cursor),
+    Tasks("tasks", R.string.tab_tasks, DashboardTabScope.Common),
     Resets("resets", R.string.tab_resets, DashboardTabScope.Codex),
     Status("status", R.string.tab_status, DashboardTabScope.Common);
 

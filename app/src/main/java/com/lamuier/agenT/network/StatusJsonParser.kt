@@ -100,7 +100,7 @@ object StatusJsonParser {
     }
 
     fun nowStamp(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.time.Instant.now().atZone(java.time.ZoneId.systemDefault()))
 
     private fun parseComponents(array: JSONArray?): List<StatusComponent> {
         if (array == null) return emptyList()

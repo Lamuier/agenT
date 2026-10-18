@@ -60,7 +60,9 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         preferWideColorGamut()
-        applyLaunchIntent(intent)
+        if (savedInstanceState == null) {
+            applyLaunchIntent(intent)
+        }
         val themePreferences = ThemePreferences.get(applicationContext)
         val notificationPreferences = NotificationPreferences.get(applicationContext)
         val dashboardPreferences = DashboardPreferences.get(applicationContext)
@@ -95,7 +97,13 @@ class MainActivity : FragmentActivity() {
                         CodexQuotaViewModel.Factory(applicationContext),
                     )[CodexQuotaViewModel::class.java]
                 }
+                val providersViewModel = remember {
+                    ViewModelProvider(this@MainActivity,
+                        com.lamuier.agenT.providers.ProvidersViewModel.Factory(applicationContext)
+                    )[com.lamuier.agenT.providers.ProvidersViewModel::class.java]
+                }
                 AgenTApp(
+                    providersViewModel = providersViewModel,
                     onInitialContentReady = { startupDrawGate?.release() },
                     firstFrameDrawn = firstFrameDrawn,
                     hapticFeedbackEnabled = haptics,
@@ -110,22 +118,22 @@ class MainActivity : FragmentActivity() {
                     onOpenTabConsumed = { pendingOpenTab = null },
                     onThemeModeChange = { mode ->
                         themePreferences.setThemeMode(mode)
-                        requestWidgetUpdate()
+                        pushWidgetFromCache()
                     },
                     onPaletteChange = { palette ->
                         themePreferences.setColorPalette(palette)
-                        requestWidgetUpdate()
+                        pushWidgetFromCache()
                     },
                     timeZoneId = timeZoneId,
                     onTimeZoneChange = { id ->
                         dashboardPreferences.setTimeZoneId(id)
-                        requestWidgetUpdate()
+                        pushWidgetFromCache()
                     },
                     language = language,
                     onLanguageChange = { selected ->
                         if (selected != dashboardPreferences.readLanguage()) {
                             dashboardPreferences.setLanguage(selected)
-                            requestWidgetUpdate()
+                            pushWidgetFromCache()
                             if (Build.VERSION.SDK_INT < 33) recreate()
                         }
                     },
@@ -187,6 +195,8 @@ class MainActivity : FragmentActivity() {
             tabId = intent?.getStringExtra(EXTRA_WIDGET_OPEN_TAB),
             widgetKind = intent?.data?.pathSegments?.getOrNull(1),
         )
+        com.lamuier.agenT.widget.WidgetNavigation.open(
+            intent?.getStringExtra(com.lamuier.agenT.widget.EXTRA_WIDGET_SOURCE), pendingOpenTab)
     }
 
     /**
@@ -196,6 +206,11 @@ class MainActivity : FragmentActivity() {
     private fun requestWidgetUpdate() {
         val app = application as AgenTApplication
         app.applicationScope.launch { runCatching { AgenTWidgetUpdater.requestUpdate(app) } }
+    }
+
+    private fun pushWidgetFromCache() {
+        val app = application as AgenTApplication
+        app.applicationScope.launch { runCatching { AgenTWidgetUpdater.pushFromCache(app) } }
     }
 
     private fun requestNotificationCacheRefresh() {

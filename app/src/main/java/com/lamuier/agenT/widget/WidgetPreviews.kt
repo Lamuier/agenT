@@ -35,7 +35,7 @@ internal object WidgetPreviews {
         if (Build.VERSION.SDK_INT < 35 || running) return
         val app = context.applicationContext
         val preferences = app.getSharedPreferences("agentt_widget_previews_v1", Context.MODE_PRIVATE)
-        val key = "4:${AppLocale.stored(app)}:${WidgetThemeColors.resolve(app)}:${ThemePreferences.get(app).read()}:${app.resources.configuration.uiMode}:${app.resources.configuration.fontScale}"
+        val key = "5:${AppLocale.stored(app)}:${WidgetThemeColors.resolve(app)}:${ThemePreferences.get(app).read()}:${app.resources.configuration.uiMode}:${app.resources.configuration.fontScale}"
         if (preferences.getString("rendered", null) == key) return
         running = true
         scope.launch {

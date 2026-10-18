@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -55,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lamuier.agenT.providers.*
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaUiState
 import com.lamuier.agenT.model.ComponentStatus
@@ -67,6 +70,7 @@ import com.lamuier.agenT.util.CursorCustomTabs
 import com.lamuier.agenT.util.DisplayTime
 import com.lamuier.agenT.util.StatusPresentation
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun StatusTab(
     status: ServiceStatus?,
@@ -76,44 +80,81 @@ internal fun StatusTab(
     codexState: CodexQuotaUiState,
     onRetry: () -> Unit,
     onOpenFailed: (String) -> Unit,
+    providers: ProvidersUiState = ProvidersUiState(false),
+    cursorConfigured: Boolean = false,
+    cursorLoading: Boolean = false,
+    active: Boolean = true,
 ) {
     val openUrl = rememberOpenStatusUrl(onOpenFailed)
     val feedback = LocalAppFeedback.current
-    var showCodex by rememberSaveable { mutableStateOf(false) }
+    var requestedProvider by rememberSaveable { mutableStateOf("cursor") }
+    val visibleSources = (configuredSourceIds(cursorConfigured, codexState.credential != null, providers) + "antigravity").distinct()
+    val provider = requestedProvider.takeIf { it in visibleSources } ?: visibleSources.first()
+    androidx.compose.runtime.LaunchedEffect(visibleSources, cursorLoading, codexState.booting, providers.booting) {
+        if (!cursorLoading && !codexState.booting && !providers.booting) requestedProvider = provider
+    }
+    val destination by com.lamuier.agenT.widget.WidgetNavigation.destination.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(destination, active, visibleSources, cursorLoading, codexState.booting, providers.booting) {
+        val target = destination
+        if (target?.tab == com.lamuier.agenT.model.DashboardTab.Status && active && !cursorLoading && !codexState.booting && !providers.booting) {
+            requestedProvider = target.source.takeIf { it in visibleSources } ?: visibleSources.first()
+            com.lamuier.agenT.widget.WidgetNavigation.consume(target)
+        }
+    }
+    val summaryScroll = androidx.compose.foundation.rememberScrollState()
     val cursorScroll = androidx.compose.foundation.rememberScrollState()
     val codexScroll = androidx.compose.foundation.rememberScrollState()
-    val cursorPane: @Composable () -> Unit = { AdaptiveTabContent(scrollState = cursorScroll) { compact ->
-        StatusProviderPane(false, status, loading, refreshing, error, compact, onRetry, openUrl)
-    } }
-    val codexPane: @Composable () -> Unit = { AdaptiveTabContent(scrollState = codexScroll) { compact ->
-        StatusProviderPane(true, codexState.serviceStatus, codexState.loadingStatus,
-            codexState.refreshingStatus, codexState.statusError, compact, onRetry, openUrl)
-    } }
-    AdaptivePaneLayout(primary = cursorPane, secondary = codexPane, single = {
-        AdaptiveTabContent(scrollState = if (showCodex) codexScroll else cursorScroll) { compact ->
-            Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
-            StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
-            StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !showCodex, onClick = { if (showCodex) { showCodex = false; feedback.selection() } }, label = { Text("Cursor") })
-                FilterChip(selected = showCodex, onClick = { if (!showCodex) { showCodex = true; feedback.selection() } }, label = { Text("Codex / OpenAI") })
+    val antigravityScroll = androidx.compose.foundation.rememberScrollState()
+    val deepSeekScroll = androidx.compose.foundation.rememberScrollState()
+    val kimiScroll = androidx.compose.foundation.rememberScrollState()
+    val detailScroll = when (provider) { "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "antigravity" -> antigravityScroll; "codex" -> codexScroll; else -> cursorScroll }
+    val summary: @Composable () -> Unit = {
+        Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
+        if ("cursor" in visibleSources) StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
+        if ("codex" in visibleSources) StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
+        UsageProvider.entries.filter { it.id in visibleSources && it.statusProvider != null }.forEach { source -> StatusOverviewTile(source.title, providers[source].serviceStatus,
+            providers[source].loadingStatus, Modifier.fillMaxWidth()) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("cursor" to "Cursor", "codex" to "Codex / OpenAI",
+                "deepseek" to "DeepSeek", "kimi_code" to "Kimi Code",
+                "antigravity" to stringResource(R.string.antigravity_service_name)).filter { it.first in visibleSources }.forEach { (id, label) ->
+                FilterChip(selected = provider == id,
+                    onClick = { if (provider != id) { requestedProvider = id; feedback.selection() } },
+                    label = { Text(label) }, modifier = Modifier.testTag("status-provider-$id"))
             }
-            StatusProviderPane(showCodex, if (showCodex) codexState.serviceStatus else status,
-                if (showCodex) codexState.loadingStatus else loading,
-                if (showCodex) codexState.refreshingStatus else refreshing,
-                if (showCodex) codexState.statusError else error, compact, onRetry, openUrl)
         }
-    })
+    }
+    val details: @Composable (Boolean) -> Unit = { compact ->
+        if (provider == "antigravity") AntigravityStatusContent(openUrl)
+        else if (provider in listOf("deepseek", "kimi_code")) {
+            val source = UsageProvider.entries.first { it.id == provider }
+            val current = providers[source]
+            StatusProviderPane(false, current.serviceStatus, current.loadingStatus, current.loadingStatus,
+                current.statusError, compact, onRetry, openUrl, source.title,
+                stringResource(if (source == UsageProvider.DeepSeek) R.string.provider_status_deepseek else R.string.provider_status_kimi))
+        } else {
+            val codex = provider == "codex"
+            StatusProviderPane(codex, if (codex) codexState.serviceStatus else status,
+                if (codex) codexState.loadingStatus else loading,
+                if (codex) codexState.refreshingStatus else refreshing,
+                if (codex) codexState.statusError else error, compact, onRetry, openUrl)
+        }
+    }
+    AdaptivePaneLayout(primaryFraction = 0.4f, maxContentWidthDp = 1440f,
+        primary = { AdaptiveTabContent(scrollState = summaryScroll) { summary() } },
+        secondary = { AdaptiveTabContent(scrollState = detailScroll) { compact -> details(compact) } },
+        single = { AdaptiveTabContent(scrollState = detailScroll) { compact -> summary(); details(compact) } },
+    )
 }
 
 @Composable
 private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, selectedLoading: Boolean,
     selectedRefreshing: Boolean, selectedError: String?, compact: Boolean,
-    onRetry: () -> Unit, openUrl: (String) -> Unit) {
+    onRetry: () -> Unit, openUrl: (String) -> Unit, title: String? = null, supporting: String? = null) {
         SectionHeading(
             icon = Icons.Outlined.Code,
-            title = stringResource(if (codex) R.string.codex_official_status_title else R.string.agent_service_cursor_title),
-            supporting = stringResource(if (codex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
+            title = title ?: stringResource(if (codex) R.string.codex_official_status_title else R.string.agent_service_cursor_title),
+            supporting = supporting ?: stringResource(if (codex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
         )
         when {
             selectedStatus == null && (selectedLoading || selectedRefreshing) -> ProviderStateCard(

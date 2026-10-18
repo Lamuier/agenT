@@ -136,9 +136,9 @@ class DashboardTabTest {
     fun scopesIdentifySharedAndProviderOnlyCapabilities() {
         assertEquals(listOf(DashboardTab.Overview, DashboardTab.Usage,
             DashboardTab.Tasks, DashboardTab.Resets, DashboardTab.Status), DashboardTab.DEFAULT_ORDER)
-        assertEquals(listOf(DashboardTab.Overview, DashboardTab.Usage, DashboardTab.Status),
+        assertEquals(listOf(DashboardTab.Overview, DashboardTab.Usage, DashboardTab.Tasks, DashboardTab.Status),
             DashboardTab.entries.filter { it.scope == DashboardTabScope.Common })
-        assertEquals(listOf(DashboardTab.Tasks),
+        assertEquals(emptyList<DashboardTab>(),
             DashboardTab.entries.filter { it.scope == DashboardTabScope.Cursor })
         assertEquals(listOf(DashboardTab.Resets), DashboardTab.entries.filter { it.scope == DashboardTabScope.Codex })
     }

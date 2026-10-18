@@ -142,7 +142,7 @@ chmod 600 ../release-password.txt
 
 正式包使用 `App名称-版本号.apk`，未归档包在当前版本包名后追加 `_YYYYMMDD_HHMMSS`。App 名称读取默认 `app/src/main/res/values/strings.xml` 的 `app_name`，版本读取 Gradle；两个平台使用相同规则，不按系统语言改变名称。日期时间按编译启动时刻使用北京时间（Asia/Shanghai，UTC+08:00），例如 `agenT-1.3.0_20261014_160000.apk`。正式发版使用 `--official-release` / `-OfficialRelease`，例如 `agenT-1.3.0.apk`；这只是命名开关，不授权升版本、归档、提交或推送。
 
-同次构建的 APK、校验文件、R8 映射和构建报告共用一个产物名；报告记录启动 / 完成时间和命名模式。两端均保留历史包、拒绝同名覆盖、不自动清理 `dist/`。普通包同秒冲突时稍后重试，或用 `--artifact-suffix` / `-ArtifactSuffix` 在时间戳后追加标识；正式包不接受附加标识。同名正式包存在时须先保留已有文件。
+同次构建的 APK、校验文件、R8 映射和构建报告共用一个产物名；报告记录启动 / 完成时间和命名模式。两端脚本均拒绝同名覆盖，导出阶段不自动清理 `dist/`；助手在新包成功导出并校验后，按本地 `AGENTS.md` 的保留规则整理产物。普通包同秒冲突时稍后重试，或用 `--artifact-suffix` / `-ArtifactSuffix` 在时间戳后追加标识；正式包不接受附加标识。同名正式包存在时须先保留已有文件。
 
 ## 5. 参数与 Windows 对照
 
@@ -161,7 +161,7 @@ chmod 600 ../release-password.txt
 | `--generate-baseline-profile`（须与 `--release` 同用） | `-GenerateBaselineProfile`（须与 `-Release` 同用） | 显式在任务模拟器生成编译配置 |
 | `--performance-review`（须与 `--release` 同用） | `-PerformanceReview`（须与 `-Release` 同用） | 显式在任务模拟器采集冷启动和滚动性能 |
 
-Windows 使用 `build.ps1 -SetupSigning` 配置共享 `release.keystore` 与私有密码文件，同样核验固定证书和私钥签名；不再生成独立密钥、使用 Windows clixml 或自动绑定 Debug 密钥。Windows Release 与 Unix 使用同一命名和历史保留规则。助手不得默认重绑签名或使用 `-Install` 操作实体手机。
+Windows 使用 `build.ps1 -SetupSigning` 配置共享 `release.keystore` 与私有密码文件，同样核验固定证书和私钥签名；不再生成独立密钥、使用 Windows clixml 或自动绑定 Debug 密钥。Windows Release 与 Unix 使用同一命名和产物保留规则。助手不得默认重绑签名或使用 `-Install` 操作实体手机。
 
 `--offline` 控制 Gradle 的依赖解析，不代替首次准备：Wrapper 本体与 Robolectric 的测试 SDK 也须提前缓存。遇到缓存缺失时显式使用 `--online` 准备，再离线重试；不通过跳过检查来掩盖构建失败。
 
@@ -184,7 +184,7 @@ export AGENT_PERFORMANCE_LABEL=after
 
 Windows 使用 `$env:ADB_SERVER_SOCKET` / `$env:AGENT_PERFORMANCE_SERIAL` / `$env:AGENT_PERFORMANCE_LABEL`，并运行 `.\build.ps1 -Release -Online -GenerateBaselineProfile`、`.\build.ps1 -Release -PerformanceReview`。性能参数只允许抑制模拟器环境限制，不跳过测试失败或其他工具检查。
 
-配置保存在 `app/src/release/generated/baselineProfiles/`；生成后重新构建并校验 Release 中的 `assets/dexopt/baseline.prof` 与 `baseline.profm`。离线夹具、性能测试库、验收入口和可调试标记不得进入正式 APK。报告在 `app/build/reports/performance/`，包含原始 JSON 和跟踪文件；没有有效测量结果时入口失败。运行后关闭任务模拟器，保留报告与历史安装包。
+配置保存在 `app/src/release/generated/baselineProfiles/`；生成后重新构建并校验 Release 中的 `assets/dexopt/baseline.prof` 与 `baseline.profm`。离线夹具、性能测试库、验收入口和可调试标记不得进入正式 APK。报告在 `app/build/reports/performance/`，包含原始 JSON 和跟踪文件；没有有效测量结果时入口失败。运行后关闭任务模拟器，保留报告；安装包按本地 `AGENTS.md` 的规则整理。
 
 ## 6. 构建工具的回归检查
 

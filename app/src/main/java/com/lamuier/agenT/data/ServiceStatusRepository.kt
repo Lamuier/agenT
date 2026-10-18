@@ -6,6 +6,7 @@ import com.lamuier.agenT.network.OfficialStatusApiClient
 import com.lamuier.agenT.network.OfficialStatusProvider
 import com.lamuier.agenT.network.StatusJsonParser
 import com.lamuier.agenT.network.StatusResource
+import com.lamuier.agenT.network.ProviderStatusAdapters
 import com.lamuier.agenT.network.CodexStatusScope
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -72,14 +73,20 @@ class ServiceStatusRepository(
         val summaryRequest = async { api.fetch(StatusResource.Summary) }
         val incidentsRequest = async { optional(StatusResource.Incidents) }
         // OpenAI's summary omits some Codex components; fetch the complete list.
-        val componentsRequest = if (provider == OfficialStatusProvider.Codex) {
+        val componentsRequest = if (provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode)) {
             async { optional(StatusResource.Components) }
         } else null
-        val summary = summaryRequest.await()
-        val incidents = incidentsRequest.await()
+        var summary = summaryRequest.await()
+        var incidents = incidentsRequest.await()
         val components = componentsRequest?.await()?.optJSONArray("components")
         if (components != null) summary.put("components", components)
-        val partialComponents = provider == OfficialStatusProvider.Codex && components == null
+        val partialComponents = provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode) && components == null
+        val adapted = when (provider) {
+            OfficialStatusProvider.DeepSeek -> ProviderStatusAdapters.deepSeek(summary, incidents)
+            OfficialStatusProvider.KimiCode -> ProviderStatusAdapters.kimi(summary, incidents, partialComponents)
+            else -> summary to incidents
+        }
+        summary = adapted.first; incidents = adapted.second
         val fetchedAt = StatusJsonParser.nowStamp()
         val live = StatusJsonParser.parse(
             summary = summary, incidentsPayload = incidents, fetchedAt = fetchedAt,

@@ -93,12 +93,13 @@ object StatusPresentation {
 
     fun isSafeStatusUrl(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.port !in setOf(-1, 443)) return false
         if (!uri.rawQuery.isNullOrBlank() || !uri.rawFragment.isNullOrBlank() || uri.userInfo != null) {
             return false
         }
         val host = uri.host?.lowercase(Locale.US) ?: return false
         return host == "status.cursor.com" || host == "status.openai.com" ||
+            host == "status.deepseek.com" || host == "status.moonshot.cn" ||
             host == "stspg.io" || host.endsWith(".stspg.io")
     }
 

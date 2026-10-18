@@ -6,7 +6,27 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unreleased
 
-- Reorganize both privacy-policy versions and update the effective date to 2026-10-14. Consolidate usage summaries and include local observations, task acknowledgements, public caches, preferences and reminder deduplication in the data inventory. Document default collection, disabling / clearing, service-wide deletion, the 90-day query range and expired daily-file cleanup on reads / writes, plus browser-request boundaries and data controls. Synchronize both READMEs, architecture, performance and documentation maintenance guidance. This documentation update describes existing behavior.
+No pending changes.
+
+## 1.4.0 — 2026-10-18
+
+> Version decision: 1.3.0 → 1.4.0, with `versionCode` increased to 6. DeepSeek API and Kimi Code usage and official status feeds, experimental direct Antigravity usage and task entry points, multi-source adaptive paging across all seven widgets, and Codex 5-hour exhausted reset countdowns in live activities add compatible user-visible capabilities alongside a full-project review, bug fixes and performance optimizations. Keep the package ID, signing identity and existing data compatible.
+
+- Complete full-project review, bug fixes and performance optimizations: cache Keystore keys and decrypted account, credential, usage and task snapshots in memory by ciphertext and revision with automatic invalidation on update or clear; move account-switch persistence and cache reads off the main thread, coalesce widget and notification cache pushes during multi-source refreshes, memoize theme schemes, reset period filters and date formatters, and reuse heatmap paths and widget line-height measurements. Fix out-of-order stale revision writes, unordered notification deduplication eviction, backward clock-skew refresh freezes, fractional OAuth expiry timestamps, responsive widget paging steps and single/dual-pane settings back navigation, with regression test coverage.
+
+- Add a reset countdown to live activities when Codex 5-hour quota is exhausted: ongoing notifications, Android Live Updates and expanded Xiaomi HyperIsland cards display the remaining time until reset (with formal and cat-speak copy in Chinese and English) alongside a native countdown chronometer; reaching zero switches to awaiting-reset confirmation and hides the timer without claiming recovery before refresh.
+
+- Add experimental Antigravity usage queries directly from Android with imported OAuth JSON or an access token, supported grant renewal, account verification, model-group quota windows and reset times. Integrate overview, usage, connection management and widget paging; hide unconfigured usage. Permission failures and unmeasured responses retain cache without reporting model availability as 100% remaining. No bundled OAuth client secrets, new notification sources or public health feed.
+
+- Extend all seven widgets to Cursor, Codex, DeepSeek API and Kimi Code. Hide unconfigured sources; adapt to one, two or four cards with independent manual paging and source-specific navigation. Share encrypted caches and in-flight requests, with roughly fifteen-minute background refresh only for installed widget data types. Paging reads cache only; global status covers every configured source and never treats missing or stale data as all healthy.
+
+- Hide unconfigured sources from overview, usage and status while keeping every source in connection management. A single summary fills the width; deleting the current connection selects another configured source, and an empty dashboard offers one setup entry. Expired, invalid or temporarily unavailable saved connections remain visible for recovery.
+
+- Add DeepSeek API balance and Kimi Code subscription quota, scoped official service status, and overview / usage / connection controls. Includes Kimi region selection, legacy and current usage formats, exact amounts, encrypted offline cache and foreground refresh; credential revisions reject responses from replaced or deleted connections. The new sources cover in-app pages and widgets without expanding notification alerts.
+
+- Add an Antigravity service switch to Tasks with the shared task-card surface and phone/tablet panes. Open official Remote Control for tasks and execution status without requiring Cursor credentials, provide connection guidance and preserve native task-page state. Add an explicit unavailable status feed and official support entry, plus usage viewing instructions and feasibility limits. Antigravity usage supports experimental direct access as described above; tasks remain on the website and alerts are not added. Update bilingual documentation and privacy policies, with link, missing-credential, state-restoration, large-text and tablet regression coverage.
+
+- Reorganize both privacy-policy versions and consolidate the data inventory across local observations, task acknowledgements, public caches, preferences, multi-source credentials and reminder deduplication. Document default collection, disabling / clearing, service-wide deletion, the 90-day query range and expired daily-file cleanup on reads / writes, plus browser-request boundaries and data controls, and synchronize both READMEs, architecture, performance and documentation maintenance guidance.
 
 ## 1.3.0 — 2026-10-14
 

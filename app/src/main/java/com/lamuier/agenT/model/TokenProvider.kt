@@ -1,7 +1,7 @@
 package com.lamuier.agenT.model
 
 enum class TokenProvider {
-    Cursor, Codex;
+    Cursor, Codex, DeepSeek, KimiCode, Antigravity;
 
     companion object {
         fun initial(hasCursor: Boolean, hasCodex: Boolean, preferred: TokenProvider? = null): TokenProvider =
@@ -23,7 +23,7 @@ internal object TokenFormRules {
             if (existingMetadata != null && name == existingMetadata && secret.isEmpty()) return TokenFormError.NoChanges
         } else {
             if (secret.isEmpty()) return TokenFormError.TokenRequired
-            if (secret.length < 32) return TokenFormError.TokenTooShort
+            if (provider == TokenProvider.Codex && secret.length < 32) return TokenFormError.TokenTooShort
         }
         return null
     }

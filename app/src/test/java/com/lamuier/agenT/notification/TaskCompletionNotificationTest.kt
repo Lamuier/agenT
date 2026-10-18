@@ -115,4 +115,57 @@ class TaskCompletionNotificationTest {
         NotificationRefreshScheduler.scheduleTaskExpiry(context, null, now)
         assertNull(scheduler.getPendingJob(NotificationRefreshScheduler.TASK_EXPIRY_JOB_ID))
     }
+
+    @Test fun exhaustedCodexFiveHourWindowShowsCountdownAndChronometerUntilResetIsConfirmed() {
+        val nowMillis = 10_000_000_000L
+        val resetEpochSeconds = nowMillis / 1000 + 2 * 3600 + 15 * 60
+        fun codexOverview(primaryUsed: Double, primaryReset: Long? = resetEpochSeconds, weeklyUsed: Double = 20.0, age: Int = 0) =
+            com.lamuier.agenT.codex.CodexQuotaOverview(
+                planType = "plus",
+                primary = com.lamuier.agenT.codex.CodexQuotaWindow(primaryUsed, 18000, null, primaryReset),
+                secondary = com.lamuier.agenT.codex.CodexQuotaWindow(weeklyUsed, 604800, null, resetEpochSeconds + 86400),
+                additional = emptyList(),
+                resetCreditsAvailable = null,
+                fetchedAt = "",
+                cacheAgeSeconds = age,
+            )
+
+        val formal = QuotaNotificationRenderer(context, false).live(
+            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
+        )!!
+        val formalText = formal.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+        val formalBig = formal.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
+        assertEquals(formalText, formalBig)
+        assertTrue(formalText, formalText.contains("2 小时 15 分后重置") || formalText.contains("Resets in 2 h 15 min"))
+        assertFalse(formalText.contains("%"))
+        assertEquals(resetEpochSeconds * 1000L, formal.`when`)
+        assertTrue(formal.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        assertTrue(formal.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertTrue(formal.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        val cat = QuotaNotificationRenderer(context, true).live(
+            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
+        )!!
+        val catText = cat.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+        assertTrue(catText, catText.contains("2 小时 15 分后重置喵") || catText.contains("Resets in 2 h 15 min, meow"))
+
+        val elapsed = QuotaNotificationRenderer(context, false).live(
+            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            activityIntent(), "test", codexStatus = normalStatus, nowMillis = resetEpochSeconds * 1000L,
+        )!!
+        val elapsedText = elapsed.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+        assertTrue(elapsedText, elapsedText.contains("待确认重置") || elapsedText.contains("Awaiting reset"))
+        assertFalse(elapsed.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        assertFalse(elapsed.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+
+        val lowOnly = QuotaNotificationRenderer(context, false).live(
+            null, codexOverview(85.0, weeklyUsed = 100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
+        )!!
+        val lowOnlyBig = lowOnly.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
+        assertFalse(lowOnlyBig, lowOnlyBig.contains("后重置") || lowOnlyBig.contains("Resets in"))
+        assertFalse(lowOnly.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+    }
 }

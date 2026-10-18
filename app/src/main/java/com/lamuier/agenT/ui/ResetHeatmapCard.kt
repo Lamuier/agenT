@@ -46,7 +46,9 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
     val context = LocalContext.current
     val resources = LocalResources.current
     val locale = LocalConfiguration.current.locales[0]
-    var choosingDate by remember { mutableStateOf(false) }
+    val monthFormatter = remember(locale) { DateTimeFormatter.ofPattern("MMM", locale) }
+    val cellPath = remember { Path() }
+    var choosingDate by rememberSaveable { mutableStateOf(false) }
     val datePicker = key(data.from, data.to) { rememberDatePickerState(initialSelectedDateMillis = (selectedDate ?: data.to)
         .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(), selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
@@ -116,23 +118,25 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                                         ?.let { onSelect(it.date) }
                             }
                         }) {
+                            val radius = 4.dp.toPx()
+                            val cornerRadius = CornerRadius(radius, radius)
                             data.weeks.forEachIndexed { column, week -> week.forEachIndexed { row, day ->
                                 if (!day.inRange) return@forEachIndexed
                                 val topLeft = Offset(column * stepPx, headerPx + row * stepPx)
                                 val size = Size(cellPx, cellPx)
-                                val radius = 4.dp.toPx()
-                                val path = Path().apply { addRoundRect(RoundRect(topLeft.x, topLeft.y,
-                                    topLeft.x + size.width, topLeft.y + size.height, CornerRadius(radius, radius))) }
-                                clipPath(path) {
-                                    val types = day.kinds.sortedBy { it.ordinal }
+                                cellPath.reset()
+                                cellPath.addRoundRect(RoundRect(topLeft.x, topLeft.y,
+                                    topLeft.x + size.width, topLeft.y + size.height, cornerRadius))
+                                clipPath(cellPath) {
+                                    val types = day.kinds
                                     if (types.isEmpty()) drawRect(empty, topLeft, size)
                                     else types.forEachIndexed { index, type ->
                                         val width = cellPx / types.size
                                         drawRect(colors.getValue(type), Offset(topLeft.x + index * width, topLeft.y), Size(width, cellPx))
                                     }
                                 }
-                                if (day.entries.isNotEmpty()) drawRoundRect(outline, topLeft, size, CornerRadius(radius, radius), style = Stroke(1.dp.toPx()))
-                                if (day.date == selectedDate) drawRoundRect(selectedColor, topLeft, size, CornerRadius(radius, radius), style = Stroke(2.dp.toPx()))
+                                if (day.entries.isNotEmpty()) drawRoundRect(outline, topLeft, size, cornerRadius, style = Stroke(1.dp.toPx()))
+                                if (day.date == selectedDate) drawRoundRect(selectedColor, topLeft, size, cornerRadius, style = Stroke(2.dp.toPx()))
                             } }
                         }
                         var previousMonth: java.time.YearMonth? = null
@@ -141,7 +145,7 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
                             val monthDay = week.firstOrNull { it.inRange && it.date.dayOfMonth == 1 } ?: firstDay
                             val month = java.time.YearMonth.from(monthDay.date)
                             if (month != previousMonth) {
-                                Text(monthDay.date.format(DateTimeFormatter.ofPattern("MMM", locale)),
+                                Text(monthDay.date.format(monthFormatter),
                                     Modifier.offset(x = step * column), style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                 previousMonth = month

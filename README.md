@@ -1,13 +1,13 @@
 # agenT
 
-> 在一个原生 Android 应用中查看 Cursor 与 Codex 的用量、任务、重置和服务状态。
+> 在一个原生 Android 应用中查看多家 AI 服务的用量、任务、重置和服务状态。
 
 **中文** | [English](README.en.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-当前工程版本：**1.3.0**（`versionCode` 5）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#130--2026-10-14)，安装包 ID 为 `com.lamuier.agenT`。
+当前工程版本：**1.4.0**（`versionCode` 6）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#140--2026-10-18)，安装包 ID 为 `com.lamuier.agenT`。
 
 应用没有账号体系、自建后端、广告或分析 SDK。凭据和个人缓存保存在本机；查询直接发往各服务接口，公共重置公告匿名读取第三方来源。
 
@@ -15,31 +15,38 @@
 
 | 页面 | 当前功能 |
 | --- | --- |
-| 概览 | Cursor / Codex 双助手卡片、额度与重置时间；Cursor 额度固定分别显示自有模型与其他模型两池 |
-| 用量 | 紧凑双服务额度仪表、Token 四格指标、模型费用 / Token 条形排行、带图例的消耗节奏、等长对比图与加密本机观察趋势；说明默认收起 |
-| 任务 | Cursor 云端任务，按仓库 / 状态 / 时间 / 来源分组；包括 Grok Bot、API、SDK、Remote Control 来源，已合并 PR 隐藏；顶部“+”打开 Cursor Agents 新建任务，对话在官方网页打开 |
+| 概览 | Cursor / Codex / DeepSeek / Kimi Code / Antigravity 信息卡、余额或额度与重置时间；Cursor 额度固定分别显示自有模型与其他模型两池 |
+| 用量 | 五来源摘要切换、DeepSeek 原币种余额、Kimi Code 动态额度窗口与加量包；Cursor / Codex 额度仪表、Token 四格指标、模型费用 / Token 条形排行、带图例的消耗节奏、等长对比图与加密本机观察趋势；说明默认收起；Antigravity 实验性直连模型组额度及重置时间 |
+| 任务 | Cursor 云端任务，按仓库 / 状态 / 时间 / 来源分组；包括 Grok Bot、API、SDK、Remote Control 来源，已合并 PR 隐藏；顶部“+”打开 Cursor Agents 新建任务，对话在官方网页打开；切换 Antigravity 可在官方远控查看任务和执行状态 |
 | 重置 | 普通重置 / 券发放数字卡、类型占比环、按日频次图与日历热力图；按周 / 自然月 / 订阅月筛选，记录点击展开 |
-| 状态 | Cursor 与 Codex 官方组件、进行中的事件与历史；顶部与详情摘要分别显示最后更新时间和缓存标记，公开状态无需 Token |
+| 状态 | Cursor、Codex、DeepSeek API 与 Kimi Code 官方组件、进行中的事件与历史；顶部与详情摘要分别显示最后更新时间和缓存标记，状态请求匿名，界面按配置显示；Antigravity 暂无已接入公开状态源，单独显示未接入 |
+
+概览、用量和状态页仅展示已保存凭据的数据源；未配置的来源和切换项隐藏，仍可在「设置 → 服务连接 → Token 管理」添加。已保存但失效或刷新失败的连接继续显示；删除当前连接后自动选择其他已配置来源，全部未配置时显示统一配置入口。无需应用凭据的 Antigravity 官方网页入口独立保留。
+
+DeepSeek API 和 Kimi Code 在「设置 → 服务连接 → Token 管理」使用官方 API Key 配置；Kimi Code 默认中国区，可手动选择国际区，与 Kimi 开放平台分开。余额与服务健康独立，缺失额度不会按零处理。新增来源支持加密缓存、前台刷新及桌面组件按需后台更新，通知来源范围沿用现有规则。接口、字段口径及边界见 [官方来源接入](docs/official-providers.md)。
 
 主导航可排序，手机底部导航保留滑动，宽窗口使用侧边导航。设置分为「服务连接 / 外观 / 通知 / 系统入口 / 通用」，支持中英文、浅深色、动态配色、显示时区和大字号；折叠屏支持左右 / 上下内容分区、任务列表与详情及安全弹窗，适配分屏和小窗；平板概览采用信息网格，任务提供完整详情，分类侧栏与明细栏按用途分配宽度。[折叠屏适配](docs/foldables.md)。设置页接入预测性返回。导航、筛选与滚动状态可恢复。
 
-- **实时活动与提醒**：常驻展示 Cursor 执行中及最近结束的任务，同时关注两项服务的额度 / 状态；结束结果保留 15 分钟，可点“确认”清除当前结束任务提示。80% / 100% 阈值和刷新确认的 Codex 窗口重置分别提醒一次，提供默认关闭的猫语开关。原生实况和小米超级岛的最终展示由系统决定。[通知规则](docs/notifications.md)
-- **系统入口**：七种双服务小组件（两种用量、五种状态），支持样例预览和固定；4×3 状态组件按服务分栏，分别显示组件列表和事件摘要；用量组件按各自百分比独立绘制三个窗口的用量条，保留重置时间，小尺寸和大字号自动采用紧凑布局。长按图标有 Token 管理、设置、概览、任务入口，快捷设置磁贴可打开概览。
+- **实时活动与提醒**：常驻展示 Cursor 执行中及最近结束的任务，同时关注两项服务的额度 / 状态，Codex 5 小时限额用完后显示重置倒计时；结束结果保留 15 分钟，可点“确认”清除当前结束任务提示。80% / 100% 阈值和刷新确认的 Codex 窗口重置分别提醒一次，提供默认关闭的猫语开关。原生实况和小米超级岛的最终展示由系统决定。[通知规则](docs/notifications.md)
+- **系统入口**：七种多来源小组件（两种用量、五种状态），未配置隐藏，按空间自动布局与分页，支持样例预览和固定；4×3 在一至两来源时保留详细信息，三至五来源时使用四格摘要并按需分页；小尺寸和大字号分页显示，桌面切换不发网络请求。DeepSeek 显示原币种余额，其他来源按实际额度显示用量条及重置时间。详见 [小组件](docs/widgets.md)。长按图标有 Token 管理、设置、概览、任务入口，快捷设置磁贴可打开概览。
 - **触感反馈**：默认开启，可在「通用」关闭；选择轻触，进入前台自动刷新及手动刷新、保存、复制、删除成功后确认一次。自动刷新须有实际更新且同批查询完整成功；失败、纯缓存、定时轮询和后台同步保持静默，遵循系统设置。
 - **刷新与离线**：恢复前台时检查新鲜度，刷新期间顶栏显示进度；前台通常五分钟、后台约十五分钟同步，临近 Codex 重置安排检查；失败回显缓存。加载失败仅短暂提示，页面不显示异常详情，保留缓存和重试入口。可关闭自动更新 Codex 用量，手动刷新与保存 Token 仍会查询。
 
 冷启动并行恢复本地缓存，首帧后启动网络与系统入口维护；历史按页面与时段读取，图表复用绘制数据。性能采集及验证边界见[启动与性能](docs/performance.md)。
 
+Antigravity 任务使用系统浏览器的 Google 登录，网页内的任务列表由 Google 提供。用量可在 Token 管理导入已有 Antigravity OAuth JSON 或访问 Token，由手机实验性直连 Google，无需电脑持续在线；具备同一授权的刷新字段时可自动续期。当前不提供应用内一键 Google 登录，不同步任务正文或发送其提醒，公开健康状态仍未接入。[连接步骤与用量可行性评估](docs/antigravity.md)。
+
 ## 配置凭据
 
-在「设置 → 服务连接 → Token 管理」选择 Cursor 或 Codex。保存后默认遮罩，查看已保存 Token 需设备解锁；复制使用敏感剪贴板标记。不要向他人发送 Token，粘贴后清空剪贴板。
+在「设置 → 服务连接 → Token 管理」选择要配置的服务。保存后默认遮罩，查看已保存 Token 需设备解锁；复制使用敏感剪贴板标记。不要向他人发送 Token，粘贴后清空剪贴板。
 
 | 服务 | 凭据来源与填写 |
 | --- | --- |
 | Cursor | 应用内提供 Windows 提取引导；桌面状态数据库的 `cursorAuth/accessToken` 是读取项，Windows 常见位置为 `%APPDATA%\Cursor\User\globalStorage\state.vscdb` |
+| Antigravity | 自己已授权客户端导出的 OAuth JSON（`access_token` 必填），或直接粘贴访问 Token；自动续期要求同一授权的 `refresh_token`、`client_id`，以及客户端要求的 `client_secret`。仅有访问 Token 时到期需更新，详见 [接入说明](docs/antigravity.md) |
 | Codex | Codex CLI 登录后的 `~/.codex/auth.json`（Windows 为 `%USERPROFILE%\.codex\auth.json`）；填写 `tokens.access_token`，`tokens.account_id` 可选 |
 
-不要填写 OpenAI 平台 API Key 来替代 Codex / ChatGPT 订阅 Token。失效或过期时更新原服务凭据。官方服务状态和匿名公共重置记录无需凭据。
+不要填写 OpenAI 平台 API Key 来替代 Codex / ChatGPT 订阅 Token。失效或过期时更新原服务凭据。官方状态请求匿名且不发送凭据，界面按已配置来源显示；公共重置记录独立展示。
 
 ## 数据与使用边界
 
@@ -75,4 +82,4 @@ Mac / Linux 使用 `./build.sh`，Windows 使用 `.\build.ps1`。默认执行单
 
 ## 许可与联系
 
-agenT 以 [MIT](LICENSE) 开源，是个人维护的非官方工具，与 Cursor（Anysphere）或 OpenAI 无隶属关系。问题与建议通过项目 GitHub issue 提交；使用前请阅读隐私政策与相应服务约定。
+agenT 以 [MIT](LICENSE) 开源，是个人维护的非官方工具，与 Cursor（Anysphere）、OpenAI 或 Google 无隶属关系。问题与建议通过项目 GitHub issue 提交；使用前请阅读隐私政策与相应服务约定。

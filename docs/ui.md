@@ -10,7 +10,7 @@
 
 自动刷新和手动刷新期间，顶栏刷新入口显示主题色进度圆环及「正在刷新数据」无障碍描述；保留当前页面、缓存内容和滚动位置，避免仅显示灰色图标。查询结束后恢复刷新入口，期间合并重复请求。
 
-状态页顶部的 Cursor / Codex 卡片与各服务详情摘要显示「最后更新」，包含日期、时间和所选显示时区。时间取该服务最近成功获取状态数据的时刻；缓存回显保留原时间并标记缓存，刷新失败不会把旧数据标为刚更新。窄屏与大字号允许时间文案换行。
+状态页使用服务摘要 / 筛选与选中服务详情分栏，手机合并为单列；Antigravity 的数据缺失与网页入口边界见 [Antigravity 接入](antigravity.md)。顶部的 Cursor / Codex 卡片与各服务详情摘要显示「最后更新」，包含日期、时间和所选显示时区。时间取该服务最近成功获取状态数据的时刻；缓存回显保留原时间并标记缓存，刷新失败不会把旧数据标为刚更新。窄屏与大字号允许时间文案换行。
 
 主导航默认依次为「概览 / 用量 / 任务 / 重置 / 状态」，按稳定 ID 保存自定义顺序。手机使用底部导航并保留滑动，宽窗口使用侧边导航。概览、用量、状态同时服务两项助手；任务属于 Cursor，重置属于 Codex。旧账单跳转迁移到用量，不删除费用数据。
 
@@ -67,13 +67,9 @@ node scripts/preview-island-styles.cjs
 
 ## 4×3 小组件布局
 
-用量详情将 Cursor 与 Codex 放在两块主题色卡片中；Cursor 保留周期总用量、两池用量与剩余时间，Codex 的 5 小时和每周窗口并列，分别显示百分比、进度条和完整重置时间。进度图与对应数字来自同一份数值，三个窗口独立绘制，避免桌面宿主改变 ProgressBar 的可变 Drawable 状态；空值或非有限值显示空条，超出 0–100% 的值仅限制条长。更新时间与刷新入口固定在外层。较小宿主和大字号使用紧凑布局，保留三个配额窗口；两块额度区域分配剩余高度，避免整体居中留下大块空白。较大的 4×3 桌面区域选用放大布局，增大服务名、百分比和重置时间字号；中等字体缩放不再强制缩成极小字号。
+七种组件支持多来源，含 Antigravity 实验性用量，按配置隐藏并随宿主尺寸和字号分页。4×3 的一至两来源保留详细内容，三至五来源采用四格摘要并按需分页；规则、刷新和兼容性统一维护在 [小组件](widgets.md)。
 
-状态详情按 Cursor / Codex 分栏，服务名不再重复提供方前缀；正常尺寸每栏最多八项，足以展示当前八项 Cursor 与五项 Codex 服务。异常项优先，未知项使用中性色；正常项通过状态点、总状态与健康数量表达，不给每行重复追加“正常”。两栏各自显示近期事件或正在处理的事件摘要，底部保留缓存来源与更新时间，完整官方名称和事件详情保留在无障碍描述中。
-
-较小宿主和大字号减少同时展示的行数，并明确提示剩余项数，点击打开应用查看完整列表；不把裁切当作省略规则。Android 12+ 提供响应式 RemoteViews，旧平台读取宿主尺寸选择布局。系统小组件预览同步更新，样例不加载用户凭据。
-
-[WidgetRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetRenderingTest.kt) 用真实 Android RemoteViews 进行原生绘制，检查文字测量、父视图裁切、单行溢出和省略号，覆盖 4×3 中英文、浅深色、较小尺寸和 200% 字号。截图位于 `app/build/reports/widget-review/`；运行 `python3 scripts/widget-review-gallery.py` 生成对照图库。进度比例与重新应用检查见 [WidgetUsageMeterTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetUsageMeterTest.kt)。它是 JVM 原生渲染证据，不等同于小米桌面等系统宿主的实际截图。
+[WidgetRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetRenderingTest.kt) 保留双来源详情的原生绘制检查，[WidgetSourcesRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetSourcesRenderingTest.kt) 覆盖七种组件的四来源及 Antigravity 第五页、中英文、深浅色、最小尺寸和 200% 字号。Antigravity 页面与组件补充截图位于 `app/build/reports/antigravity-review/`（[用量交互测试](../app/src/test/java/com/lamuier/agenT/ui/AntigravityUsageUiTest.kt)）；其他截图位于 `app/build/reports/widget-review/`；运行 `python3 scripts/widget-review-gallery.py` 生成图库。用量条独立比例与重新应用见 [WidgetUsageMeterTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetUsageMeterTest.kt)。JVM 原生渲染不等同于实际 OEM 桌面截图。
 
 ## 界面验收
 
@@ -111,3 +107,7 @@ Cursor 消耗条使用已用比例，周期进度改用主题辅助色的菱形�
 [CodexResetTab](../app/src/main/java/com/lamuier/agenT/ui/CodexResetTab.kt) 将普通重置 / 券发放记录显示为紧凑数字卡、类型占比环、有记录天数及最近时间；[ResetDashboardCharts](../app/src/main/java/com/lamuier/agenT/ui/ResetDashboardCharts.kt) 绘制从零开始的按日成对条形图。环形图按已获取记录的类型占比绘制，不表示额度或券余额；频次、热力图和记录标识共用主题色及可见图例。空数据不绘制空白大频次图，数据未获取或订阅起始日缺失时显示未知值。截断和缓存用短标签说明，完整数据边界集中在折痕安全说明弹窗。
 
 周 / 自然月 / 订阅月改用下拉筛选，保留订阅起始日设置；热力图保留 3 / 6 / 12 月、前后窗口及日期选择。点选日频次或热力图后显示当天已获取记录，记录默认压缩为时间、类型与来源，点击展开原文和经过允许列表检查的来源链接。筛选、日期、公告展开与滚动状态可恢复，大字号改为纵向指标并自动换行，环内只保留总数、标题移至环外；大屏继续摘要 / 日历分栏。热力图初次显示或切换窗口时定位最近月份，恢复已有页面时保留浏览位置。统计只使用公共 API 的 regular 和 banked，去重、时区及半开周期区间与已有契约一致；不推断个人兑换、券数量或下一次额外重置。
+
+用量摘要支持 Cursor、Codex、DeepSeek API 与 Kimi Code，常规字号横向滚动、大字号纵排；各来源独立保留详情滚动位置。概览增加两家来源卡片，状态页展示其筛选后的官方组件，连接来源使用换行控件。数据口径见 [官方来源接入](official-providers.md)。
+
+概览、用量和状态按已保存凭据筛选数据源；未配置项隐藏，缓存不参与配置判断，失效连接仍保留修复入口。删除当前来源会选择其他已配置项，全部未配置时概览 / 用量只显示统一配置入口；连接设置保留全部来源。

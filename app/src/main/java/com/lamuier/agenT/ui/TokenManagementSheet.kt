@@ -26,6 +26,9 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalResources
 import com.lamuier.agenT.data.InteractionPreferences
+import com.lamuier.agenT.providers.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexCredentialInfo
 import com.lamuier.agenT.model.CursorAccount
@@ -46,6 +49,7 @@ internal fun TokenManagementSheet(
     busy: Boolean, error: String?, onProviderChange: (TokenProvider) -> Unit, onClearError: () -> Unit,
     onDismiss: () -> Unit, onSave: (TokenProvider, String, String, () -> Unit) -> Unit,
     onDeleteRequest: (TokenProvider) -> Unit, onRevealSavedToken: (TokenProvider) -> String,
+    extraCredentials: Map<TokenProvider, ProviderCredentialInfo> = emptyMap(),
 ) {
     val activity = LocalContext.current.tokenActivity()
     val draft = remember(activity) { activity?.let { androidx.lifecycle.ViewModelProvider(it)[TokenDraftViewModel::class.java] } }
@@ -55,7 +59,7 @@ internal fun TokenManagementSheet(
     val body: @Composable () -> Unit = {
         val enabled by InteractionPreferences.get(LocalContext.current).hapticFeedbackEnabled.collectAsStateWithLifecycle()
         FeedbackProvider(enabled) { TokenManagementContent(provider, cursorAccount, codexCredential, busy, error, onProviderChange,
-            onClearError, { draft?.clear(); onDismiss() }, onSave, onDeleteRequest, onRevealSavedToken) }
+            onClearError, { draft?.clear(); onDismiss() }, onSave, onDeleteRequest, onRevealSavedToken, extraCredentials) }
     }
     if (LocalWindowFolds.current.isNotEmpty()) {
         FoldSafeModal(onDismissRequest = { if (!busy) { draft?.clear(); onDismiss() } },
@@ -71,20 +75,25 @@ internal fun TokenManagementSheet(
 }
 
 /** Also rendered by the Debug fixture activity with empty inputs and inert callbacks. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TokenManagementContent(
     provider: TokenProvider, cursorAccount: CursorAccount?, codexCredential: CodexCredentialInfo?,
     busy: Boolean, error: String?, onProviderChange: (TokenProvider) -> Unit, onClearError: () -> Unit,
     onDismiss: () -> Unit, onSave: (TokenProvider, String, String, () -> Unit) -> Unit,
     onDeleteRequest: (TokenProvider) -> Unit, onRevealSavedToken: (TokenProvider) -> String,
+    extraCredentials: Map<TokenProvider, ProviderCredentialInfo> = emptyMap(),
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val feedback = LocalAppFeedback.current
     val cursor = provider == TokenProvider.Cursor
-    val revision = if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
-    val existingMetadata = if (cursor) cursorAccount?.alias else codexCredential?.accountId
-    val hasCredential = if (cursor) cursorAccount != null else codexCredential != null
+    val antigravity = provider == TokenProvider.Antigravity
+    val apiKey = provider == TokenProvider.DeepSeek || provider == TokenProvider.KimiCode || antigravity
+    val extra = extraCredentials[provider]
+    val revision = if (apiKey) extra?.revision else if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
+    val existingMetadata = if (apiKey) extra?.region?.id else if (cursor) cursorAccount?.alias else codexCredential?.accountId
+    val hasCredential = if (apiKey) extra != null else if (cursor) cursorAccount != null else codexCredential != null
     val activity = context.tokenActivity()
     val revealScope = rememberCoroutineScope()
     val draft = remember(activity) { activity?.let { androidx.lifecycle.ViewModelProvider(it)[TokenDraftViewModel::class.java] }
@@ -167,7 +176,7 @@ internal fun TokenManagementContent(
                 Icon(androidx.compose.ui.res.painterResource(R.drawable.symbol_close), stringResource(R.string.action_close))
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TokenProvider.entries.forEach { item ->
                 FilterChip(selected = provider == item, onClick = {
                     if (provider != item) {
@@ -175,10 +184,10 @@ internal fun TokenManagementContent(
                         token = ""; revealed = null; savedVisible = false; visible = false; copied = false; localError = null; saved = false
                         onClearError(); onProviderChange(item)
                     }
-                }, enabled = !blocked, label = { Text(item.name) }, modifier = Modifier.weight(1f))
+                }, enabled = !blocked, label = { Text(if (item == TokenProvider.KimiCode) "Kimi Code" else item.name) })
             }
         }
-        val invalid = if (cursor) cursorAccount?.tokenExpired == true else codexCredential?.let { it.expired || it.invalid } == true
+        val invalid = if (apiKey) false else if (cursor) cursorAccount?.tokenExpired == true else codexCredential?.let { it.expired || it.invalid } == true
         Text(stringResource(when {
             !hasCredential -> R.string.connection_not_configured
             invalid -> R.string.connection_token_expired
@@ -186,7 +195,16 @@ internal fun TokenManagementContent(
         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         (localError ?: error)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (saved) Text(stringResource(R.string.token_management_save_success), color = MaterialTheme.colorScheme.primary)
-        OutlinedTextField(
+        if (antigravity) Text(stringResource(R.string.antigravity_grant_help), style = MaterialTheme.typography.bodySmall)
+        if (provider == TokenProvider.KimiCode) {
+            Text(stringResource(R.string.provider_region_help), style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KimiRegion.entries.forEach { region -> FilterChip(selected = KimiRegion.fromId(metadata) == region,
+                    onClick = { metadata = region.id; clearFeedback() }, enabled = !blocked,
+                    label = { Text(stringResource(if (region == KimiRegion.China) R.string.provider_region_cn else R.string.provider_region_global)) }) }
+            }
+        }
+        if (!apiKey) OutlinedTextField(
             value = metadata, onValueChange = { metadata = it; clearFeedback() },
             label = { Text(stringResource(if (cursor) R.string.account_alias_label else R.string.codex_account_id_label)) },
             supportingText = { if (!cursor) Text(stringResource(R.string.codex_account_id_optional)) },
@@ -194,13 +212,15 @@ internal fun TokenManagementContent(
         )
         OutlinedTextField(
             value = token, onValueChange = { token = it; clearFeedback() },
-            label = { Text(stringResource(R.string.token_management_token_label)) },
+            label = { Text(stringResource(if (antigravity) R.string.antigravity_grant_label else if (apiKey) R.string.provider_api_key_label else R.string.token_management_token_label)) },
             supportingText = { Text(stringResource(when {
+                antigravity -> R.string.antigravity_grant_hint
+                apiKey -> R.string.provider_key_hint
                 cursor && hasCredential -> R.string.token_management_replace_hint
                 !cursor && hasCredential -> R.string.codex_replace_hint
                 else -> R.string.token_management_paste_hint
             })) },
-            singleLine = true, enabled = !blocked, modifier = Modifier.fillMaxWidth(),
+            singleLine = !antigravity, maxLines = if (antigravity) 6 else 1, enabled = !blocked, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
@@ -213,7 +233,8 @@ internal fun TokenManagementContent(
         TextButton(onClick = { help = !help }, enabled = !blocked, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.codex_token_help_title))
         }
-        if (help && !cursor) {
+        if (help && apiKey) Text(stringResource(if (antigravity) R.string.antigravity_grant_details else R.string.provider_key_help), style = MaterialTheme.typography.bodySmall)
+        if (help && !cursor && !apiKey) {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.codex_token_help_steps), style = MaterialTheme.typography.bodySmall)

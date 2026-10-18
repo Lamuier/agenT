@@ -43,17 +43,18 @@ internal class UsageHistoryStore(
     fun read(service: String, owner: String, now: Long = System.currentTimeMillis(), days: Int = 90): List<UsageObservation> = synchronized(lock) {
         require(days in 1..90)
         check("$service:$owner" !in failedOwners) { "History write failed" }
-        prune(now)
+        val files = prune(now)
         val earliest = now - days * UsageAnalysis.DAY
-        root.listFiles()?.filter { it.name.startsWith("${service}_${owner}_") && it.name.endsWith(".json") &&
+        files.filter { it.name.startsWith("${service}_${owner}_") && it.name.endsWith(".json") &&
             it.name.substringBefore(".json").substringAfterLast('_').toLongOrNull()?.let { day -> day >= earliest / UsageAnalysis.DAY } == true }
-            ?.sortedBy { it.name }?.flatMap { readFile(it) }?.filter { it.atMillis in earliest..now }?.sortedBy { it.atMillis }.orEmpty()
+            .sortedBy { it.name }.flatMap { readFile(it) }.filter { it.atMillis in earliest..now }.sortedBy { it.atMillis }
     }
     fun record(service: String, owner: String, point: UsageObservation, ticket: Long): Boolean = synchronized(lock) {
         if (!enabled() || ticket != generation() || point.values.isEmpty()) return@synchronized false
-        root.mkdirs(); prune(point.atMillis)
-        val latestDay = root.listFiles()?.filter { it.name.startsWith("${service}_${owner}_") }
-            ?.mapNotNull { it.name.substringBefore(".json").substringAfterLast('_').toLongOrNull() }?.maxOrNull()
+        root.mkdirs()
+        val files = prune(point.atMillis)
+        val latestDay = files.filter { it.name.startsWith("${service}_${owner}_") }
+            .mapNotNull { it.name.substringBefore(".json").substringAfterLast('_').toLongOrNull() }.maxOrNull()
         if (latestDay != null && latestDay > point.atMillis / UsageAnalysis.DAY) return@synchronized false
         val file = File(root, "${service}_${owner}_${point.atMillis / UsageAnalysis.DAY}.json")
         val existing = if (file.isFile) readFile(file) else emptyList()
@@ -80,10 +81,20 @@ internal class UsageHistoryStore(
         val points = json.getJSONArray("points"); check(points.length() <= 1000)
         return (0 until points.length()).map { fromJson(points.getJSONObject(it)) }.also { rememberFile(file, it) }
     }
-    private fun prune(now: Long) {
+    private fun prune(now: Long): List<File> {
         val earliestDay = (now - 90 * UsageAnalysis.DAY) / UsageAnalysis.DAY
-        root.listFiles()?.filter { file -> file.name.substringBefore(".json").substringAfterLast('_').toLongOrNull()?.let { it < earliestDay } == true }
-            ?.forEach { check(it.delete() || !it.exists()); decodedFiles.remove(it.absolutePath) }
+        val allFiles = root.listFiles()?.toList().orEmpty()
+        val remaining = ArrayList<File>(allFiles.size)
+        for (file in allFiles) {
+            val expired = file.name.substringBefore(".json").substringAfterLast('_').toLongOrNull()?.let { it < earliestDay } == true
+            if (expired) {
+                check(file.delete() || !file.exists())
+                decodedFiles.remove(file.absolutePath)
+            } else {
+                remaining.add(file)
+            }
+        }
+        return remaining
     }
     private fun rememberFile(file: File, points: List<UsageObservation>) {
         decodedFiles[file.absolutePath] = DecodedDay(file.lastModified(), file.length(), points)

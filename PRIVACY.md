@@ -2,9 +2,9 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-14**
+**生效日期：2026-10-17**
 
-agenT 在本机展示 Cursor 与 Codex 的用量、任务、重置和服务状态。应用没有账号体系或自建服务端，不内置第三方统计、广告或崩溃收集 SDK。
+agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、Codex、DeepSeek API、Kimi Code 与 Antigravity 的用量、任务、重置和服务状态：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
 
 ## 我们收集哪些数据
 
@@ -16,14 +16,15 @@ agenT 在本机展示 Cursor 与 Codex 的用量、任务、重置和服务状�
 | --- | --- | --- | --- |
 | Cursor Access Token | 查询 Cursor 账号、用量与云端任务列表 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证凭据发往 Cursor 官方接口 |
 | Codex / ChatGPT OAuth Access Token 与可选 Account ID | 查询 Codex 限流窗口 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证信息发往 `chatgpt.com/backend-api/wham/usage` |
+| DeepSeek API Key、Kimi Code API Key 与区域、Antigravity OAuth 凭据 | 查询对应服务余额、订阅额度或模型组限额 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅发往对应服务固定官方接口（见下文专节） |
 | 账号别名 | 本地标识账号 | Android Keystore AES-GCM 加密 | 不上传 |
 | Cursor / Codex 用量摘要（套餐、额度、百分比、窗口与重置时间、Credits、按模型 Token、Grok Bot 周额度等） | 界面、小组件、通知与离线回显 | Android Keystore AES-GCM 加密缓存，只保存解析后的摘要 | 不上传摘要或原始响应 |
 | 本机用量观察（解析后的数字、UTC 时间戳、周期边界与重置时间） | 观察趋势与条件节奏估算 | Android Keystore AES-GCM 加密，保存在禁止备份目录 | 不上传；采集控制与保存期限见[本机用量观察](#本机用量观察) |
 | 云端任务摘要及本机观察 / 确认状态（任务名、状态、来源、分支、PR 链接、增删行数与观察时间等） | 任务页与实时活动、避免重复提示 | 按账号和凭据修订号进行 Android Keystore AES-GCM 加密缓存 | 不上传本机观察或确认记录；不抓取完整任务对话 |
 | 旧 Codex 个人重置历史、订阅月起始日与最新窗口观察快照 | 存储兼容、订阅月筛选与窗口重置提醒 | Android Keystore AES-GCM 加密，按用户 / 工作区身份摘要隔离 | 不上传 |
-| Cursor / Codex 公开服务状态（组件名、状态、事件摘要） | 状态页、概览、小组件与通知 | 最近一次成功结果明文缓存在应用私有目录 | 公开查询不携带 Token 或 Account ID |
+| Cursor / Codex / DeepSeek / Kimi 公开服务状态（组件名、状态、事件摘要） | 状态页、概览、小组件与通知 | 最近一次成功结果明文缓存在应用私有目录 | 公开查询不携带 Token、API Key 或 Account ID |
 | 公共重置公告 / 观测 | 重置统计、列表与热力图 | 解析后的公开字段明文缓存在应用私有目录 | 匿名查询不携带 Token、Account ID 或个人记录 |
-| 界面与通知偏好、提醒去重标识 | 保留设置、避免重复提醒 | 应用私有 SharedPreferences；这些设置和去重元数据未加密，不含 Token | 不上传 |
+| 界面与通知偏好、小组件分页偏好、提醒去重标识 | 保留设置、避免重复提醒 | 应用私有 SharedPreferences；这些设置和去重元数据未加密，不含 Token | 不上传 |
 
 ## 本机用量观察
 
@@ -54,9 +55,21 @@ agenT 在本机展示 Cursor 与 Codex 的用量、任务、重置和服务状�
 
 凭据只发送给对应服务，不随公开状态、公共重置请求或网页外链发送。应用自身的 HTTP 客户端强制 HTTPS、禁止明文传输并拒绝重定向。
 
-任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
+任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
 
 应用不向开发者服务器上传个人凭据、记录或分析数据，也不向第三方公共 API 上传这些数据。
+
+Antigravity 任务入口通过系统浏览器打开 `https://antigravity.google.com/`，连接 / 用量指南仅打开 `www.antigravity.google/docs` 中固定页面，官方支持入口为 `https://antigravity.google/support`。网页 Google 登录及后续网页请求由浏览器处理，agenT 不读取其 Cookie 或浏览器会话，不附加其他服务凭据。
+
+Antigravity 用量连接由用户手动导入已有 OAuth JSON 或访问 Token。访问 Token、可选刷新 Token / OAuth 客户端配置、账号绑定及项目标识与最少额度缓存，使用 Android Keystore AES-GCM 加密，排除备份、迁移、日志、报告和可恢复界面状态。查看需设备解锁；删除连接清除本机授权和额度缓存，但不撤销该 OAuth 客户端在 Google 的其他授权。应用不内置客户端秘密、不读取电脑凭据，不代办订阅或账号开通。
+
+访问 Token 仅发往固定 `www.googleapis.com/oauth2/v3/userinfo` 核对账号，以及 `cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、`retrieveUserQuotaSummary`、`retrieveUserQuota` 查询额度。刷新 Token 与用户提供的客户端配置仅以表单提交到 `oauth2.googleapis.com/token`；禁止跟随 HTTP 重定向，不向任务网页发送这些凭据。仅缓存解析后的额度组、剩余比例与重置时间，不保存身份或账户接口原始响应。应用前台刷新及已安装用量组件的约十五分钟刷新共用连接；只有状态组件时不查询或续期 Antigravity 用量。失败保留原缓存时间；不采集其 Token 历史、任务正文或发送通知。
+
+## DeepSeek API 与 Kimi Code
+
+- 手动输入的 API Key、Kimi 区域、凭据修订号与最新账户用量响应使用 Android Keystore AES-GCM 加密保存在本机，不参与备份或迁移，不写入日志、报告或可恢复界面状态。查看已保存密钥须设备解锁，复制标记为敏感内容。更换密钥 / 区域重建账户缓存；删除连接清除密钥与账户缓存。
+- DeepSeek Key 仅发往 `api.deepseek.com/user/balance`；Kimi Code Key 仅发往用户选定区域的 `api.kimi.com/coding/v1/usages` 或 `api.kimi.ai/coding/v1/usages`。不自动跨区域重试，不读取 Cookie、浏览器登录、桌面客户端凭据或 OAuth 会话。服务状态匿名请求 `status.deepseek.com` 与 `status.moonshot.cn`，公开状态缓存不含 Key。
+- 两家来源在前台、用户操作后以及放置相关桌面组件时刷新。组件后台沿用约十五分钟系统调度，仅请求已配置来源及已放置组件需要的数据类型；翻页只读缓存，无组件时停止组件任务，不扩展通知提醒来源。分页偏好仅保存组件 ID 与来源 ID。官方控制台固定链接 `https://platform.deepseek.com/` 与 `https://www.kimi.com/code/console` 由系统浏览器处理，不携带本应用密钥。
 
 ## 数据安全
 
@@ -87,6 +100,7 @@ AndroidX 另合并 `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`�
 | 在同一位置清空用量观察历史 | 删除 Cursor 与 Codex 的观察历史，使在途采集失效；后续样本按采集开关生成 |
 | 删除 Cursor 账号 | 删除该账号的凭据、用量 / 任务缓存，并清除全部 Cursor 本机用量观察 |
 | 删除 Codex 凭据 | 删除凭据、用量缓存、旧个人重置记录、订阅月设置、窗口观察快照及全部 Codex 本机用量观察；无关的公开重置缓存保留 |
+| 删除 DeepSeek API、Kimi Code 或 Antigravity 连接 | 删除对应凭据及私有用量 / 额度缓存；无关的公开状态缓存保留 |
 | 在实时活动中确认任务结束提示 | 保存本机确认状态，清除对应结束提示；任务列表继续展示已有任务记录 |
 
 删除本机凭据不会在官方服务上撤销 Token；若要撤销，请在对应服务中管理。普通设置和提醒去重元数据通过清除应用数据或卸载删除。

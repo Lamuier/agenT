@@ -14,9 +14,11 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -66,7 +68,7 @@ class CodexQuotaRepository internal constructor(
         return CodexCredentialInfo(
             expired = expired,
             invalid = snapshot.invalid || expired,
-            updatedAt = requireNotNull(DATE_FORMAT.get()).format(Date(snapshot.updatedAtMillis)),
+            updatedAt = Instant.ofEpochMilli(snapshot.updatedAtMillis).atZone(ZoneId.systemDefault()).format(TIMESTAMP_FORMATTER),
             accountId = snapshot.accountId.orEmpty(),
         )
     }
@@ -77,7 +79,7 @@ class CodexQuotaRepository internal constructor(
         val snapshot = tokenStore.snapshot() ?: return null
         if (snapshot.revision != revision || snapshot.invalid) return null
         val cached = cacheStore.read(revision) ?: return null
-        return CodexQuotaParser.fromCache(cached.payload).copy(
+        return cached.overview.copy(
             fromCache = true,
             cacheAgeSeconds = ((System.currentTimeMillis() - cached.storedAtMillis)
                 .coerceAtLeast(0L) / 1_000L)
@@ -141,7 +143,7 @@ class CodexQuotaRepository internal constructor(
         synchronized(CodexStorageLock.monitor) {
             val current = tokenStore.snapshot()
             check(current != null && current.revision == revision) { appContext.getString(R.string.codex_error_credential_changed) }
-            if (scheduleResetRefresh) runCatching {
+            if (scheduleResetRefresh && !isolated) runCatching {
                 com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).onCodexQuotaObserved(
                     usage, emptyList(), CodexResetIdentity.key(current.accessToken, current.accountId), revision, true)
             }
@@ -183,7 +185,7 @@ class CodexQuotaRepository internal constructor(
                     }
                 }.onSuccess { resetTrackingError = null }
                     .onFailure { resetTrackingError = appContext.getString(R.string.reset_error_tracking) }
-                runCatching {
+                if (!isolated) runCatching {
                     com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext)
                         .onCodexQuotaObserved(overview, newlyConfirmed, owner, revision, scheduleResetRefresh)
                 }
@@ -201,9 +203,7 @@ class CodexQuotaRepository internal constructor(
         val usageRequests = com.lamuier.agenT.data.InFlightRequests<Triple<String, Boolean, Long>, CodexQuotaOverview>()
         const val QA_RESET_PREFERENCES = "agentt_qa_codex_reset_history_v1"
         const val QA_RESET_KEY_ALIAS = "agentt_qa_codex_reset_history_key_v1"
-        val DATE_FORMAT = object : ThreadLocal<SimpleDateFormat>() {
-            override fun initialValue() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        }
+        val TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
     }
 }
 
@@ -271,6 +271,8 @@ private class CodexQuotaApiClient(private val context: Context) {
 }
 
 internal object CodexQuotaParser {
+    private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
+
     fun parse(payload: JSONObject): CodexQuotaOverview {
         val rateLimit = payload.optJSONObject("rate_limit") ?: findRateLimit(payload)
         val resetCredits = parseResetCredits(payload.optJSONObject("rate_limit_reset_credits")
@@ -285,7 +287,7 @@ internal object CodexQuotaParser {
             secondary = timed(parseWindow(rateLimit.optJSONObject("secondary_window"))),
             additional = parseAdditional(rateLimit.optJSONArray("additional_rate_limits")).mapNotNull(::timed),
             resetCreditsAvailable = resetCredits?.availableCount,
-            fetchedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
+            fetchedAt = Instant.now().atZone(ZoneId.systemDefault()).format(TIMESTAMP_FORMATTER),
             resetCredits = resetCredits,
         )
     }
@@ -391,15 +393,20 @@ internal object CodexQuotaParser {
 
 private class CodexTokenStore(context: Context, isolated: Boolean = false) {
     private val resources = AppLocale.wrap(context).resources
+    private val preferencesName = if (isolated) QA_PREFERENCES else PREFERENCES
     private val preferences = context.getSharedPreferences(
-        if (isolated) QA_PREFERENCES else PREFERENCES,
+        preferencesName,
         Context.MODE_PRIVATE,
     )
     private val crypto = CodexQuotaCrypto(if (isolated) QA_TOKEN_KEY_ALIAS else TOKEN_KEY_ALIAS)
     private val lock = CodexStorageLock.monitor
 
     fun snapshot(): Snapshot? = synchronized(lock) {
-        val raw = preferences.getString(KEY_CREDENTIALS, null) ?: return null
+        val raw = preferences.getString(KEY_CREDENTIALS, null) ?: run {
+            cachedSnapshots.remove(preferencesName)
+            return null
+        }
+        cachedSnapshots[preferencesName]?.takeIf { it.first == raw }?.let { return it.second }
         val item = JSONObject(raw)
         Snapshot(
             accessToken = crypto.decrypt(item.getString("token"), aad("token")),
@@ -410,7 +417,9 @@ private class CodexTokenStore(context: Context, isolated: Boolean = false) {
             revision = item.optLong("revision", 1L),
             invalid = item.optBoolean("invalid"),
             updatedAtMillis = item.optLong("updated_at"),
-        )
+        ).also {
+            cachedSnapshots[preferencesName] = raw to it
+        }
     }
 
     fun save(accessToken: String, accountId: String): Snapshot = synchronized(lock) {
@@ -426,25 +435,41 @@ private class CodexTokenStore(context: Context, isolated: Boolean = false) {
             .put("revision", currentRevision + 1L)
             .put("invalid", false)
             .put("updated_at", now)
-        check(preferences.edit().putString(KEY_CREDENTIALS, item.toString()).commit())
-        Snapshot(token, account, currentRevision + 1L, false, now)
+        val encoded = item.toString()
+        check(preferences.edit().putString(KEY_CREDENTIALS, encoded).commit())
+        Snapshot(token, account, currentRevision + 1L, false, now).also {
+            cachedSnapshots[preferencesName] = encoded to it
+        }
     }
 
     fun revision(): Long = synchronized(lock) {
-        val raw = preferences.getString(KEY_CREDENTIALS, null) ?: return 0L
+        val raw = preferences.getString(KEY_CREDENTIALS, null) ?: run {
+            cachedSnapshots.remove(preferencesName)
+            return 0L
+        }
+        cachedSnapshots[preferencesName]?.takeIf { it.first == raw }?.let { return it.second.revision }
         runCatching { JSONObject(raw).optLong("revision", 1L) }.getOrDefault(0L)
     }
 
-    fun markInvalid(revision: Long, invalid: Boolean, expectedToken: String) = synchronized(lock) {
+    fun markInvalid(revision: Long, invalid: Boolean, expectedToken: String): Unit = synchronized(lock) {
         val raw = preferences.getString(KEY_CREDENTIALS, null) ?: return
+        val cached = cachedSnapshots[preferencesName]?.takeIf { it.first == raw }?.second
         val item = JSONObject(raw)
         if (item.optLong("revision") != revision || item.optBoolean("invalid") == invalid) return
-        if (crypto.decrypt(item.getString("token"), aad("token")) != expectedToken) return
+        val currentToken = cached?.accessToken ?: crypto.decrypt(item.getString("token"), aad("token"))
+        if (currentToken != expectedToken) return
         item.put("invalid", invalid)
-        check(preferences.edit().putString(KEY_CREDENTIALS, item.toString()).commit())
+        val encoded = item.toString()
+        check(preferences.edit().putString(KEY_CREDENTIALS, encoded).commit())
+        if (cached != null) {
+            cachedSnapshots[preferencesName] = encoded to cached.copy(invalid = invalid)
+        } else {
+            cachedSnapshots.remove(preferencesName)
+        }
     }
 
     fun clear() = synchronized(lock) {
+        cachedSnapshots.remove(preferencesName)
         check(preferences.edit().remove(KEY_CREDENTIALS).commit())
     }
 
@@ -464,42 +489,66 @@ private class CodexTokenStore(context: Context, isolated: Boolean = false) {
         const val KEY_CREDENTIALS = "credentials"
         const val TOKEN_KEY_ALIAS = "agentt_codex_token_key_v1"
         const val QA_TOKEN_KEY_ALIAS = "agentt_qa_codex_token_key_v1"
+        val cachedSnapshots = ConcurrentHashMap<String, Pair<String, Snapshot>>()
     }
 }
 
 private class CodexQuotaCacheStore(context: Context, isolated: Boolean = false) {
+    private val preferencesName = if (isolated) QA_PREFERENCES else PREFERENCES
     private val preferences = context.getSharedPreferences(
-        if (isolated) QA_PREFERENCES else PREFERENCES,
+        preferencesName,
         Context.MODE_PRIVATE,
     )
     private val crypto = CodexQuotaCrypto(if (isolated) QA_CACHE_KEY_ALIAS else CACHE_KEY_ALIAS)
 
     fun read(revision: Long): CacheEntry? {
-        val encrypted = preferences.getString(key(revision), null) ?: return null
+        val storageKey = key(revision)
+        val encrypted = preferences.getString(storageKey, null) ?: return null
+        val cacheKey = "$preferencesName|$storageKey"
+        cachedEntries[cacheKey]?.takeIf { it.first == encrypted }?.let { return it.second }
         return runCatching {
             val wrapper = JSONObject(crypto.decrypt(encrypted, aad(revision)))
-            CacheEntry(wrapper.getString("payload"), wrapper.getLong("stored_at"))
+            val payload = wrapper.getString("payload")
+            val storedAt = wrapper.getLong("stored_at")
+            CacheEntry(payload, storedAt, CodexQuotaParser.fromCache(payload)).also {
+                cachedEntries[cacheKey] = encrypted to it
+            }
         }.getOrElse {
-            preferences.edit().remove(key(revision)).apply()
+            cachedEntries.remove(cacheKey)
+            preferences.edit().remove(storageKey).apply()
             null
         }
     }
 
     fun write(revision: Long, payload: String, storedAtMillis: Long) {
         val wrapper = JSONObject().put("payload", payload).put("stored_at", storedAtMillis)
+        val encrypted = crypto.encrypt(wrapper.toString(), aad(revision))
         val editor = preferences.edit()
-        preferences.all.keys.filter { it.startsWith(KEY_PREFIX) }.forEach(editor::remove)
-        check(editor.putString(key(revision), crypto.encrypt(wrapper.toString(), aad(revision))).commit())
+        preferences.all.keys.filter { it.startsWith(KEY_PREFIX) }.forEach { oldKey ->
+            cachedEntries.remove("$preferencesName|$oldKey")
+            editor.remove(oldKey)
+        }
+        val targetKey = key(revision)
+        check(editor.putString(targetKey, encrypted).commit())
+        runCatching {
+            cachedEntries["$preferencesName|$targetKey"] =
+                encrypted to CacheEntry(payload, storedAtMillis, CodexQuotaParser.fromCache(payload))
+        }
     }
 
     fun clear() {
+        cachedEntries.keys.removeIf { it.startsWith("$preferencesName|") }
         check(preferences.edit().clear().commit())
     }
 
     private fun key(revision: Long) = "$KEY_PREFIX$revision"
     private fun aad(revision: Long) = "${BuildConfig.APPLICATION_ID}|agentt-codex-cache-v1|$revision"
 
-    data class CacheEntry(val payload: String, val storedAtMillis: Long)
+    data class CacheEntry(
+        val payload: String,
+        val storedAtMillis: Long,
+        val overview: CodexQuotaOverview,
+    )
 
     private companion object {
         const val PREFERENCES = "agentt_codex_cache_v1"
@@ -507,12 +556,11 @@ private class CodexQuotaCacheStore(context: Context, isolated: Boolean = false) 
         const val KEY_PREFIX = "usage_r"
         const val CACHE_KEY_ALIAS = "agentt_codex_cache_key_v1"
         const val QA_CACHE_KEY_ALIAS = "agentt_qa_codex_cache_key_v1"
+        val cachedEntries = ConcurrentHashMap<String, Pair<String, CacheEntry>>()
     }
 }
 
 internal class CodexQuotaCrypto(private val keyAlias: String) {
-    private val keyStore by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
-
     fun encrypt(value: String, aad: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
@@ -525,7 +573,7 @@ internal class CodexQuotaCrypto(private val keyAlias: String) {
     fun decrypt(value: String, aad: String): String {
         val parts = value.split(":", limit = 2)
         require(parts.size == 2)
-        val key = keyStore.getKey(keyAlias, null) as? SecretKey
+        val key = getExistingKey()
             ?: throw IllegalStateException("Android Keystore key is missing")
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
@@ -537,25 +585,44 @@ internal class CodexQuotaCrypto(private val keyAlias: String) {
         return cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)).toString(Charsets.UTF_8)
     }
 
+    private fun getExistingKey(): SecretKey? {
+        cachedKeys[keyAlias]?.let { return it }
+        return synchronized(keyLock) {
+            cachedKeys[keyAlias]?.let { return@synchronized it }
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            (keyStore.getKey(keyAlias, null) as? SecretKey)?.also { cachedKeys[keyAlias] = it }
+        }
+    }
+
     private fun getOrCreateKey(): SecretKey {
-        (keyStore.getKey(keyAlias, null) as? SecretKey)?.let { return it }
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
-            init(
-                KeyGenParameterSpec.Builder(
-                    keyAlias,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        cachedKeys[keyAlias]?.let { return it }
+        return synchronized(keyLock) {
+            cachedKeys[keyAlias]?.let { return@synchronized it }
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            val existing = keyStore.getKey(keyAlias, null) as? SecretKey
+            val resolved = existing ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE).run {
+                init(
+                    KeyGenParameterSpec.Builder(
+                        keyAlias,
+                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                    )
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(true)
+                        .build(),
                 )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setRandomizedEncryptionRequired(true)
-                    .build(),
-            )
-            generateKey()
+                generateKey()
+            }
+            cachedKeys[keyAlias] = resolved
+            resolved
         }
     }
 
     private companion object {
+        const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
+        val keyLock = Any()
+        val cachedKeys = ConcurrentHashMap<String, SecretKey>()
     }
 }
 

@@ -45,7 +45,8 @@ class BuildSupportTest(unittest.TestCase):
 
     def test_local_properties_escaped_spaces_and_override_conflict(self):
         sdk = self.root / "Android SDK"
-        (self.root / "local.properties").write_text("sdk.dir=" + str(sdk).replace(" ", r"\ ") + "\n")
+        escaped_sdk = str(sdk).replace("\\", "\\\\").replace(":", r"\:").replace(" ", r"\ ")
+        (self.root / "local.properties").write_text("sdk.dir=" + escaped_sdk + "\n")
         self.assertEqual(build.find_sdk(self.root, None, {"ANDROID_HOME": "/other"}, "Linux"), sdk)
         self.assertEqual(build.find_sdk(self.root, str(sdk), {}, "Darwin"), sdk)
         with self.assertRaises(build.BuildError):
@@ -140,7 +141,8 @@ class BuildSupportTest(unittest.TestCase):
             self.assertNotIn("AGENT_UI_REVIEW_SMOKE", env)
             self.assertNotIn("AGENT_UI_REVIEW_SCENES", env)
             raise build.BuildError("fixture build failed")
-        with patch.object(build, "app_config", return_value=config), \
+        with patch.object(build.platform, "system", return_value="Linux"), \
+             patch.object(build, "app_config", return_value=config), \
              patch.object(build, "find_java", return_value=(self.root, 21)), \
              patch.object(build, "find_sdk", return_value=sdk), \
              patch.object(build, "validate_signing_key"), \
@@ -173,7 +175,7 @@ class BuildSupportTest(unittest.TestCase):
             build.artifact_base(config, "uiux", official_release=True)
         with self.assertRaises(build.BuildError):
             build.artifact_base({"appName": "agenT", "versionName": "../../outside"}, started_at=instant)
-        with self.assertRaises(build.BuildError):
+        with patch.object(build.platform, "system", return_value="Linux"), self.assertRaises(build.BuildError):
             build.main(["--official-release"], self.root)
 
     def test_app_name_comes_from_default_resources(self):
@@ -238,7 +240,9 @@ class BuildSupportTest(unittest.TestCase):
         self.assertEqual(build.read_json(self.root / "dist" / (unicode_base + "-build.json"))["appName"], "追程 App")
 
     def test_windows_naming_policy_preserves_history_and_uses_same_time_zone(self):
-        script = (Path(__file__).resolve().parents[2] / "build.ps1").read_text(encoding="utf-8-sig")
+        ps1_path = Path(__file__).resolve().parents[2] / "build.ps1"
+        self.assertTrue(ps1_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        script = ps1_path.read_text(encoding="utf-8-sig")
         for required in ('[switch]$OfficialRelease', '[string]$ArtifactSuffix',
                          '[DateTimeOffset]::UtcNow', 'ToOffset([TimeSpan]::FromHours(8))',
                          '"yyyyMMdd_HHmmss"', '"$artifactBaseName.apk"', '"$artifactBaseName.sha256"',

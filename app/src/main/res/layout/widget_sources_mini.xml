@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/widget_surface" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_assistants_surface" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:id="@+id/widget_multi_contents" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="6dp" android:paddingVertical="2dp">
+        <TextView android:id="@+id/widget_multi_empty" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:gravity="center" android:text="@string/widget_configure_sources" android:textSize="11sp" android:visibility="gone" />
+        <LinearLayout android:id="@+id/widget_source_rows" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" />
+        <TextView android:id="@+id/widget_next_page" android:layout_width="30dp" android:layout_height="match_parent"
+            android:gravity="center" android:textSize="12sp" android:includeFontPadding="false" />
+    </LinearLayout>
+</FrameLayout>

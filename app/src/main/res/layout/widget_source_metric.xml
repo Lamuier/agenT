@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_metric"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <TextView android:id="@+id/widget_metric_value" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textSize="14sp" android:includeFontPadding="false" android:maxLines="1" />
+    <ImageView android:id="@+id/widget_metric_bar" android:layout_width="match_parent" android:layout_height="3dp"
+        android:scaleType="fitXY" android:importantForAccessibility="no" android:layout_marginVertical="2dp" />
+    <TextView android:id="@+id/widget_metric_reset" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textSize="9sp" android:includeFontPadding="false" android:maxLines="1" />
+</LinearLayout>

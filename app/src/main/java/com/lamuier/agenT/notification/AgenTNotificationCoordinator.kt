@@ -65,8 +65,11 @@ class AgenTNotificationCoordinator(
         } else NotificationRefreshScheduler.cancel(appContext)
         val (codex, revision) = cachedCodex()
         if (codex != null && scheduleWindowRefresh && canPost &&
-            (settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled))
+            (settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled)) {
             NotificationRefreshScheduler.scheduleReset(appContext, codex, revision)
+        } else if (codex == null || !canPost || !(settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled)) {
+            NotificationRefreshScheduler.cancelReset(appContext)
+        }
         if (!settings.liveUpdatesEnabled || !canPost) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
             NotificationRefreshScheduler.cancelTaskExpiry(appContext)
@@ -142,7 +145,7 @@ class AgenTNotificationCoordinator(
         }
         val cursor = async {
             safely {
-                val repository = CursorRepository(appContext)
+                val repository = cursorRepository
                 val account = repository.listAccounts().firstOrNull { it.id == repository.selectedAccountId() }
                     ?: repository.listAccounts().firstOrNull()
                 if (account != null && !account.tokenExpired &&
@@ -153,7 +156,7 @@ class AgenTNotificationCoordinator(
         }
         val tasks = async {
             if (preferences.read().liveUpdatesEnabled) safely {
-                val repository = CursorRepository(appContext)
+                val repository = cursorRepository
                 val account = repository.listAccounts().firstOrNull { it.id == repository.selectedAccountId() }
                     ?: repository.listAccounts().firstOrNull()
                 if (account != null && !account.tokenExpired &&
@@ -163,7 +166,7 @@ class AgenTNotificationCoordinator(
         }
         val codex = async {
             safely {
-                val repository = CodexQuotaRepository(appContext)
+                val repository = codexRepository
                 val revision = repository.tokenRevision()
                 val credential = repository.credentialInfo()
                 if (DashboardPreferences.get(appContext).readCodexUsageAutoRefresh() &&
@@ -172,7 +175,7 @@ class AgenTNotificationCoordinator(
                     repository.fetchUsage(revision, scheduleWindowRefresh)
             }
         }
-        val statuses = OfficialStatusProvider.entries.map { provider -> async {
+        val statuses = listOf(OfficialStatusProvider.Cursor, OfficialStatusProvider.Codex).map { provider -> async {
             if (preferences.read().liveUpdatesEnabled) safely {
                 val repository = ServiceStatusRepository(appContext, provider)
                 if ((repository.cached()?.cacheAgeSeconds ?: Int.MAX_VALUE) >= 5 * 60)
@@ -243,7 +246,11 @@ class AgenTNotificationCoordinator(
             tasks = tasks, tasksIntent = tasksIntent(),
             confirmTasksIntent = tasks?.let { TaskCompletionReceiver.pendingIntent(appContext, it, taskRevision, nowMillis) },
             nowMillis = nowMillis)
-        NotificationRefreshScheduler.scheduleTaskExpiry(appContext, TaskActivityModel.nextExpiry(tasks, nowMillis), nowMillis)
+        val codexCountdownExpiry = codex?.takeIf { it.cacheAgeSeconds <= IslandMonitorState.FRESH_SECONDS }
+            ?.primary?.takeIf { it.usedPercent.isFinite() && it.usedPercent >= 100.0 }
+            ?.resetAtEpochSeconds?.times(1000L)?.takeIf { it > nowMillis }
+        val nextLocalExpiry = listOfNotNull(TaskActivityModel.nextExpiry(tasks, nowMillis), codexCountdownExpiry).minOrNull()
+        NotificationRefreshScheduler.scheduleTaskExpiry(appContext, nextLocalExpiry, nowMillis)
         if (notification == null) { notificationManager.cancel(LIVE_NOTIFICATION_ID); return }
         runCatching { notificationManager.notify(LIVE_NOTIFICATION_ID, notification) }
     }
@@ -262,7 +269,7 @@ class AgenTNotificationCoordinator(
      */
     private fun maybePostThresholdReminder(usage: AgenTOverview) {
         val percent = UsageCalculations.usagePercent(usage)
-        val cycleKey = usage.billingCycle.start ?: usage.fetchedAt
+        val cycleKey = usage.billingCycle.start ?: usage.billingCycle.end ?: usage.fetchedAt.take(10)
         val reminded = preferences.remindedThresholds(cycleKey)
         val threshold = THRESHOLDS.firstOrNull { percent >= it && it !in reminded } ?: return
         val notification = renderer().reminder(

@@ -78,6 +78,8 @@ internal class NotificationCopy(private val catLanguageEnabled: Boolean = false)
             R.string.notification_multi_service_chip to R.string.notification_multi_service_chip_cat,
             R.string.notification_multi_maintenance_chip to R.string.notification_multi_maintenance_chip_cat,
             R.string.notification_multi_syncing_chip to R.string.notification_multi_syncing_chip_cat,
+            R.string.notification_codex_reset_countdown to R.string.notification_codex_reset_countdown_cat,
+            R.string.notification_codex_reset_pending to R.string.notification_codex_reset_pending_cat,
         )
 
         @StringRes

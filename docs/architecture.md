@@ -8,7 +8,7 @@ agenT 的业务代码集中在单一 `app` 模块，使用 Kotlin、Jetpack Comp
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.3.0`，`versionCode=5`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.4.0`，`versionCode=6`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -82,6 +82,8 @@ flowchart LR
 
 凭据、账号别名、用量、任务与个人重置历史经 Android Keystore AES-GCM 加密；公开状态和公共重置缓存明文保存。Keystore 的硬件保护取决于设备，应用不保证所有设备使用硬件密钥。默认不允许备份、设备迁移和明文连接；客户端拒绝重定向，响应大小受限。解锁查看、敏感剪贴板与 `FLAG_SECURE` 见 [隐私政策](../PRIVACY.md)。
 
+Antigravity 任务继续打开系统浏览器中的官方远控；用量支持用户导入已有 OAuth 授权后的手机直连、加密缓存及按需组件后台同步，完整认证 / 数据边界见 [Antigravity 接入](antigravity.md)。不新增任务仓库或通知；公开健康状态未接入，组件显示未知且不能形成全部正常。
+
 应用内外链由 [CursorCustomTabs](../app/src/main/java/com/lamuier/agenT/util/CursorCustomTabs.kt) 调用允许列表校验，再交给系统浏览器；浏览器自己的登录态不等于应用 Token。公共重置链接和官方状态链接有独立校验规则。详细规则应直接维护在相应源码与测试，避免文档复制 URL 正则后失去同步。
 
 重置页、概览计数和热力图仅使用公共 API 的 `regular` 普通重置与 `banked` 重置券发放记录，分别计数，不将发放记录数当成券数量或余额。来源仍区分原帖公告与第三方观测，以 API 分类为准，不按文案或余额变化猜测。新响应、缓存、统计及日历都保留这两类；按 API 分页信息继续查询，接口缺失不显示为已确认零次。缓存 schema 升为 2，兼容读取 schema 1；旧缓存可能筛掉过 `banked`，因此首次刷新绕过新鲜度复用且不发送旧 ETag，完整成功后才写入新缓存。公共查询最多五页，保留分页、ETag 和限流退避。
@@ -101,3 +103,5 @@ Token 与金额模型携带字段可用性标记，旧缓存兼容读取但不�
 `scripts/build_support.py` 是 Unix 构建入口的实现；`scripts/tests` 验证其环境、签名和失败处理。图库和两份 Node / sharp 预览脚本只生成本机验收文件，不是应用运行依赖。静态预览与系统行为的区别见 [界面验收](ui.md#界面验收)。
 
 `.gradle/`、`.kotlin/`、`app/build/`、`dist/`、Python 缓存和本地工具缓存不入库；签名资产、`local.properties` 和本地 `AGENTS.md` 也不入库。历史改写备份 bundle 是可恢复备份，不属于可随意删除的构建垃圾。当前界面截图与原签名 APK 是验收 / 安装产物，应按用途保留，不与源码文档混在一起。
+
+DeepSeek API、Kimi Code 与 Antigravity 的类型化余额 / 额度、加密连接、共享用量 Repository 和页面状态位于 `providers/`。`AntigravityDirect` 负责用户导入 OAuth 授权、固定 Google 端点查询、同一连接续期与账号绑定、最小额度规范化；凭据续期与缓存均按修订号写入，不恢复已删除连接，详见 [Antigravity](antigravity.md)；应用与组件按凭据修订号合并在途请求，组件来源列表、分页和原生绘制位于 `widget/`。官方状态先通过 `ProviderStatusAdapters` 按组件范围转换，再复用状态解析与公共缓存。首页等待新增本机缓存并行恢复后放行，网络工作延后到首帧。详见 [官方来源接入](official-providers.md)。

@@ -124,6 +124,8 @@ function Invoke-Native([string]$Executable, [string[]]$Arguments) {
 function Invoke-Gradle([string[]]$GradleArgs) {
     $env:JAVA_HOME = Resolve-JavaHome
     $env:ANDROID_HOME = Resolve-AndroidSdk
+    Remove-Item "Env:AGENT_UI_REVIEW_SMOKE" -ErrorAction SilentlyContinue
+    Remove-Item "Env:AGENT_UI_REVIEW_SCENES" -ErrorAction SilentlyContinue
     # 必须写到 Host：否则 Gradle 日志会进入函数返回值，污染 $apk = Invoke-Assemble ...
     # JDK 会向 stderr 输出 restricted-method 警告；全局 ErrorActionPreference=Stop 时
     # 这些警告会被当成终止性错误中断构建，故此处临时降为 Continue，成败仍看 $LASTEXITCODE。
@@ -544,11 +546,13 @@ function Invoke-Assemble {
 }
 
 function Invoke-DebugBuild {
+    Clear-ReleaseSigningEnv
     $useOffline = $Offline.IsPresent
     Invoke-Assemble -Variant Debug -DoClean:$Clean -DoOffline:$useOffline -DoSkipChecks:$SkipChecks | Out-Null
 }
 
 function Invoke-InstallDebug {
+    Clear-ReleaseSigningEnv
     $apk = Invoke-Assemble -Variant Debug -DoClean:$Clean -DoOffline:$Offline -DoSkipChecks:$SkipChecks
     $sdk = Resolve-AndroidSdk
     $adb = Join-Path $sdk "platform-tools\adb.exe"
@@ -653,9 +657,10 @@ function Invoke-ReleasePackage {
         Copy-Item -LiteralPath $apk -Destination $destination
 
         $mapping = Join-Path $ProjectRoot "app\build\outputs\mapping\release\mapping.txt"
-        if (Test-Path -LiteralPath $mapping) {
-            Copy-Item -LiteralPath $mapping -Destination (Join-Path $dist "$artifactBaseName-mapping.txt")
+        if (-not (Test-Path -LiteralPath $mapping)) {
+            throw "缺少 R8 mapping.txt: $mapping"
         }
+        Copy-Item -LiteralPath $mapping -Destination (Join-Path $dist "$artifactBaseName-mapping.txt")
 
         $hash = Get-FileHash -LiteralPath $destination -Algorithm SHA256
         [IO.File]::WriteAllText((Join-Path $dist "$artifactBaseName.sha256"),

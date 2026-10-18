@@ -34,8 +34,6 @@ class UnifiedBrandCopyTest {
         val resourceRoot = listOf(File("src/main/res"), File("app/src/main/res"))
             .first { it.isDirectory }
         val sharedDescriptions = listOf(
-            "widget_status_brand",
-            "widget_refresh_description",
             "notification_live_channel_description",
             "notification_reminder_channel_description",
         )
@@ -50,6 +48,12 @@ class UnifiedBrandCopyTest {
                 node.attributes.getNamedItem("name").nodeValue to node.textContent
             }
             assertEquals("$locale app name", "agenT", strings["app_name"])
+            for (key in listOf("widget_status_brand", "widget_refresh_description")) {
+                val copy = strings.getValue(key)
+                assertTrue("$locale/$key must describe the configured sources", copy.contains(if (locale == "values") "来源" else "sources") || copy == "服务状态" || copy == "Service status")
+            }
+            assertTrue(strings.getValue("widget_tall_description").contains("Antigravity"))
+            assertTrue(strings.getValue("widget_tall_description").contains(if (locale == "values") "来源" else "sources"))
             for (key in sharedDescriptions) {
                 val copy = strings.getValue(key)
                 assertTrue("$locale/$key must describe both providers: $copy",

@@ -1,5 +1,6 @@
 package com.lamuier.agenT.codex
 
+import androidx.compose.runtime.Immutable
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -8,8 +9,10 @@ import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 
 internal enum class ResetHeatmapKind { Regular, Banked }
+@Immutable
 internal data class ResetHeatmapDay(val date: LocalDate, val inRange: Boolean,
     val entries: List<CodexResetTimelineEntry>, val kinds: Set<ResetHeatmapKind>)
+@Immutable
 internal data class ResetHeatmapData(val from: LocalDate, val to: LocalDate, val weeks: List<List<ResetHeatmapDay>>) {
     val days get() = weeks.flatten().filter { it.inRange }
 }
@@ -31,7 +34,7 @@ internal object CodexResetHeatmap {
                 val dayEntries = if (valid) grouped[date].orEmpty().sortedByDescending { it.at } else emptyList()
                 ResetHeatmapDay(date, valid, dayEntries, dayEntries.map {
                     if (it.public.type == "banked") ResetHeatmapKind.Banked else ResetHeatmapKind.Regular
-                }.toSet())
+                }.sortedBy { it.ordinal }.toSet())
             }
             start = start.plusWeeks(1)
         }

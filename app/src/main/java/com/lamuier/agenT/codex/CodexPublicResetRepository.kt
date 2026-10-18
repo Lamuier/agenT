@@ -13,23 +13,32 @@ internal class CodexPublicResetRepository(context: Context) {
     private val context = context.applicationContext
     private val cache = this.context.getSharedPreferences("codex_public_resets_v1", Context.MODE_PRIVATE)
     fun cached(): CodexPublicResetSnapshot? = runCatching {
-        cache.getString("snapshot", null)?.let(CodexPublicResetJson::decode)
+        val raw = cache.getString("snapshot", null) ?: run {
+            cachedSnapshot = null
+            return@runCatching null
+        }
+        cachedSnapshot?.takeIf { it.first == raw }?.second ?: CodexPublicResetJson.decode(raw).also {
+            cachedSnapshot = raw to it
+        }
     }.getOrNull()
     fun fetch(force: Boolean): CodexPublicResetSnapshot {
         if (!force) {
+            val raw = cache.getString("snapshot", null)
             val previous = cached()
-            if (previous != null && CodexPublicResetJson.isCurrentCache(cache.getString("snapshot", null)) &&
+            if (previous != null && CodexPublicResetJson.isCurrentCache(raw) &&
                 System.currentTimeMillis() - previous.fetchedAt in 0 until 15 * 60_000L) return previous
         }
-        return requests.run(context.noBackupFilesDir.absolutePath) { fetchOnce(true) }
+        return requests.run(context.noBackupFilesDir.absolutePath) { fetchOnce(force) }
     }
     private fun fetchOnce(force: Boolean): CodexPublicResetSnapshot {
         val now = System.currentTimeMillis()
+        val rawSnapshot = cache.getString("snapshot", null)
         val previous = cached()
         // Older caches may have discarded banked grants; fetch the full response before reusing their ETag.
-        val currentCache = CodexPublicResetJson.isCurrentCache(cache.getString("snapshot", null))
+        val currentCache = CodexPublicResetJson.isCurrentCache(rawSnapshot)
         if (!force && previous != null && currentCache && now - previous.fetchedAt in 0 until 15 * 60_000L) return previous
-        if (now < cache.getLong("retry_at", 0)) throw IOException(context.getString(R.string.reset_public_retry_later))
+        val retryAt = cache.getLong("retry_at", 0L)
+        if (retryAt in (now + 1)..(now + 86_400_000L)) throw IOException(context.getString(R.string.reset_public_retry_later))
         val rows = mutableListOf<CodexPublicReset>()
         val seenCursors = mutableSetOf<String>()
         var cursor: String? = null
@@ -90,17 +99,20 @@ internal class CodexPublicResetRepository(context: Context) {
     }
     private fun save(snapshot: CodexPublicResetSnapshot, etag: String?): CodexPublicResetSnapshot {
         // Do not overwrite a valid snapshot until the complete bounded traversal has succeeded.
+        val encoded = CodexPublicResetJson.encode(snapshot)
         val editor = cache.edit()
-            .putString("snapshot", CodexPublicResetJson.encode(snapshot))
+            .putString("snapshot", encoded)
             .remove("retry_at")
         val safeEtag = acceptableEtag(etag)
         if (safeEtag == null) editor.remove("etag") else editor.putString("etag", safeEtag)
         check(editor.commit()) { context.getString(R.string.reset_public_cache_error) }
+        cachedSnapshot = encoded to snapshot.copy(fromCache = true)
         return snapshot
     }
 
     private companion object {
         val requests = com.lamuier.agenT.data.InFlightRequests<String, CodexPublicResetSnapshot>()
+        @Volatile var cachedSnapshot: Pair<String, CodexPublicResetSnapshot>? = null
     }
 
     /** Header values are echoed back. Reject controls so a bad ETag cannot stick and fail every later request. */

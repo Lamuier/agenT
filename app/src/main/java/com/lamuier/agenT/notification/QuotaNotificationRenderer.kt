@@ -22,6 +22,7 @@ import com.lamuier.agenT.model.ServiceStatus
 import com.lamuier.agenT.util.AppLocale
 import com.lamuier.agenT.util.AssistantPresentation
 import com.lamuier.agenT.util.DisplayTime
+import com.lamuier.agenT.util.UsageCalculations
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
@@ -32,6 +33,21 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
     private val context = AppLocale.wrap(context.applicationContext)
     private val copy = NotificationCopy(catLanguageEnabled)
     private fun text(id: Int, vararg args: Any) = context.getString(copy.resource(id), *args)
+
+    private fun quotaAttentionText(attention: MonitorAttention.Quota, nowMillis: Long): String {
+        val base = "${text(attention.metric.source.titleRes)} · ${text(attention.state.labelRes)}"
+        val resetAtMillis = attention.metric.resetAtEpochSeconds?.times(1000L)
+            ?.takeIf { attention.metric.source == QuotaNoticeSource.CodexPrimary && attention.state == IslandMonitorState.EmptyQuota }
+            ?: return base
+        val detail = if (resetAtMillis <= nowMillis) {
+            text(R.string.notification_codex_reset_pending)
+        } else {
+            val roundedMillis = ((resetAtMillis - nowMillis + 59_999L) / 60_000L) * 60_000L
+            val duration = UsageCalculations.formatRemaining(roundedMillis, resources = context.resources)
+            text(R.string.notification_codex_reset_countdown, duration)
+        }
+        return "$base · $detail"
+    }
 
     fun live(cursor: AgenTOverview?, codex: CodexQuotaOverview?, revision: Long,
         mode: PercentDisplayMode, zone: ZoneId, contentIntent: PendingIntent, channel: String,
@@ -68,7 +84,7 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
                     }, detail)
                 }
                 MonitorAttention.PendingTasks -> text(R.string.notification_tasks_waiting)
-                is MonitorAttention.Quota -> "${text(attention.metric.source.titleRes)} · ${text(attention.state.labelRes)}"
+                is MonitorAttention.Quota -> quotaAttentionText(attention, nowMillis)
                 is MonitorAttention.Service -> "${attention.provider} · ${text(NotificationCopy.serviceDetail(attention.indicator))}"
                 is MonitorAttention.PendingQuota -> text(R.string.notification_quota_waiting, text(attention.source.titleRes))
                 is MonitorAttention.PendingService -> text(attention.reason.messageRes, attention.provider)
@@ -83,6 +99,11 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
         val confirmAction = confirmTasksIntent?.takeIf {
             snapshot.attentions.filterIsInstance<MonitorAttention.Task>().any { TaskActivityModel.isTerminal(it.task.status) }
         }?.let { Notification.Action.Builder(null, text(R.string.notification_tasks_confirm), it).build() }
+        val codexPrimaryCountdownMillis = snapshot.attentions
+            .filterIsInstance<MonitorAttention.Quota>()
+            .firstOrNull { it.metric.source == QuotaNoticeSource.CodexPrimary && it.state == IslandMonitorState.EmptyQuota }
+            ?.metric?.resetAtEpochSeconds?.times(1000L)
+            ?.takeIf { it > nowMillis }
         val builder = Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             // No oversized thumbnail: the system header and island already carry the app identity.
@@ -95,7 +116,16 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
                     addAction(Notification.Action.Builder(null, text(R.string.tab_tasks), tasksIntent).build())
             }.setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(true).setOnlyAlertOnce(true)
-            .setShowWhen(false).setColor(when (monitor) {
+            .apply {
+                if (codexPrimaryCountdownMillis != null) {
+                    setWhen(codexPrimaryCountdownMillis)
+                    setShowWhen(true)
+                    setUsesChronometer(true)
+                    setChronometerCountDown(true)
+                } else {
+                    setShowWhen(false)
+                }
+            }.setColor(when (monitor) {
                 IslandMonitorState.ServiceIssue, IslandMonitorState.EmptyQuota -> 0xFFC45160.toInt()
                 IslandMonitorState.LowQuota, IslandMonitorState.Maintenance -> 0xFFC58A38.toInt()
                 else -> 0xFF587DB4.toInt()
