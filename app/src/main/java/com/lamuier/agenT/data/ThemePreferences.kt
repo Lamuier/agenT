@@ -3,9 +3,11 @@ package com.lamuier.agenT.data
 import android.content.Context
 import com.lamuier.agenT.ui.theme.ColorPalette
 import com.lamuier.agenT.ui.theme.ThemeMode
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class ThemeSettings(
     val themeMode: ThemeMode = ThemeMode.System,
@@ -13,7 +15,8 @@ data class ThemeSettings(
 )
 
 class ThemePreferences(context: Context) {
-    private val preferences = context.applicationContext
+    private val appContext = context.applicationContext
+    private val preferences = appContext
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     init {
@@ -38,11 +41,13 @@ class ThemePreferences(context: Context) {
     fun setThemeMode(mode: ThemeMode) {
         preferences.edit().putString(KEY_THEME_MODE, mode.storageKey).apply()
         _settings.value = _settings.value.copy(themeMode = mode)
+        syncToDataStore()
     }
 
     fun setColorPalette(palette: ColorPalette) {
         preferences.edit().putString(KEY_COLOR_PALETTE, palette.storageKey).apply()
         _settings.value = _settings.value.copy(colorPalette = palette)
+        syncToDataStore()
     }
 
     fun update(settings: ThemeSettings) {
@@ -51,6 +56,21 @@ class ThemePreferences(context: Context) {
             .putString(KEY_COLOR_PALETTE, settings.colorPalette.storageKey)
             .apply()
         _settings.value = settings
+        syncToDataStore()
+    }
+
+    private fun syncToDataStore() {
+        val current = _settings.value
+        (appContext as? com.lamuier.agenT.AgenTApplication)?.applicationScope?.let { scope ->
+            scope.launch {
+                runCatching {
+                    appContext.appPreferencesDataStore.edit { prefs ->
+                        prefs[AppDataStoreKeys.THEME_MODE] = current.themeMode.storageKey
+                        prefs[AppDataStoreKeys.COLOR_PALETTE] = current.colorPalette.storageKey
+                    }
+                }
+            }
+        }
     }
 
     companion object {

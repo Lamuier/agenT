@@ -37,7 +37,7 @@
             android:colorMode="wideColorGamut"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
-            android:theme="@style/Theme.AgenT"
+            android:theme="@style/Theme.AgenT.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

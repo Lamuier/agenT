@@ -12,6 +12,7 @@ import android.view.View
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
     private var startupDrawGate: StartupDrawGate? = null
     private var firstFrameDrawn by mutableStateOf(false)
+    private var isContentReady = false
 
     /** 长按图标 Shortcut 带来的待执行动作，由 UI 层消费后清空。 */
     private var pendingShortcutAction by mutableStateOf<ShortcutAction?>(null)
@@ -57,8 +59,10 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition { !isContentReady }
         preferWideColorGamut()
         if (savedInstanceState == null) {
             applyLaunchIntent(intent)
@@ -66,6 +70,13 @@ class MainActivity : FragmentActivity() {
         val themePreferences = ThemePreferences.get(applicationContext)
         val notificationPreferences = NotificationPreferences.get(applicationContext)
         val dashboardPreferences = DashboardPreferences.get(applicationContext)
+
+        window.decorView.postDelayed({
+            if (!isContentReady) {
+                isContentReady = true
+                startupDrawGate?.release()
+            }
+        }, 2000L)
 
         startupDrawGate = StartupDrawGate(window.decorView) {
             if (!isDestroyed && !firstFrameDrawn) {
@@ -104,7 +115,12 @@ class MainActivity : FragmentActivity() {
                 }
                 AgenTApp(
                     providersViewModel = providersViewModel,
-                    onInitialContentReady = { startupDrawGate?.release() },
+                    onInitialContentReady = {
+                        if (!isContentReady) {
+                            isContentReady = true
+                            startupDrawGate?.release()
+                        }
+                    },
                     firstFrameDrawn = firstFrameDrawn,
                     hapticFeedbackEnabled = haptics,
                     onHapticFeedbackChange = interactions::setHapticFeedbackEnabled,

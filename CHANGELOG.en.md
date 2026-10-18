@@ -4,9 +4,15 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
-## Unreleased
+## 1.4.1 — 2026-10-18
 
-No pending changes.
+> Version decision: 1.4.0 → 1.4.1, with `versionCode` increased to 7. Material Design 3 Expressive motion and accessibility styling optimizations, cold start deadlock compatibility fix, Jetpack DataStore modernization and kotlinx.serialization refactoring without adding independent business features qualify as a patch (Z) release. Package ID, original signing key and on-device data remain compatible.
+
+- Align with Google Material Design 3 and Modern Android Development (MAD) specifications:
+  - **Material 3 Expressive motion and accessibility semantics**: refine `Motion.kt` spring physics parameters (`spatial` and `expressivePress`), enrich chart and legend accessibility semantics (`mergeDescendants`, `contentDescription`), and ensure minimum touch target sizes.
+  - **Official Splash Screen API & Deadlock Fix**: adopt `androidx.core:core-splashscreen` with `Theme.AgenT.Starting`, calling `installSplashScreen()` and `setKeepOnScreenCondition` for standardized cold launch transitions on Android 12+; decouple splash screen condition from first-frame draw to eliminate startup deadlock with a 2-second safety fallback.
+  - **Jetpack DataStore preferences**: add `AppPreferencesDataStore` to asynchronously sync theme, haptics, notification and dashboard preferences via transactional coroutines and Flow.
+  - **kotlinx.serialization type-safe parsing**: integrate the official Kotlin serialization plugin and status DTO adapters to replace boilerplate manual JSON parsing.
 
 ## 1.4.0 — 2026-10-18
 

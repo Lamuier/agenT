@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.baselineprofile)
 }
 
@@ -24,8 +25,8 @@ android {
         applicationId = "com.lamuier.agenT"
         minSdk = 26
         targetSdk = 37
-        versionCode = 6
-        versionName = "1.4.0"
+        versionCode = 7
+        versionName = "1.4.1"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -113,6 +114,9 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
 dependencies {
     baselineProfile(project(":performance"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

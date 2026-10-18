@@ -2,9 +2,11 @@ package com.lamuier.agenT.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 通知里主百分比的显示口径：已用（默认，与旧行为一致）或剩余/可用。
@@ -32,9 +34,14 @@ data class NotificationSettings(
     val catLanguageEnabled: Boolean = false,
 )
 
-class NotificationPreferences internal constructor(private val preferences: SharedPreferences) {
-    constructor(context: Context) : this(context.applicationContext
-        .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE))
+class NotificationPreferences internal constructor(
+    private val preferences: SharedPreferences,
+    private val appContext: Context? = null,
+) {
+    constructor(context: Context) : this(
+        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE),
+        context.applicationContext,
+    )
 
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<NotificationSettings> = _settings.asStateFlow()
@@ -52,11 +59,13 @@ class NotificationPreferences internal constructor(private val preferences: Shar
     fun setLiveUpdatesEnabled(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_LIVE_UPDATES, enabled).apply()
         _settings.value = _settings.value.copy(liveUpdatesEnabled = enabled)
+        syncToDataStore()
     }
 
     fun setThresholdRemindersEnabled(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_THRESHOLD_REMINDERS, enabled).apply()
         _settings.value = _settings.value.copy(thresholdRemindersEnabled = enabled)
+        syncToDataStore()
     }
 
     fun setPercentDisplayMode(mode: PercentDisplayMode) {
@@ -67,11 +76,30 @@ class NotificationPreferences internal constructor(private val preferences: Shar
     fun setCodexResetRemindersEnabled(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_CODEX_RESET_REMINDERS, enabled).apply()
         _settings.value = _settings.value.copy(codexResetRemindersEnabled = enabled)
+        syncToDataStore()
     }
 
     fun setCatLanguageEnabled(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_CAT_LANGUAGE, enabled).apply()
         _settings.value = _settings.value.copy(catLanguageEnabled = enabled)
+        syncToDataStore()
+    }
+
+    private fun syncToDataStore() {
+        val current = _settings.value
+        val ctx = appContext ?: return
+        (ctx as? com.lamuier.agenT.AgenTApplication)?.applicationScope?.let { scope ->
+            scope.launch {
+                runCatching {
+                    ctx.appPreferencesDataStore.edit { prefs ->
+                        prefs[AppDataStoreKeys.LIVE_UPDATES] = current.liveUpdatesEnabled
+                        prefs[AppDataStoreKeys.THRESHOLD_REMINDERS] = current.thresholdRemindersEnabled
+                        prefs[AppDataStoreKeys.CODEX_RESET_REMINDERS] = current.codexResetRemindersEnabled
+                        prefs[AppDataStoreKeys.CAT_LANGUAGE] = current.catLanguageEnabled
+                    }
+                }
+            }
+        }
     }
 
     @Synchronized

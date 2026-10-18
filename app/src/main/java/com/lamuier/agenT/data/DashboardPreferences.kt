@@ -6,9 +6,11 @@ import com.lamuier.agenT.model.TaskGroupMode
 import com.lamuier.agenT.util.AppLanguage
 import com.lamuier.agenT.util.AppLocale
 import com.lamuier.agenT.util.DisplayTimeZones
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /** 主界面功能页签顺序、任务分组方式、展示时区与界面语言，保存在本机 SharedPreferences。 */
 class DashboardPreferences(context: Context) {
@@ -45,11 +47,13 @@ class DashboardPreferences(context: Context) {
         val serialized = DashboardTab.serialize(order)
         preferences.edit().putString(KEY_TAB_ORDER, serialized).apply()
         _order.value = DashboardTab.resolveOrder(serialized)
+        syncToDataStore { it[AppDataStoreKeys.TAB_ORDER] = serialized }
     }
 
     fun resetOrder() {
         preferences.edit().remove(KEY_TAB_ORDER).apply()
         _order.value = DashboardTab.DEFAULT_ORDER
+        syncToDataStore { it.remove(AppDataStoreKeys.TAB_ORDER) }
     }
 
     fun readTaskGroupMode(): TaskGroupMode =
@@ -67,6 +71,7 @@ class DashboardPreferences(context: Context) {
         val stored = DisplayTimeZones.fromStorage(id)
         preferences.edit().putString(KEY_TIME_ZONE, stored).apply()
         _timeZoneId.value = stored
+        syncToDataStore { it[AppDataStoreKeys.TIME_ZONE] = stored }
     }
 
     fun readLanguage(): AppLanguage =
@@ -86,6 +91,17 @@ class DashboardPreferences(context: Context) {
     fun setCodexUsageAutoRefresh(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_CODEX_USAGE_AUTO_REFRESH, enabled).apply()
         _codexUsageAutoRefresh.value = enabled
+        syncToDataStore { it[AppDataStoreKeys.CODEX_USAGE_AUTO_REFRESH] = enabled }
+    }
+
+    private fun syncToDataStore(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
+        (context as? com.lamuier.agenT.AgenTApplication)?.applicationScope?.let { scope ->
+            scope.launch {
+                runCatching {
+                    context.appPreferencesDataStore.edit(block)
+                }
+            }
+        }
     }
 
     companion object {

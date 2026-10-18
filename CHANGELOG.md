@@ -2,9 +2,15 @@
 
 **中文** | [English](CHANGELOG.en.md)
 
-## 未发布
+## 1.4.1 — 2026-10-18
 
-暂无。
+> 版本判定：1.4.0 → 1.4.1，`versionCode` 递增为 7。本次为 Material Design 3 Expressive 样式与无障碍语义优化、冷启动死锁兼容修复、Jetpack DataStore 现代化存储及 kotlinx.serialization 重构，不增加独立业务能力，判定为 Z 修订版。安装包 ID、原签名与已有本机数据保持兼容。
+
+- 深度贴合 Google Material Design 3 与现代 Android 开发规范：
+  - **Material 3 Expressive 动效与无障碍语义**：演进 `Motion.kt` 物理弹簧参数（新增 `spatial` 与 `expressivePress`），为图表与图例标注无障碍辅助语义（`mergeDescendants`、`contentDescription`），确保触控热区达标。
+  - **官方启动屏标准与死锁修复**：引入 `androidx.core:core-splashscreen` 与 `Theme.AgenT.Starting` 主题，调用 `installSplashScreen()` 与 `setKeepOnScreenCondition` 规范化 Android 12+ 冷启动过渡；解耦启动屏与首帧绘制监听，消除冷启动死锁并增加保底超时。
+  - **Jetpack DataStore 现代化存储**：新增 `AppPreferencesDataStore`，以协程 Flow 与事务化异步机制同步主题、触感、通知与看板排序偏好。
+  - **kotlinx.serialization 类型安全反序列化**：引入官方 Kotlin 序列化插件及 JSON 解析适配器，替换网络与缓存解析中的模板式手写代码。
 
 ## 1.4.0 — 2026-10-18
 

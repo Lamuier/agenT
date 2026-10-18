@@ -8,4 +8,10 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorMode">wideColorGamut</item>
     </style>
+
+    <style name="Theme.AgenT.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_cat_art</item>
+        <item name="postSplashScreenTheme">@style/Theme.AgenT</item>
+    </style>
 </resources>

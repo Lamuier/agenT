@@ -174,7 +174,8 @@ internal fun UsagePaceLegend(elapsed: Double?) {
     val marker = MaterialTheme.colorScheme.tertiary
     val background = MaterialTheme.colorScheme.surfaceContainerLow
     @Composable fun Entry(cycle: Boolean, text: String, modifier: Modifier) {
-        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier.semantics(mergeDescendants = true) { contentDescription = text },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Canvas(Modifier.size(14.dp)) {
                 if (cycle) drawCycleMarker(center, 5.dp.toPx(), marker, background)
                 else drawRoundRect(primary, topLeft = Offset(0f, center.y - 2.5.dp.toPx()),

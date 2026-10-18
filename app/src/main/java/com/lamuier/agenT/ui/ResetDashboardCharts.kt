@@ -66,7 +66,8 @@ internal fun ResetTypeLegend() {
 }
 
 @Composable internal fun ResetTypeLabel(text: String, color: Color, modifier: Modifier = Modifier, fillLabel: Boolean = false) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier.semantics(mergeDescendants = true) { contentDescription = text },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Canvas(Modifier.size(8.dp)) { drawCircle(color) }
         Text(text, if (fillLabel) Modifier.weight(1f) else Modifier, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

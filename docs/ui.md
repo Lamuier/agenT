@@ -6,7 +6,7 @@
 
 数据加载失败不在五个页面中插入报错卡片或异常详情。有缓存时继续展示内容、原更新时间及缓存标记；无数据时保留中性空状态和重试入口，历史范围查询失败仍可单独重试。新失败仅显示短暂通用 Snackbar，同一失败持续存在时不重复弹出，不展示 IP、端口或底层异常；错误状态仍保留用于新鲜度判断及暂停节奏估算。Token 表单校验和凭据需更新提示保持独立。
 
-冷启动在 Cursor 账号 / 缓存与 Codex 凭据 / 缓存恢复期间保留系统启动画面；[StartupDrawGate](../app/src/main/java/com/lamuier/agenT/system/StartupDrawGate.kt) 在首页成功组合后放行首帧。应用不再额外显示品牌加载页或整屏转圈；首页先显示可用缓存，网络刷新由前台生命周期统一启动。恢复失败进入可操作页面并保留错误状态，Activity 销毁时移除首帧监听。方式遵循 [Android 首帧等待说明](https://developer.android.com/develop/ui/views/launch/splash-screen#suspend-drawing)。
+冷启动接入 `androidx.core:core-splashscreen` 与 `Theme.AgenT.Starting` 主题，配合 [StartupDrawGate](../app/src/main/java/com/lamuier/agenT/system/StartupDrawGate.kt) 与 `setKeepOnScreenCondition` 在首页成功组合后放行首帧。应用不再额外显示品牌加载页或整屏转圈；首页先显示可用缓存，网络刷新由前台生命周期统一启动。恢复失败进入可操作页面并保留错误状态，Activity 销毁时移除首帧监听。方式遵循 [Android 首帧等待说明](https://developer.android.com/develop/ui/views/launch/splash-screen#suspend-drawing)。
 
 自动刷新和手动刷新期间，顶栏刷新入口显示主题色进度圆环及「正在刷新数据」无障碍描述；保留当前页面、缓存内容和滚动位置，避免仅显示灰色图标。查询结束后恢复刷新入口，期间合并重复请求。
 
@@ -26,7 +26,7 @@ Token 管理保留遮罩、设备解锁与敏感内容保护，不能把明文�
 
 ## 动效、触感与系统入口
 
-- 动效规范在 [Motion.kt](../app/src/main/java/com/lamuier/agenT/ui/theme/Motion.kt)，通过 Material 3 与公开 Compose API 实现 Expressive 风格；持续圆环动效响应系统动画关闭设置。
+- 动效规范在 [Motion.kt](../app/src/main/java/com/lamuier/agenT/ui/theme/Motion.kt)，通过 Material 3 与公开 Compose API 实现 Expressive 风格（定义 selection、content、spatial 与 expressivePress 物理弹簧参数）；持续圆环动效响应系统动画关闭设置。
 - 「通用 → 触感反馈」默认开启。导航 / 筛选 / 设置选择轻触，进入前台的自动刷新及手动刷新、保存、复制、删除成功后确认一次。前台入口等待本批用量、任务与服务状态查询全部完成，至少一项实际更新且其余完整成功或因数据新鲜 / 自动查询关闭而跳过时才确认；纯缓存、失败、定时轮询和后台同步保持静默。退出前台取消本次完成反馈，不在再次进入时补震。使用 `View.performHapticFeedback`，遵循系统触感设置，不新增 `VIBRATE` 权限；事件不回放。
 - Android 12+ 新安装默认系统动态配色，升级保留已有选择；旧平台系统方案回退静态主题。Android 13+ 通过 `LocaleManager` 同步应用语言，旧显式偏好只迁移一次；默认跟随系统，提供中文 / English。
 - 长按图标有 Token 管理、设置、概览和任务入口；概览磁贴解锁后打开概览。七种小组件提供样例预览与固定入口，添加结果由系统 / 桌面决定，预览不包含账号数据。
