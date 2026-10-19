@@ -613,20 +613,26 @@ object AgenTWidgetUpdater {
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         fun reset(epoch: Long?) = epoch?.let { strings.getString(R.string.widget_reset_short,
             java.time.Instant.ofEpochSecond(it).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"))) }
+        fun shortReset(epoch: Long?) = epoch?.let { WidgetSourcePolicy.shortReset(it, zone) }
         snapshot.account?.let { account ->
             val usage = snapshot.usage?.takeUnless { account.tokenExpired }
-            add(WidgetSource("cursor", "Cursor", usage?.let { listOf(WidgetMetric(strings.getString(R.string.widget_current_cycle),
-                WidgetCalculations.totalLabel(it), WidgetCalculations.totalPercent(it), billingLabel(strings, it))) }.orEmpty(),
-                if (usage == null) snapshot.status else strings.getString(R.string.widget_pool_summary,
-                    AssistantPresentation.percent(usage.usage.autoPercentUsed), AssistantPresentation.percent(usage.usage.apiPercentUsed)),
+            add(WidgetSource("cursor", "Cursor", usage?.let {
+                val remaining = billingLabel(strings, it).takeUnless { label -> label == strings.getString(R.string.widget_billing_placeholder) }
+                listOf(
+                WidgetMetric(strings.getString(R.string.widget_pool_own), AssistantPresentation.percent(it.usage.autoPercentUsed),
+                    it.usage.autoPercentUsed, remaining, billingRemaining(strings, it)),
+                WidgetMetric(strings.getString(R.string.widget_pool_other), AssistantPresentation.percent(it.usage.apiPercentUsed),
+                    it.usage.apiPercentUsed),
+            ) }.orEmpty(),
+                if (usage == null) snapshot.status else strings.getString(R.string.widget_cycle_used, WidgetCalculations.totalLabel(usage)),
                 usage?.fetchedAt, usage?.fromCache != false, snapshot.serviceStatus, snapshot.serviceStatusLine,
                 if (account.tokenExpired) strings.getString(R.string.widget_connection_issue) else null))
         }
         snapshot.codexCredential?.let { credential ->
             val usage = snapshot.codexUsage?.takeUnless { credential.expired || credential.invalid }
             val metrics = usage?.let { listOfNotNull(
-                it.primary?.let { w -> WidgetMetric(strings.getString(R.string.quota_five_hour_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds)) },
-                it.secondary?.let { w -> WidgetMetric(strings.getString(R.string.quota_weekly_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds)) }) }.orEmpty()
+                it.primary?.let { w -> WidgetMetric(strings.getString(R.string.quota_five_hour_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds), shortReset(w.resetAtEpochSeconds)) },
+                it.secondary?.let { w -> WidgetMetric(strings.getString(R.string.quota_weekly_short), AssistantPresentation.percent(w.usedPercent), w.usedPercent, reset(w.resetAtEpochSeconds), shortReset(w.resetAtEpochSeconds)) }) }.orEmpty()
             add(WidgetSource("codex", "Codex", metrics, if (usage == null) snapshot.codexUsageLine else "",
                 usage?.fetchedAt, usage?.fromCache != false, snapshot.codexServiceStatus, snapshot.codexServiceStatusLine,
                 if (credential.expired || credential.invalid) strings.getString(R.string.widget_connection_issue) else null))
@@ -635,8 +641,14 @@ object AgenTWidgetUpdater {
             val state = snapshot.providers[provider] ?: return@forEach
             if (state.credential == null) return@forEach
             val usage = state.usage
-            val metrics = if (provider == UsageProvider.DeepSeek) usage?.balances.orEmpty().map {
-                WidgetMetric(it.currency, it.total?.stripTrailingZeros()?.toPlainString() ?: "—")
+            val balances = usage?.balances.orEmpty()
+            val metrics = if (provider == UsageProvider.DeepSeek) balances.flatMap { balance ->
+                val total = WidgetMetric(balance.currency, balance.total?.stripTrailingZeros()?.toPlainString() ?: "—")
+                val parts = if (balances.size == 1) listOfNotNull(
+                    balance.granted?.let { WidgetMetric(strings.getString(R.string.provider_balance_granted_label), it.stripTrailingZeros().toPlainString()) },
+                    balance.toppedUp?.let { WidgetMetric(strings.getString(R.string.provider_balance_topped_label), it.stripTrailingZeros().toPlainString()) },
+                ) else emptyList()
+                listOf(total) + parts
             } else usage?.windows.orEmpty().map { window ->
                 val label = window.label ?: strings.getString(when (window.id) {
                     "limit_5h" -> R.string.quota_five_hour_short
@@ -647,9 +659,9 @@ object AgenTWidgetUpdater {
                 }).let { if (window.id.startsWith("legacy_") && window.durationMinutes != null)
                     strings.getString(R.string.provider_window_minutes, window.durationMinutes) else it }
                 val percent = window.usedRatio?.multiply(java.math.BigDecimal(100))?.toDouble()
-                val reset = window.resetAt?.let { runCatching { reset(java.time.Instant.parse(it).epochSecond) }.getOrNull() }
+                val resetEpoch = window.resetAt?.let { runCatching { java.time.Instant.parse(it).epochSecond }.getOrNull() }
                 WidgetMetric(label, if (window.inconsistent) strings.getString(R.string.provider_inconsistent) else AssistantPresentation.percent(percent),
-                    if (window.inconsistent) null else percent, reset)
+                    if (window.inconsistent) null else percent, reset(resetEpoch), shortReset(resetEpoch))
             } + listOfNotNull(usage?.booster?.let { wallet ->
                 WidgetMetric(strings.getString(R.string.provider_booster), listOfNotNull(wallet.currency,
                     wallet.remaining?.stripTrailingZeros()?.toPlainString() ?: "—").joinToString(" "))
@@ -660,8 +672,13 @@ object AgenTWidgetUpdater {
                 else if (provider == UsageProvider.DeepSeek) strings.getString(when (usage.available) {
                     true -> R.string.widget_credit_available; false -> R.string.widget_credit_unavailable; null -> R.string.label_data_unavailable
                 }) else ""
+            val split = balances.singleOrNull()?.takeIf { provider == UsageProvider.DeepSeek }?.let { balance ->
+                val granted = balance.granted
+                val toppedUp = balance.toppedUp
+                if (granted != null && toppedUp != null) listOf(granted.toDouble(), toppedUp.toDouble()) else null
+            }
             add(WidgetSource(provider.id, provider.title, metrics, note, usage?.fetchedAt,
-                usage?.fromCache != false || state.failure != null, status?.status, status?.line.orEmpty(), attention))
+                usage?.fromCache != false || state.failure != null, status?.status, status?.line.orEmpty(), attention, split))
         }
     }
 
@@ -1045,6 +1062,11 @@ object AgenTWidgetUpdater {
             )
         }
     }
+
+    private fun billingRemaining(strings: Context, usage: AgenTOverview): String? =
+        UsageCalculations.billingProgress(usage.billingCycle.start, usage.billingCycle.end)?.let { billing ->
+            UsageCalculations.formatRemaining(billing.remainingMillis, compact = true, resources = strings.resources)
+        }
 
     private fun billingLabel(strings: Context, usage: AgenTOverview): String {
         val billing = UsageCalculations.billingProgress(

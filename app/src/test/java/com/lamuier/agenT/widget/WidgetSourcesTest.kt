@@ -53,38 +53,88 @@ class WidgetSourcesTest {
         assertNull(WidgetSourcePolicy.next(emptyList(), null, 1))
     }
     @Test fun placementFillsOddCountsAndKeepsTheFourCellGrid() {
-        val usage = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = false, footerHasMeter = false)
-        assertEquals(2, usage.columns)
-        assertTrue(usage.spanLast && usage.emphasizeTop && !usage.stackCompact)
-        val meters = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = false, footerHasMeter = true)
-        assertTrue(meters.spanLast && !meters.emphasizeTop)
-        val status = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = true, footerHasMeter = false)
+        val usage = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = false)
+        assertEquals(3, usage.columns)
+        assertFalse(usage.spanLast || usage.stackCompact)
+        val status = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = true)
         assertEquals(1, status.columns)
         assertTrue(status.stackCompact && !status.spanLast)
-        val grid = WidgetSourcePolicy.placement(4, 4, 334, tiny = false, status = false, footerHasMeter = false)
+        val grid = WidgetSourcePolicy.placement(4, 4, 334, tiny = false, status = false)
         assertEquals(2, grid.columns)
         assertFalse(grid.spanLast || grid.stackCompact)
-        assertEquals(1, WidgetSourcePolicy.placement(1, 2, 334, tiny = false, status = false, footerHasMeter = false).columns)
-        val pair = WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = true, footerHasMeter = false)
+        assertEquals(1, WidgetSourcePolicy.placement(1, 2, 334, tiny = false, status = false).columns)
+        val pair = WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = true)
         assertEquals(2, pair.columns)
         assertFalse(pair.spanLast)
-        assertEquals(1, WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = false, footerHasMeter = false).columns)
+        assertEquals(1, WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = false).columns)
+    }
+
+    @Test fun balanceWithoutSplitAndPlainTextMetricsFallBackToTextLayout() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sources = listOf(
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("自有", "41.9%", 41.9, caption = "12天")), fetchedAt = "2026-10-19 10:15:00"),
+            WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "10%", 10.0, caption = "06:00")), fetchedAt = "2026-10-19 10:15:00"),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79"), WidgetMetric("USD", "2")), "余额可用", "2026-10-19 10:15:00"),
+        )
+        val root = laidOut(context, sources, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-balance-text")
+        val text = mutableListOf<String>()
+        var gauges = 0
+        fun scan(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view.id == com.lamuier.agenT.R.id.widget_gauge) gauges++
+            if (view is android.widget.TextView) text += view.text.toString()
+            if (view is android.view.ViewGroup) repeat(view.childCount) { scan(view.getChildAt(it)) }
+        }
+        scan(root)
+        assertEquals(2, gauges)
+        assertTrue(text.contains("余额可用"))
+        assertFalse(text.any { it.contains("●") })
+        assertNoClipping(root)
+    }
+
+    @Test fun shortResetShowsClockForTodayAndDateOtherwise() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val now = java.time.Instant.parse("2026-10-19T06:00:00Z")
+        fun at(text: String) = java.time.Instant.parse(text).epochSecond
+        assertEquals("15:57", WidgetSourcePolicy.shortReset(at("2026-10-19T07:57:00Z"), zone, now))
+        assertEquals("10/25", WidgetSourcePolicy.shortReset(at("2026-10-24T21:59:00Z"), zone, now))
+        assertEquals("10/20", WidgetSourcePolicy.shortReset(at("2026-10-19T17:00:00Z"), zone, now))
     }
 
     @Test fun threeAndFourSourceLayoutsUseTheAvailableWidth() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val usage = listOf(
-            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("本周期", "39.26%", 39.26)), "自有 37.9% · 三方 52.7%", "2026-10-19 10:15:00"),
-            WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "100%", 100.0), WidgetMetric("每周", "79%", 79.0)), fetchedAt = "2026-10-19 10:15:00"),
-            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79")), "余额可用", "2026-10-19 10:15:00"),
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("自有", "41.9%", 41.9, "周期剩 12天", "12天"), WidgetMetric("三方", "52.7%", 52.7)), "本周期 42.85%", "2026-10-19 10:15:00"),
+            WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "100%", 100.0, "03/20 06:00", "06:00"), WidgetMetric("每周", "79%", 79.0, "03/25 08:00", "03/25")), fetchedAt = "2026-10-19 10:15:00"),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79"), WidgetMetric("赠送", "1.25"), WidgetMetric("充值", "9.54")), "余额可用", "2026-10-19 10:15:00",
+                split = listOf(1.25, 9.54)),
         )
         val usageRoot = laidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "usage-3")
+        val gauges = mutableListOf<android.view.View>()
+        val gaugeText = mutableListOf<String>()
+        fun scan(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view.id == com.lamuier.agenT.R.id.widget_gauge) gauges += view
+            if (view is android.widget.TextView) gaugeText += view.text.toString()
+            if (view is android.view.ViewGroup) repeat(view.childCount) { scan(view.getChildAt(it)) }
+        }
+        scan(usageRoot)
+        assertEquals(5, gauges.size)
+        assertTrue(gaugeText.containsAll(listOf("41.9%", "52.7%", "100%", "79%", "自有 · 12天", "每周 · 03/25")))
+        assertTrue(gaugeText.any { it.contains("CNY") && it.contains("10.79") })
+        assertTrue(gaugeText.any { it.contains("● 赠送 1.25") && it.contains("● 充值 9.54") })
+        assertFalse(gaugeText.any { it.contains("本周期") || it.contains("余额可用") })
+        assertTrue(gauges.all { it.width > 0 && it.height > 0 })
         val usageRows = usageRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
-        assertEquals(2, usageRows.childCount)
-        assertEquals(2, (usageRows.getChildAt(0) as android.view.ViewGroup).childCount)
-        val footer = (usageRows.getChildAt(1) as android.view.ViewGroup).getChildAt(0)
-        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, footer.layoutParams.width)
-        assertTrue(footer.width > usageRoot.width * 3 / 4)
+        assertEquals(1, usageRows.childCount)
+        val usageRow = usageRows.getChildAt(0) as android.view.ViewGroup
+        assertEquals(3, usageRow.childCount)
+        repeat(3) { index ->
+            val card = usageRow.getChildAt(index)
+            assertTrue(card.width > usageRoot.width / 4)
+            assertTrue(card.width < usageRoot.width / 2)
+            assertTrue(card.height > usageRoot.height / 2)
+        }
         assertNoClipping(usageRoot)
 
         val status = listOf(
@@ -143,9 +193,9 @@ class WidgetSourcesTest {
         val kimiFooter = usage.take(2) + WidgetSource("kimi_code", "Kimi Code", listOf(
             WidgetMetric("5小时", "18%", 18.0), WidgetMetric("每周", "36%", 36.0)), fetchedAt = "2026-10-19 10:15:00")
         val kimiRoot = laidOut(context, kimiFooter, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-meters")
-        val kimiRows = kimiRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
-        assertEquals(1, (kimiRows.getChildAt(1) as android.view.ViewGroup).childCount)
-        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, (kimiRows.getChildAt(1) as android.view.ViewGroup).getChildAt(0).layoutParams.width)
+        val kimiRow = kimiRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup
+        assertEquals(3, kimiRow.childCount)
+        assertTrue(kimiRow.getChildAt(2).width > kimiRoot.width / 4)
         assertNoClipping(kimiRoot)
     }
 

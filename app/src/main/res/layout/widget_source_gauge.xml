@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_gauge"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"
+    android:gravity="center_horizontal">
+    <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content">
+        <ImageView android:id="@+id/widget_gauge_ring" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:importantForAccessibility="no" />
+        <TextView android:id="@+id/widget_gauge_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="center" android:gravity="center" android:textSize="13sp"
+            android:includeFontPadding="false" android:maxLines="2" />
+    </FrameLayout>
+    <TextView android:id="@+id/widget_gauge_caption" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="2dp" android:gravity="center_horizontal" android:textSize="9sp"
+        android:includeFontPadding="false" android:maxLines="2" />
+</LinearLayout>

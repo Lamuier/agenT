@@ -17,6 +17,7 @@ internal object WidgetVisuals {
     private const val CORNER_RADIUS_DP = 24f
     private const val DONUT_STROKE_DP = 12f
     private const val CHIP_RADIUS_DP = 999f
+    private const val SPLIT_GAP_DEGREES = 5f
     private const val GLASS_ALPHA_DARK = 0xE3
     private const val GLASS_ALPHA_LIGHT = 0xF2
 
@@ -92,6 +93,45 @@ internal object WidgetVisuals {
         val sweep = (progress.coerceIn(0, 100) / 100f) * 360f
         if (sweep > 0.5f) {
             canvas.drawArc(oval, -90f, sweep, false, progressPaint)
+        }
+        return bitmap
+    }
+
+    /** One ring split into proportional segments, e.g. granted versus topped-up balance. */
+    fun splitDonutBitmap(
+        context: Context,
+        sizeDp: Int,
+        fractions: List<Float>,
+        colors: List<Int>,
+        trackColor: Int,
+        strokeDp: Float = DONUT_STROKE_DP,
+    ): Bitmap {
+        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceIn(1, 256)
+        val stroke = dp(context, strokeDp)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val inset = stroke / 2f + dp(context, 1f)
+        val oval = RectF(inset, inset, size - inset, size - inset)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = stroke
+        }
+        paint.color = trackColor
+        canvas.drawArc(oval, -90f, 360f, false, paint)
+        val parts = fractions.map { if (it.isFinite()) it.coerceAtLeast(0f) else 0f }
+        val total = parts.sum()
+        val visible = parts.count { it > 0f }
+        if (total <= 0f) return bitmap
+        val gap = if (visible > 1) SPLIT_GAP_DEGREES else 0f
+        paint.strokeCap = if (visible > 1) Paint.Cap.BUTT else Paint.Cap.ROUND
+        val room = 360f - gap * visible
+        var start = -90f + gap / 2f
+        parts.forEachIndexed { index, part ->
+            if (part <= 0f) return@forEachIndexed
+            val sweep = part / total * room
+            paint.color = colors.getOrElse(index) { trackColor }
+            canvas.drawArc(oval, start, sweep, false, paint)
+            start += sweep + gap
         }
         return bitmap
     }

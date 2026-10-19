@@ -67,7 +67,7 @@ node scripts/preview-island-styles.cjs
 
 ## 4×3 小组件布局
 
-七种组件支持多来源，按配置隐藏并随宿主尺寸和字号分页。4×3 的一至两来源保留详细内容；三个来源时用量末行铺满、状态改为通栏，四个来源采用四格摘要并按需分页。规则、刷新和兼容性统一维护在 [小组件](widgets.md)。
+七种组件支持多来源，按配置隐藏并随宿主尺寸和字号分页。4×3 的一至两来源保留详细内容；三个来源时用量改为三列环形仪表、状态改为通栏，四个来源采用四格摘要并按需分页。规则、刷新和兼容性统一维护在 [小组件](widgets.md)。
 
 [WidgetRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetRenderingTest.kt) 保留双来源详情的原生绘制检查，[WidgetSourcesRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetSourcesRenderingTest.kt) 覆盖七种组件的四来源、中英文、深浅色、最小尺寸和 200% 字号。截图位于 `app/build/reports/widget-review/`；运行 `python3 scripts/widget-review-gallery.py` 生成图库。用量条独立比例与重新应用见 [WidgetUsageMeterTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetUsageMeterTest.kt)。JVM 原生渲染不等同于实际 OEM 桌面截图。
 

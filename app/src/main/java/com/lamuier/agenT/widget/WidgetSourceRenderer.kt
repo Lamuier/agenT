@@ -53,16 +53,14 @@ internal object WidgetSourceRenderer {
         fit(context, views, R.id.widget_multi_empty, strings.getString(R.string.widget_configure_short), width - 24, 11f)
         views.setViewVisibility(R.id.widget_source_rows, if (sources.isEmpty()) View.GONE else View.VISIBLE)
         views.removeAllViews(R.id.widget_source_rows)
-        val footerHasMeter = visible.lastOrNull()?.metrics?.any { it.percent != null } == true
-        val placement = WidgetSourcePolicy.placement(visible.size, capacity, width, tiny, status, footerHasMeter)
+        val placement = WidgetSourcePolicy.placement(visible.size, capacity, width, tiny, status)
         val chunks = visible.chunked(placement.columns)
         val contentHeight = (height - if (tiny) 4 else 52).coerceAtLeast(20)
-        val weights = chunks.indices.map { index -> if (placement.emphasizeTop && index == 0) 2 else 1 }
-        val weightSum = weights.sum().coerceAtLeast(1)
+        val rowHeight = (contentHeight / chunks.size.coerceAtLeast(1)).coerceAtLeast(20)
         val horizontalInset = if (tiny) 12 + if (pageCount > 1) 30 else 0 else 20
-        chunks.forEachIndexed { index, rowSources ->
-            val row = RemoteViews(context.packageName, if (placement.emphasizeTop && index == 0) R.layout.widget_sources_row_grow else R.layout.widget_sources_row)
-            val rowHeight = (contentHeight * weights[index] / weightSum).coerceAtLeast(20)
+        val compactGrid = visible.size >= 4
+        chunks.forEach { rowSources ->
+            val row = RemoteViews(context.packageName, R.layout.widget_sources_row)
             val span = placement.stackCompact || rowSources.size == 1 && placement.spanLast
             val mode = when {
                 span -> CardMode.Span
@@ -71,8 +69,8 @@ internal object WidgetSourceRenderer {
             }
             val cardWidth = if (rowSources.size == 1) width - horizontalInset else (width - horizontalInset) / placement.columns
             rowSources.forEach { source ->
-                val card = card(context, source, status, cardWidth, rowHeight, tiny, capacity >= 4 && mode == CardMode.Cell,
-                    mode, pinTop = mode == CardMode.Cell && !(placement.emphasizeTop && index == 0), notice, colors)
+                val card = card(context, source, status, cardWidth, rowHeight, tiny, compactGrid && mode == CardMode.Cell,
+                    mode, notice, colors)
                 card.setOnClickPendingIntent(R.id.widget_source_card, openSource(source.id))
                 row.addView(R.id.widget_sources_row, card)
             }
@@ -88,7 +86,7 @@ internal object WidgetSourceRenderer {
     private enum class CardMode { Cell, Fill, Span }
 
     private fun card(context: Context, source: WidgetSource, status: Boolean, width: Int, height: Int,
-        tiny: Boolean, grid: Boolean, mode: CardMode, pinTop: Boolean, notice: String?, colors: WidgetThemeColors): RemoteViews {
+        tiny: Boolean, grid: Boolean, mode: CardMode, notice: String?, colors: WidgetThemeColors): RemoteViews {
         val strings = AppLocale.wrap(context)
         val span = mode == CardMode.Span
         val views = RemoteViews(context.packageName, when (mode) {
@@ -99,7 +97,6 @@ internal object WidgetSourceRenderer {
         val font = context.resources.configuration.fontScale
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         val textWidth = (width - if (tiny) 2 else 10).coerceAtLeast(10)
-        if (pinTop) views.setInt(R.id.widget_source_card, "setGravity", android.view.Gravity.TOP)
         val padding = if (tiny) 0 else if (span || height < 100) 1 else 3
         val density = context.resources.displayMetrics.density
         views.setViewPadding(R.id.widget_source_card, if (tiny) 0 else (5 * density).toInt(), (padding * density).toInt(),
@@ -125,15 +122,22 @@ internal object WidgetSourceRenderer {
             inlineBalances -> metrics.joinToString(" · ") { listOf(it.label, it.value).filter(String::isNotEmpty).joinToString(" ") }
             else -> ""
         }
-        val visibleNote = if (aside.isNotBlank() && note == aside) "" else note
+        val stacked = !tiny && !status && !grid && !span && height >= 140 && font <= 1.3f
+        val splitParts = source.split?.takeIf { stacked && it.size == 2 && source.metrics.size == 3 }
+        val gauged = stacked && (splitParts != null || source.metrics.any { it.percent != null })
+        // Rings carry the numbers, so the column note (cycle total, availability) only stays for notices and errors.
+        val visibleNote = if (gauged) listOfNotNull(notice, source.attention).joinToString(" · ")
+            else if (aside.isNotBlank() && note == aside) "" else note
         val body = if (inlineStatus || inlineBalances) emptyList() else metrics
-        val valueSize = if (tiny) 13f * tinyScale else if (!grid && !span && height >= 150 && font <= 1.3f) 18f else 14f
+        val valueSize = if (tiny) 13f * tinyScale else if (stacked) 20f else 14f
+        val labelHeight = if (stacked) lineHeight(context, 10f) else 0
         val baseHeight = when {
             tiny -> lineHeight(context, 9f * tinyScale)
             span -> lineHeight(context, 12f) + padding * 2
             else -> lineHeight(context, 12f) + lineHeight(context, 9f) + padding * 2
         }
-        val firstMetricHeight = body.firstOrNull()?.let { lineHeight(context, valueSize) + if (!tiny && it.percent != null) 7 else 0 } ?: 0
+        val firstMetricHeight = if (gauged) MIN_RING + lineHeight(context, 9f) + 4 else
+            body.firstOrNull()?.let { labelHeight + lineHeight(context, valueSize) + if (!tiny && it.percent != null) 9 else 0 } ?: 0
         val metadataBudget = (height - baseHeight - firstMetricHeight).coerceAtLeast(0)
         val showNote = !tiny && visibleNote.isNotEmpty() && metadataBudget >= lineHeight(context, 9f)
         if (!showNote && !status && source.attention != null && !inlineBalances) metrics = listOf(WidgetMetric("", source.attention))
@@ -142,20 +146,47 @@ internal object WidgetSourceRenderer {
             metadataBudget >= lineHeight(context, 9f) * 2) 2 else 1
         val showResets = !tiny && !grid && !span && metadataBudget - noteLines * lineHeight(context, 9f) >= lineHeight(context, 9f)
         val titleAndFoot = baseHeight + noteLines * lineHeight(context, 9f)
-        fun metricHeight(metric: WidgetMetric) = lineHeight(context, valueSize) +
-            (if (!tiny && metric.percent != null) 7 else 0) + (if (showResets && metric.reset != null) lineHeight(context, 9f) else 0)
+        fun metricHeight(metric: WidgetMetric) = (if (metric.label.isNotEmpty()) labelHeight else 0) + lineHeight(context, valueSize) +
+            (if (!tiny && metric.percent != null) 9 else 0) + (if (showResets && metric.reset != null) lineHeight(context, 9f) else 0)
         val displayBody = if (!showNote && !status && source.attention != null && !inlineBalances) metrics else body
+        val gaugeActive = gauged && displayBody === body
+        val gaugeItems = when {
+            !gaugeActive -> emptyList()
+            splitParts != null -> listOf(source.metrics[0])
+            else -> displayBody.filter { it.percent != null }
+        }
+        val captionLines = if (splitParts != null) 2 else 1
+        val gaugeBudget = height - baseHeight - noteLines * lineHeight(context, 9f) - 8
+        fun ringFor(count: Int) = minOf(MAX_RING, textWidth - 4, gaugeBudget / count - captionLines * lineHeight(context, 9f) - 4)
+        val gaugeCount = (minOf(gaugeItems.size, 4) downTo 1).firstOrNull { ringFor(it) >= MIN_RING } ?: minOf(gaugeItems.size, 1)
+        val ring = if (gaugeCount > 0) ringFor(gaugeCount).coerceAtLeast(28) else 0
         var used = titleAndFoot
-        val shown = if (displayBody.isEmpty()) emptyList() else displayBody.take(if (tiny) 1 else if (grid || span) 2 else 4).takeWhile { metric ->
+        val shown = if (gaugeCount > 0) gaugeItems.take(gaugeCount) else if (displayBody.isEmpty()) emptyList() else displayBody.take(if (tiny) 1 else if (grid || span) 2 else 4).takeWhile { metric ->
             val fits = used + metricHeight(metric) <= height
             if (fits) used += metricHeight(metric)
             fits
         }.ifEmpty { displayBody.take(1) }
         val accent = if (status) currentStatus?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
             else if (source.id == "cursor" || source.id == "deepseek") colors.primary else colors.tertiary
-        shown.forEach { metric ->
+        val spaced = gaugeCount == 0 && !tiny && !status && !span && shown.size > 1
+        if (gaugeCount > 0) {
+            val gap = R.layout.widget_source_gap
+            views.addView(R.id.widget_source_metrics, RemoteViews(context.packageName, gap))
+            shown.forEach { metric ->
+                views.addView(R.id.widget_source_metrics, gaugeRow(context, metric, ring, textWidth, accent, colors, splitParts, source.metrics))
+                views.addView(R.id.widget_source_metrics, RemoteViews(context.packageName, gap))
+            }
+        }
+        shown.takeIf { gaugeCount == 0 }.orEmpty().forEachIndexed { index, metric ->
             val row = RemoteViews(context.packageName, R.layout.widget_source_metric)
-            val text = listOf(metric.label.takeUnless { tiny && source.id == "cursor" }, metric.value).filterNotNull().filter(String::isNotEmpty).joinToString(" ")
+            val label = metric.label.takeUnless { tiny && source.id == "cursor" }.orEmpty()
+            val text = if (stacked) metric.value else listOf(label, metric.value).filter(String::isNotEmpty).joinToString(" ")
+            if (stacked && label.isNotEmpty()) {
+                row.setViewVisibility(R.id.widget_metric_label, View.VISIBLE)
+                fit(context, row, R.id.widget_metric_label, label, textWidth, 10f)
+                row.setTextColor(R.id.widget_metric_label, colors.onSurfaceVariant)
+                row.setContentDescription(R.id.widget_metric, "$label ${metric.value}")
+            }
             fit(context, row, R.id.widget_metric_value, text, textWidth, valueSize)
             row.setTextColor(R.id.widget_metric_value, accent)
             val showBar = !tiny && metric.percent != null
@@ -167,7 +198,9 @@ internal object WidgetSourceRenderer {
             row.setTextViewText(R.id.widget_metric_reset, metric.reset.orEmpty())
             row.setTextColor(R.id.widget_metric_reset, colors.onSurfaceVariant)
             views.addView(R.id.widget_source_metrics, row)
+            if (spaced && index < shown.lastIndex) views.addView(R.id.widget_source_metrics, RemoteViews(context.packageName, R.layout.widget_source_gap))
         }
+        if (spaced) views.addView(R.id.widget_source_metrics, RemoteViews(context.packageName, R.layout.widget_source_gap))
         val spare = (height - titleAndFoot - shown.sumOf(::metricHeight)).coerceAtLeast(0)
         val components = if (status && !tiny) WidgetStatusPresentation.components(source.status,
             (spare / lineHeight(context, 10f)).coerceIn(0, if (grid && !span) 2 else 8)) else emptyList()
@@ -182,7 +215,7 @@ internal object WidgetSourceRenderer {
             views.addView(R.id.widget_source_metrics, row)
         }
         val extra = if (status) (source.status?.components?.size ?: 0) - components.size
-            else if (inlineBalances) 0 else metrics.size - shown.size
+            else if (inlineBalances || gaugeCount > 0 && splitParts != null) 0 else metrics.size - shown.size
         if (!span || tiny) fit(context, views, R.id.widget_source_name, source.title, textWidth, nameSize)
         if (tiny && extra > 0) {
             fit(context, views, R.id.widget_source_name, "${source.title} +$extra", textWidth, 9f * tinyScale)
@@ -217,6 +250,65 @@ internal object WidgetSourceRenderer {
             }
         }
         return views
+    }
+
+    private const val MIN_RING = 36
+    private const val MAX_RING = 64
+
+    /** A ring with the value centred inside and a one-line caption (or a two-line legend for split balances) below. */
+    private fun gaugeRow(context: Context, metric: WidgetMetric, ring: Int, textWidth: Int, accent: Int,
+        colors: WidgetThemeColors, split: List<Double>?, all: List<WidgetMetric>): RemoteViews {
+        val row = RemoteViews(context.packageName, R.layout.widget_source_gauge)
+        val dark = (colors.surface ushr 16 and 255) < 128
+        val stroke = (ring * 0.11f).coerceIn(4f, 7f)
+        val inner = (ring - 2 * stroke - 6).toInt().coerceAtLeast(12)
+        val valueSize = (ring * 0.24f).coerceIn(9f, 14f)
+        val track = WidgetAppearance.blend(colors.surface, accent, 0.10f)
+        if (split == null) {
+            val percent = metric.percent ?: 0.0
+            val fill = WidgetAppearance.accent(metric.percent, accent, colors.onSurfaceVariant, dark)
+            row.setImageViewBitmap(R.id.widget_gauge_ring, WidgetVisuals.donutBitmap(context, ring,
+                kotlin.math.round(percent).toInt(), fill, track, stroke))
+            fit(context, row, R.id.widget_gauge_value, metric.value, inner, valueSize)
+            row.setTextColor(R.id.widget_gauge_value, colors.onSurface)
+            val caption = listOfNotNull(metric.label.takeIf(String::isNotEmpty), metric.caption).joinToString(" · ")
+            fit(context, row, R.id.widget_gauge_caption, caption, textWidth, 9f)
+            row.setTextColor(R.id.widget_gauge_caption, colors.onSurfaceVariant)
+            row.setContentDescription(R.id.widget_gauge, listOf(metric.label, metric.value, metric.caption.orEmpty())
+                .filter(String::isNotEmpty).joinToString(" "))
+            return row
+        }
+        val roleColors = listOf(colors.tertiary, colors.primary)
+        row.setImageViewBitmap(R.id.widget_gauge_ring, WidgetVisuals.splitDonutBitmap(context, ring,
+            split.map { it.toFloat() }, roleColors, track, stroke))
+        val unit = metric.label
+        val center = android.text.SpannableStringBuilder().apply {
+            if (unit.isNotEmpty()) {
+                append(unit).append('\n')
+                setSpan(android.text.style.RelativeSizeSpan(0.62f), 0, unit.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            append(metric.value)
+        }
+        fit(context, row, R.id.widget_gauge_value, metric.value, inner, valueSize)
+        row.setTextViewText(R.id.widget_gauge_value, center)
+        row.setTextColor(R.id.widget_gauge_value, colors.onSurface)
+        val parts = all.drop(1)
+        val lines = parts.map { listOf(it.label, it.value).filter(String::isNotEmpty).joinToString(" ") }
+        val legend = android.text.SpannableStringBuilder()
+        lines.forEachIndexed { index, line ->
+            if (index > 0) legend.append('\n')
+            val start = legend.length
+            legend.append("●").append(' ').append(line)
+            legend.setSpan(android.text.style.ForegroundColorSpan(roleColors[index.coerceAtMost(1)]), start, start + 1,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val widest = lines.maxOfOrNull { textWidthDp(context, "● $it", 9f) } ?: 0
+        val legendSize = if (widest > textWidth) 9f * textWidth / widest else 9f
+        row.setTextViewText(R.id.widget_gauge_caption, legend)
+        row.setTextViewTextSize(R.id.widget_gauge_caption, TypedValue.COMPLEX_UNIT_SP, legendSize)
+        row.setTextColor(R.id.widget_gauge_caption, colors.onSurfaceVariant)
+        row.setContentDescription(R.id.widget_gauge, listOf(unit, metric.value, lines.joinToString(" ")).filter(String::isNotEmpty).joinToString(" "))
+        return row
     }
 
     private val lineHeightCache = java.util.concurrent.ConcurrentHashMap<Int, Int>()
@@ -254,11 +346,11 @@ internal object WidgetSourceRenderer {
         val metrics = context.resources.displayMetrics
         val wanted = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, metrics)
         val paint = measurePaint.get()!!.apply { textSize = wanted }
-        val available = widthDp * metrics.density
+        val available = (widthDp * metrics.density - 2f).coerceAtLeast(1f)
         val full = paint.measureText(text)
         val display = if (truncate && full > available) text.take(paint.breakText(text, true, (available - paint.measureText("…")).coerceAtLeast(0f), null)) + "…" else text
         val measured = paint.measureText(display).coerceAtLeast(1f)
-        val size = minOf(wanted, wanted * widthDp * metrics.density / measured)
+        val size = minOf(wanted, wanted * available / measured)
         views.setTextViewText(id, display)
         views.setContentDescription(id, text)
         views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_PX, size)

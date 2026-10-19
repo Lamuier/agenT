@@ -580,6 +580,9 @@
     <string name="quota_five_hour_short">5 hours</string>
     <string name="quota_weekly_short">Weekly</string>
     <string name="widget_pool_summary">Own %1$s · Other %2$s</string>
+    <string name="widget_pool_own">Own</string>
+    <string name="widget_pool_other">Other</string>
+    <string name="widget_cycle_used">This cycle %1$s</string>
     <string name="widget_sync_clocks">Updated · Cursor %1$s · Codex %2$s</string>
     <string name="widget_token_update_short">Update token</string>
     <string name="widget_current_cycle">This cycle</string>

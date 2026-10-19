@@ -583,6 +583,9 @@
     <string name="quota_five_hour_short">5 小时</string>
     <string name="quota_weekly_short">每周</string>
     <string name="widget_pool_summary">自有 %1$s · 三方 %2$s</string>
+    <string name="widget_pool_own">自有</string>
+    <string name="widget_pool_other">三方</string>
+    <string name="widget_cycle_used">本周期 %1$s</string>
     <string name="widget_sync_clocks">更新 · Cursor %1$s · Codex %2$s</string>
     <string name="widget_token_update_short">需更新 Token</string>
     <string name="widget_current_cycle">本周期</string>

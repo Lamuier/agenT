@@ -4,9 +4,12 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
-## Unreleased
+## 1.6.0 — 2026-10-19
+
+> Version decision: 1.5.0 → 1.6.0, with `versionCode` increased to 9. This release redesigns the usage widget: with three sources, Cursor own-model and other-model quotas become ring gauges and a single-currency DeepSeek balance gains a granted / topped-up split ring, alongside corrected public repository and topic documentation. New user-visible widget fields and presentation require at least a minor (Y) release. The package ID, original signing key, permissions and data format are unchanged, so existing installs upgrade in place.
 
 - Correct the repository description and topic docs so the public description covers Cursor, Codex, DeepSeek API and Kimi Code. Fill in the credential table, status summaries, usage panes, endpoint list, and the status and console addresses the app may open. The privacy policy now states that the usage page charts local observations for Cursor only; recent Codex samples remain for window pace estimates.
+- On a wide 4×3 usage widget, three sources use three equal-height columns. Cursor shows separate own-model and other-model gauges; each quota becomes a ring gauge with the percentage centred and a single caption line (name and short reset time) below; a single-currency DeepSeek balance shows its total on a granted / topped-up split ring, column notes are dropped, and the update time sits at the bottom.
 
 ## 1.5.0 — 2026-10-19
 
