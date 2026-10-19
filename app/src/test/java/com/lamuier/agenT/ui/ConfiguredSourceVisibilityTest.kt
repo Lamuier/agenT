@@ -63,14 +63,14 @@ class ConfiguredSourceVisibilityTest {
         listOf("cursor", "codex", "deepseek", "kimi_code").forEach { id ->
             compose.onNodeWithTag("status-provider-$id").assertDoesNotExist()
         }
-        compose.onNodeWithTag("status-provider-antigravity").assertIsSelected()
+        compose.onNodeWithTag("configure-sources").assertIsDisplayed()
         compose.runOnIdle { sources = sources.copy(sources = sources.sources + (UsageProvider.KimiCode to
             sources[UsageProvider.KimiCode].copy(credential = ProviderCredentialInfo("saved")))) }
         compose.onNodeWithTag("status-provider-kimi_code").performScrollTo().performClick().assertIsSelected()
         compose.runOnIdle { sources = sources.copy(sources = sources.sources + (UsageProvider.KimiCode to
             sources[UsageProvider.KimiCode].copy(credential = null))) }
         compose.onNodeWithTag("status-provider-kimi_code").assertDoesNotExist()
-        compose.onNodeWithTag("status-provider-antigravity").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("configure-sources").assertIsDisplayed()
     }
 
     @Config(qualifiers = "en-rUS-w1280dp-h800dp-night-xhdpi")

@@ -1,31 +1,37 @@
 package com.lamuier.agenT.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.*
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 
 @Immutable
 internal data class ResetDailyCount(val date: LocalDate, val regular: Int, val banked: Int)
@@ -34,8 +40,6 @@ internal data class ResetDashboardData(val regular: Int, val banked: Int, val la
     val total get() = regular + banked
     val recordedDays get() = days.count { it.regular + it.banked > 0 }
 }
-
-private val CHART_AXIS_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd")
 
 /** Counts supplied public records, never credits, account redemptions or inferred quota-window resets. */
 internal fun resetDashboardData(events: List<CodexPublicReset>, range: CodexResetRange, now: Instant, zone: ZoneId): ResetDashboardData {
@@ -126,51 +130,55 @@ internal fun ResetFrequencyChart(data: ResetDashboardData?, selected: LocalDate?
         return
     }
     val colors = resetChartColors()
-    val grid = MaterialTheme.colorScheme.outlineVariant
-    val selection = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
     val days = data.days
-    val maximum = days.maxOf { maxOf(it.regular, it.banked) }.coerceAtLeast(1)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.height(120.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text(maximum.toString(), style = MaterialTheme.typography.labelSmall)
-            Text("0", style = MaterialTheme.typography.labelSmall)
-        }
-        Column(Modifier.weight(1f)) {
-            BoxWithConstraints(Modifier.fillMaxWidth().height(120.dp).testTag("reset-frequency-chart")) {
-                val step = maxWidth / days.size
-                Canvas(Modifier.fillMaxSize().pointerInput(days) { detectTapGestures { tap ->
-                    val index = (tap.x / (size.width.toFloat() / days.size)).toInt().coerceIn(0, days.lastIndex)
-                    onSelect(days[index].date)
-                } }) {
-                    val slot = size.width / days.size
-                    val floor = size.height - 3.dp.toPx(); val height = floor - 3.dp.toPx()
-                    drawLine(grid, Offset(0f, floor), Offset(size.width, floor), 1.dp.toPx())
-                    drawLine(grid, Offset(0f, floor - height), Offset(size.width, floor - height), 1.dp.toPx())
-                    days.forEachIndexed { i, day ->
-                        if (selected == day.date) drawRect(selection, Offset(slot * i, 0f), Size(slot, size.height))
-                        listOf(day.regular to colors.regular, day.banked to colors.banked).forEachIndexed { type, item ->
-                            val barHeight = height * item.first / maximum
-                            if (barHeight > 0) drawRoundRect(item.second, Offset(slot * i + slot * (0.12f + type * 0.4f), floor - barHeight),
-                                Size(slot * 0.32f, barHeight), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
-                        }
-                    }
-                }
-                days.forEachIndexed { i, day ->
-                    val description = stringResource(R.string.reset_dash_day_a11y, day.date.toString(), day.regular, day.banked)
-                    Box(Modifier.offset(x = step * i).width(step).fillMaxHeight().testTag("reset-day-" + day.date).semantics {
-                        contentDescription = description; this.selected = selected == day.date
-                        onClick { onSelect(day.date); true }
-                    })
-                }
+    val locale = LocalConfiguration.current.locales[0]
+    val leading = days.first().date.dayOfWeek.value % 7
+    val slots = buildList<ResetDailyCount?> {
+        repeat(leading) { add(null) }
+        addAll(days)
+    }
+    Column(Modifier.fillMaxWidth().testTag("reset-frequency-chart"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            repeat(7) { index ->
+                Text(DayOfWeek.SUNDAY.plus(index.toLong()).getDisplayName(TextStyle.NARROW_STANDALONE, locale),
+                    Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Row(Modifier.fillMaxWidth()) {
-                val formatter = CHART_AXIS_DATE_FORMATTER
-                Text(days.first().date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                if (days.size > 2) Text(days[days.size / 2].date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
-                if (days.size > 1) Text(days.last().date.format(formatter), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End)
+        }
+        slots.chunked(7).forEach { week ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                week.forEach { day ->
+                    if (day == null) Spacer(Modifier.weight(1f))
+                    else ResetFrequencyDay(day, selected == day.date, colors, Modifier.weight(1f)) { onSelect(day.date) }
+                }
+                repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
     days.firstOrNull { it.date == selected }?.let { Text(stringResource(R.string.reset_dash_day_a11y, it.date.toString(), it.regular, it.banked),
         style = MaterialTheme.typography.labelMedium) }
+}
+
+@Composable
+private fun ResetFrequencyDay(day: ResetDailyCount, selected: Boolean, colors: ResetChartColors, modifier: Modifier, onSelect: () -> Unit) {
+    val description = stringResource(R.string.reset_dash_day_a11y, day.date.toString(), day.regular, day.banked)
+    val shape = RoundedCornerShape(8.dp)
+    val outline = if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, shape) else Modifier
+    Column(modifier.testTag("reset-day-" + day.date).defaultMinSize(minHeight = 48.dp).then(outline).clip(shape)
+        .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
+        .clickable(onClick = onSelect).semantics { contentDescription = description; this.selected = selected }
+        .padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(day.date.dayOfMonth.toString(), Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, textAlign = TextAlign.Center,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        FrequencyCount(day.regular, colors.regular)
+        FrequencyCount(day.banked, colors.banked)
+    }
+}
+
+@Composable
+private fun FrequencyCount(count: Int, color: Color) {
+    Text(count.toString(), Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall,
+        color = color.copy(alpha = if (count == 0) 0.38f else 1f), maxLines = 1, textAlign = TextAlign.Center,
+        overflow = TextOverflow.Ellipsis)
 }

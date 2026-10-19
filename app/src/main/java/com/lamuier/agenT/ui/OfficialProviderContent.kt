@@ -1,16 +1,24 @@
 package com.lamuier.agenT.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lamuier.agenT.R
 import com.lamuier.agenT.providers.*
+import com.lamuier.agenT.ui.theme.LocalPulseChartColors
 import com.lamuier.agenT.util.CursorCustomTabs
 import java.math.BigDecimal
 
@@ -32,7 +40,8 @@ internal fun OfficialProviderOverview(provider: UsageProvider, state: ProviderSt
     onManage: () -> Unit) {
     AssistantOverviewCard(provider.title, null, state.serviceStatus, modifier) {
         if (state.usage != null) {
-            ProviderMetrics(state.usage, compact = true)
+            if (provider == UsageProvider.DeepSeek) DeepSeekOverviewMetrics(state.usage)
+            else ProviderMetrics(state.usage, compact = true)
             OverviewFreshness(state.usage.fetchedAt, state.usage.fromCache || state.error != null)
         } else Text(stringResource(if (state.credential == null) R.string.connection_not_configured
             else if (state.loading) R.string.label_history_loading else R.string.label_data_unavailable))
@@ -51,7 +60,6 @@ internal fun OfficialProviderDetails(provider: UsageProvider, state: ProviderSta
             Text(stringResource(when (provider) {
                 UsageProvider.DeepSeek -> R.string.provider_deepseek_scope
                 UsageProvider.KimiCode -> R.string.provider_kimi_scope
-                UsageProvider.Antigravity -> R.string.antigravity_direct_scope
             }),
                 style = MaterialTheme.typography.bodySmall)
             if (provider == UsageProvider.KimiCode && state.credential != null) Text(stringResource(
@@ -69,7 +77,7 @@ internal fun OfficialProviderDetails(provider: UsageProvider, state: ProviderSta
             OutlinedButton(onClick = onRefresh, enabled = state.credential != null && !state.loading && !state.saving) {
                 Text(stringResource(R.string.action_reload))
             }
-            TextButton(onClick = { CursorCustomTabs.open(context, provider.consoleUrl) }) { Text(stringResource(if (provider == UsageProvider.Antigravity) R.string.antigravity_open_usage_help else R.string.provider_official_console)) }
+            TextButton(onClick = { CursorCustomTabs.open(context, provider.consoleUrl) }) { Text(stringResource(R.string.provider_official_console)) }
         }
     }
 }
@@ -115,6 +123,62 @@ private fun ProviderMetrics(usage: ProviderUsage, compact: Boolean) {
         }
     }
 }
+@Composable
+private fun DeepSeekOverviewMetrics(usage: ProviderUsage) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.provider_balance_caption), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (usage.balances.isEmpty()) {
+            Text("—", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+        } else {
+            val fontScale = LocalDensity.current.fontScale
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val sideBySide = usage.balances.size > 1 && maxWidth >= 280.dp && fontScale <= 1.3f
+                if (sideBySide) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                        usage.balances.forEach { DeepSeekBalance(it, Modifier.weight(1f)) }
+                    }
+                } else Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    usage.balances.forEach { DeepSeekBalance(it, Modifier.fillMaxWidth()) }
+                }
+            }
+        }
+        val statusColor = when (usage.available) {
+            true -> LocalPulseChartColors.current.healthy
+            false -> LocalPulseChartColors.current.critical
+            null -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(statusColor))
+            Text(stringResource(when (usage.available) {
+                true -> R.string.provider_balance_available
+                false -> R.string.provider_balance_unavailable
+                null -> R.string.label_data_unavailable
+            }), style = MaterialTheme.typography.labelMedium, color = statusColor)
+        }
+    }
+}
+
+@Composable
+private fun DeepSeekBalance(balance: MoneyBalance, modifier: Modifier) {
+    val hero = if (LocalDensity.current.fontScale > 1.3f) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.displaySmall
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(balance.currency, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(money(balance.total), style = hero, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        listOf(R.string.provider_balance_granted_label to balance.granted, R.string.provider_balance_topped_label to balance.toppedUp)
+            .forEach { (label, amount) ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(money(amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+    }
+}
+
 private fun money(value: BigDecimal?): String = value?.stripTrailingZeros()?.toPlainString() ?: "—"
 @Composable private fun formatReset(value: String): String {
     val zone = com.lamuier.agenT.ui.theme.LocalDisplayZone.current

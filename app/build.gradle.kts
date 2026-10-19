@@ -25,8 +25,8 @@ android {
         applicationId = "com.lamuier.agenT"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.4.1"
+        versionCode = 8
+        versionName = "1.5.0"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }

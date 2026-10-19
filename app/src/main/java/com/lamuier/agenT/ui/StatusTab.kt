@@ -84,40 +84,39 @@ internal fun StatusTab(
     cursorConfigured: Boolean = false,
     cursorLoading: Boolean = false,
     active: Boolean = true,
+    onConfigure: () -> Unit = {},
 ) {
     val openUrl = rememberOpenStatusUrl(onOpenFailed)
     val feedback = LocalAppFeedback.current
     var requestedProvider by rememberSaveable { mutableStateOf("cursor") }
-    val visibleSources = (configuredSourceIds(cursorConfigured, codexState.credential != null, providers) + "antigravity").distinct()
-    val provider = requestedProvider.takeIf { it in visibleSources } ?: visibleSources.first()
+    val visibleSources = configuredSourceIds(cursorConfigured, codexState.credential != null, providers)
+    val provider = requestedProvider.takeIf { it in visibleSources } ?: visibleSources.firstOrNull()
     androidx.compose.runtime.LaunchedEffect(visibleSources, cursorLoading, codexState.booting, providers.booting) {
-        if (!cursorLoading && !codexState.booting && !providers.booting) requestedProvider = provider
+        if (!cursorLoading && !codexState.booting && !providers.booting && provider != null) requestedProvider = provider
     }
     val destination by com.lamuier.agenT.widget.WidgetNavigation.destination.collectAsState()
     androidx.compose.runtime.LaunchedEffect(destination, active, visibleSources, cursorLoading, codexState.booting, providers.booting) {
         val target = destination
         if (target?.tab == com.lamuier.agenT.model.DashboardTab.Status && active && !cursorLoading && !codexState.booting && !providers.booting) {
-            requestedProvider = target.source.takeIf { it in visibleSources } ?: visibleSources.first()
+            requestedProvider = target.source.takeIf { it in visibleSources } ?: visibleSources.firstOrNull() ?: requestedProvider
             com.lamuier.agenT.widget.WidgetNavigation.consume(target)
         }
     }
     val summaryScroll = androidx.compose.foundation.rememberScrollState()
     val cursorScroll = androidx.compose.foundation.rememberScrollState()
     val codexScroll = androidx.compose.foundation.rememberScrollState()
-    val antigravityScroll = androidx.compose.foundation.rememberScrollState()
     val deepSeekScroll = androidx.compose.foundation.rememberScrollState()
     val kimiScroll = androidx.compose.foundation.rememberScrollState()
-    val detailScroll = when (provider) { "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "antigravity" -> antigravityScroll; "codex" -> codexScroll; else -> cursorScroll }
+    val detailScroll = when (provider) { "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "codex" -> codexScroll; else -> cursorScroll }
     val summary: @Composable () -> Unit = {
         Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
         if ("cursor" in visibleSources) StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
         if ("codex" in visibleSources) StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
-        UsageProvider.entries.filter { it.id in visibleSources && it.statusProvider != null }.forEach { source -> StatusOverviewTile(source.title, providers[source].serviceStatus,
+        UsageProvider.entries.filter { it.id in visibleSources }.forEach { source -> StatusOverviewTile(source.title, providers[source].serviceStatus,
             providers[source].loadingStatus, Modifier.fillMaxWidth()) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("cursor" to "Cursor", "codex" to "Codex / OpenAI",
-                "deepseek" to "DeepSeek", "kimi_code" to "Kimi Code",
-                "antigravity" to stringResource(R.string.antigravity_service_name)).filter { it.first in visibleSources }.forEach { (id, label) ->
+                "deepseek" to "DeepSeek", "kimi_code" to "Kimi Code").filter { it.first in visibleSources }.forEach { (id, label) ->
                 FilterChip(selected = provider == id,
                     onClick = { if (provider != id) { requestedProvider = id; feedback.selection() } },
                     label = { Text(label) }, modifier = Modifier.testTag("status-provider-$id"))
@@ -125,7 +124,7 @@ internal fun StatusTab(
         }
     }
     val details: @Composable (Boolean) -> Unit = { compact ->
-        if (provider == "antigravity") AntigravityStatusContent(openUrl)
+        if (provider == null) ConfigureSourcesCard(onConfigure)
         else if (provider in listOf("deepseek", "kimi_code")) {
             val source = UsageProvider.entries.first { it.id == provider }
             val current = providers[source]

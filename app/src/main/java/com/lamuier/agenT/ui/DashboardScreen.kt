@@ -184,13 +184,11 @@ internal fun DashboardScreen(
     }
     val feedback = LocalAppFeedback.current
     val tabs = remember(tabOrder) { DashboardTab.resolveOrder(tabOrder.map { it.id }) }
-    var antigravityTasks by rememberSaveable { mutableStateOf(false) }
     var selectedTabId by rememberSaveable { mutableStateOf(pendingOpenTab?.id ?: tabs.first().id) }
     val selectedTab = DashboardTab.fromId(selectedTabId) ?: tabs.first()
     LaunchedEffect(selectedTab) { onVisibleTabChange(selectedTab) }
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(selectedTab).coerceAtLeast(0), pageCount = { tabs.size })
     val pageStates = rememberSaveableStateHolder()
-    val taskProviderStates = rememberSaveableStateHolder()
     val dragging by pagerState.interactionSource.collectIsDraggedAsState()
     var userDragged by remember { mutableStateOf(false) }
     LaunchedEffect(dragging) { if (dragging) userDragged = true }
@@ -274,12 +272,11 @@ internal fun DashboardScreen(
                         scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
                     scrollBehavior = scrollBehavior,
                     actions = {
-                        if (selectedTab == DashboardTab.Tasks && !antigravityTasks) {
+                        if (selectedTab == DashboardTab.Tasks) {
                             IconButton(onClick = { openCursorUrl(AgentTaskPresentation.agentsPageUrl()) }) {
                                 Icon(Icons.Outlined.Add, stringResource(R.string.tasks_create_on_web))
                             }
                         }
-                        if (selectedTab != DashboardTab.Tasks || !antigravityTasks) {
                         val showRefreshProgress = refreshBusy || refreshSource == DashboardRefreshSource.Button
                         val refreshDescription = stringResource(if (showRefreshProgress) R.string.action_refreshing else R.string.action_refresh)
                         IconButton(modifier = Modifier.semantics { contentDescription = refreshDescription },
@@ -292,7 +289,6 @@ internal fun DashboardScreen(
                                     strokeWidth = 2.dp,
                                 )
                             } else Icon(painterResource(R.drawable.symbol_refresh), contentDescription = null)
-                        }
                         }
                         IconButton(enabled = !state.loadingAccounts && !state.submitting, onClick = { feedback.selection(); onShowSettings() }) {
                             Icon(painterResource(R.drawable.symbol_settings), stringResource(R.string.action_settings))
@@ -308,8 +304,8 @@ internal fun DashboardScreen(
                         description = stringResource(R.string.dashboard_loading_accounts_body), loading = true)
                 }
             } else {
-                PullToRefreshBox(isRefreshing = refreshSource == DashboardRefreshSource.Pull && !(selectedTab == DashboardTab.Tasks && antigravityTasks),
-                    onRefresh = { if (selectedTab != DashboardTab.Tasks || !antigravityTasks) startRefresh(DashboardRefreshSource.Pull) },
+                PullToRefreshBox(isRefreshing = refreshSource == DashboardRefreshSource.Pull,
+                    onRefresh = { startRefresh(DashboardRefreshSource.Pull) },
                     modifier = Modifier.fillMaxSize().padding(padding).nestedScroll(scrollBehavior.nestedScrollConnection)) {
                     HorizontalPager(state = pagerState, key = { tabs[it].id }, modifier = Modifier.fillMaxSize(),
                         beyondViewportPageCount = if (allowPageWork) 1 else 0) { page ->
@@ -336,24 +332,15 @@ internal fun DashboardScreen(
                                         onHistoryDaysChange = onHistoryDaysChange,
                                         onOpenFailed = { message -> uiScope.launch { snackbarHostState.showSnackbar(message) } },
                                     )
-                                    DashboardTab.Tasks -> Column(Modifier.fillMaxSize()) {
-                                        TaskProviderSelector(antigravityTasks) { antigravityTasks = it }
-                                        Box(Modifier.weight(1f)) {
-                                            taskProviderStates.SaveableStateProvider(if (antigravityTasks) "antigravity" else "cursor") {
-                                                if (antigravityTasks) AntigravityTasksContent { message ->
-                                                    uiScope.launch { snackbarHostState.showSnackbar(message) }
-                                                } else AccountOnlyTab(state, onManageAccount, onShowTokenHelp) {
-                                                    TasksTab(
-                                                        tasks = state.tasks,
-                                                        loading = state.loadingTasks,
-                                                        refreshing = state.refreshingTasks,
-                                                        error = state.tasksError,
-                                                        onRetry = { startRefresh(DashboardRefreshSource.Button) },
-                                                        onOpenFailed = { message -> uiScope.launch { snackbarHostState.showSnackbar(message) } },
-                                                    )
-                                                }
-                                            }
-                                        }
+                                    DashboardTab.Tasks -> AccountOnlyTab(state, onManageAccount, onShowTokenHelp) {
+                                        TasksTab(
+                                            tasks = state.tasks,
+                                            loading = state.loadingTasks,
+                                            refreshing = state.refreshingTasks,
+                                            error = state.tasksError,
+                                            onRetry = { startRefresh(DashboardRefreshSource.Button) },
+                                            onOpenFailed = { message -> uiScope.launch { snackbarHostState.showSnackbar(message) } },
+                                        )
                                     }
                                     DashboardTab.Resets -> CodexResetTab(codexState, onSubscriptionDay, onRefreshPublicResets,
                                         active = allowPageWork && selectedTab == DashboardTab.Resets)
@@ -367,6 +354,7 @@ internal fun DashboardScreen(
                                         cursorConfigured = state.accounts.isNotEmpty(),
                                         cursorLoading = state.loadingAccounts,
                                         onRetry = { startRefresh(DashboardRefreshSource.Button) },
+                                        onConfigure = onManageAccount,
                                         onOpenFailed = { message ->
                                             uiScope.launch {
                                                 snackbarHostState.showSnackbar(message)

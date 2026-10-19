@@ -44,14 +44,157 @@ class WidgetSourcesTest {
     @Test fun pageSurvivesDeletionAndCapacityChangesWithoutSkippingTheLastPage() {
         val ids = WidgetSourcePolicy.order
         assertEquals(listOf("deepseek", "kimi_code"), WidgetSourcePolicy.page(ids, "kimi_code", 2))
-        assertEquals("antigravity", WidgetSourcePolicy.next(ids, "kimi_code", 2))
-        assertEquals(listOf("antigravity"), WidgetSourcePolicy.page(ids, "antigravity", 2))
-        assertEquals("cursor", WidgetSourcePolicy.next(ids, "antigravity", 2))
+        assertEquals("cursor", WidgetSourcePolicy.next(ids, "kimi_code", 2))
+        assertEquals(listOf("kimi_code"), WidgetSourcePolicy.page(ids, "kimi_code", 3))
+        assertEquals("cursor", WidgetSourcePolicy.next(ids, "kimi_code", 3))
         assertEquals(listOf("cursor"), WidgetSourcePolicy.page(ids, "deleted", 1))
         assertEquals("cursor", WidgetSourcePolicy.next(ids.take(3), "deepseek", 2))
         assertEquals(emptyList<String>(), WidgetSourcePolicy.page(emptyList(), "cursor", 1))
         assertNull(WidgetSourcePolicy.next(emptyList(), null, 1))
     }
+    @Test fun placementFillsOddCountsAndKeepsTheFourCellGrid() {
+        val usage = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = false, footerHasMeter = false)
+        assertEquals(2, usage.columns)
+        assertTrue(usage.spanLast && usage.emphasizeTop && !usage.stackCompact)
+        val meters = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = false, footerHasMeter = true)
+        assertTrue(meters.spanLast && !meters.emphasizeTop)
+        val status = WidgetSourcePolicy.placement(3, 4, 334, tiny = false, status = true, footerHasMeter = false)
+        assertEquals(1, status.columns)
+        assertTrue(status.stackCompact && !status.spanLast)
+        val grid = WidgetSourcePolicy.placement(4, 4, 334, tiny = false, status = false, footerHasMeter = false)
+        assertEquals(2, grid.columns)
+        assertFalse(grid.spanLast || grid.stackCompact)
+        assertEquals(1, WidgetSourcePolicy.placement(1, 2, 334, tiny = false, status = false, footerHasMeter = false).columns)
+        val pair = WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = true, footerHasMeter = false)
+        assertEquals(2, pair.columns)
+        assertFalse(pair.spanLast)
+        assertEquals(1, WidgetSourcePolicy.placement(2, 2, 334, tiny = false, status = false, footerHasMeter = false).columns)
+    }
+
+    @Test fun threeAndFourSourceLayoutsUseTheAvailableWidth() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val usage = listOf(
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("本周期", "39.26%", 39.26)), "自有 37.9% · 三方 52.7%", "2026-10-19 10:15:00"),
+            WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "100%", 100.0), WidgetMetric("每周", "79%", 79.0)), fetchedAt = "2026-10-19 10:15:00"),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79")), "余额可用", "2026-10-19 10:15:00"),
+        )
+        val usageRoot = laidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "usage-3")
+        val usageRows = usageRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
+        assertEquals(2, usageRows.childCount)
+        assertEquals(2, (usageRows.getChildAt(0) as android.view.ViewGroup).childCount)
+        val footer = (usageRows.getChildAt(1) as android.view.ViewGroup).getChildAt(0)
+        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, footer.layoutParams.width)
+        assertTrue(footer.width > usageRoot.width * 3 / 4)
+        assertNoClipping(usageRoot)
+
+        val status = listOf(
+            service("cursor", "Cursor", listOf("Automations", "Review Agents", "CLI"), "CLI degraded"),
+            service("codex", "Codex", listOf("ChatGPT Desktop", "Web"), "Degraded performance of the API"),
+            service("deepseek", "DeepSeek", listOf("DeepSeek V4 Pro API服务(API Service)", "DeepSeek V4.1 Flash API服务(API Service)"), "DeepSeek V4.1 Flash 服务波动"),
+        )
+        val statusRoot = laidOut(context, status, TallCursorStatusWidgetProvider::class.java, 334, 252, "status-3")
+        val statusRows = statusRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
+        assertEquals(3, statusRows.childCount)
+        repeat(3) { index ->
+            val card = (statusRows.getChildAt(index) as android.view.ViewGroup).getChildAt(0)
+            assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, card.layoutParams.width)
+            assertTrue(card.width > statusRoot.width * 3 / 4)
+        }
+        val visible = mutableListOf<String>()
+        fun collect(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view is android.widget.TextView) visible += view.text.toString()
+            if (view is android.view.ViewGroup) repeat(view.childCount) { collect(view.getChildAt(it)) }
+        }
+        collect(statusRoot)
+        assertTrue(visible.any { it.contains("Degraded performance of the API") && !it.endsWith("…") })
+        assertTrue(visible.any { it.contains("DeepSeek V4.1 Flash 服务波动") && !it.endsWith("…") })
+        assertNoClipping(statusRoot)
+
+        val four = usage + WidgetSource("kimi_code", "Kimi Code", listOf(WidgetMetric("5小时", "18%", 18.0)))
+        val fourRoot = laidOut(context, four, TallCursorWidgetProvider::class.java, 334, 252, "usage-4")
+        val fourRows = fourRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
+        assertEquals(2, fourRows.childCount)
+        assertEquals(2, (fourRows.getChildAt(0) as android.view.ViewGroup).childCount)
+        assertEquals(2, (fourRows.getChildAt(1) as android.view.ViewGroup).childCount)
+        assertNoClipping(fourRoot)
+
+        val single = laidOut(context, usage.take(1), TallCursorWidgetProvider::class.java, 334, 252, "usage-1")
+        val singleCard = (single.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup).getChildAt(0)
+        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, singleCard.layoutParams.width)
+        assertTrue(singleCard.width > single.width * 3 / 4)
+        assertNoClipping(single)
+
+        val paired = laidOut(context, usage.take(2), TallCursorWidgetProvider::class.java, 334, 252, "usage-2")
+        assertEquals(2, paired.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).childCount)
+        assertNoClipping(paired)
+        val statusPair = laidOut(context, status.take(2), TallCursorStatusWidgetProvider::class.java, 334, 252, "status-2")
+        val statusPairRow = statusPair.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup
+        assertEquals(2, statusPairRow.childCount)
+        assertNoClipping(statusPair)
+        val pairText = mutableListOf<String>()
+        fun collectPair(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view is android.widget.TextView) pairText += view.text.toString()
+            if (view is android.view.ViewGroup) repeat(view.childCount) { collectPair(view.getChildAt(it)) }
+        }
+        collectPair(statusPair)
+        assertTrue(pairText.any { it.contains("Degraded performance of the API") && !it.endsWith("…") })
+        val kimiFooter = usage.take(2) + WidgetSource("kimi_code", "Kimi Code", listOf(
+            WidgetMetric("5小时", "18%", 18.0), WidgetMetric("每周", "36%", 36.0)), fetchedAt = "2026-10-19 10:15:00")
+        val kimiRoot = laidOut(context, kimiFooter, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-meters")
+        val kimiRows = kimiRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
+        assertEquals(1, (kimiRows.getChildAt(1) as android.view.ViewGroup).childCount)
+        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, (kimiRows.getChildAt(1) as android.view.ViewGroup).getChildAt(0).layoutParams.width)
+        assertNoClipping(kimiRoot)
+    }
+
+    private fun service(id: String, title: String, components: List<String>, incident: String) = WidgetSource(id, title, status = com.lamuier.agenT.model.ServiceStatus(
+        "", com.lamuier.agenT.model.StatusIndicator.None, null, "", components.mapIndexed { index, name ->
+            com.lamuier.agenT.model.StatusComponent("$id-$index", name, com.lamuier.agenT.model.ComponentStatus.Operational, index)
+        }, emptyList(), emptyList(), listOf(com.lamuier.agenT.model.StatusIncident(
+            id, incident, "resolved", "minor", "2026-10-15T05:04:00Z", "2026-10-15T05:04:00Z", "2026-10-15T05:04:00Z",
+            null, null, null, listOf(incident), emptyList(),
+        )), com.lamuier.agenT.network.StatusJsonParser.nowStamp(), false,
+    ), fetchedAt = com.lamuier.agenT.network.StatusJsonParser.nowStamp(), cached = false)
+
+    private fun laidOut(context: Context, sources: List<WidgetSource>, provider: Class<*>, widthDp: Int, heightDp: Int, name: String): android.view.View {
+        val parent = android.widget.FrameLayout(context)
+        val root = AgenTWidgetUpdater.renderSourcesPreview(context, sources, provider, widthDp, heightDp).apply(context, parent)
+        parent.addView(root, android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        val density = context.resources.displayMetrics.density
+        val width = (widthDp * density).toInt()
+        val height = (heightDp * density).toInt()
+        parent.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY))
+        parent.layout(0, 0, width, height)
+        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        parent.draw(android.graphics.Canvas(bitmap))
+        val output = java.io.File("build/reports/widget-review/adapt-$name.png").apply { parentFile!!.mkdirs() }
+        output.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        return parent
+    }
+
+    private fun assertNoClipping(root: android.view.View) {
+        val failures = mutableListOf<String>()
+        fun walk(view: android.view.View, top: Int, bottom: Int) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            val childTop = top + view.top
+            val clipBottom = minOf(bottom, childTop + view.height)
+            if (view is android.widget.TextView && view.text.isNotBlank()) {
+                val text = view.layout
+                if (text == null || view.height <= 0 || text.height > view.height - view.compoundPaddingTop - view.compoundPaddingBottom + 1 ||
+                    childTop + view.compoundPaddingTop + text.height > clipBottom + 1 ||
+                    (0 until text.lineCount).any { text.getLineWidth(it) > view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1 }) {
+                    failures += "${view.text}: ${view.width}x${view.height}"
+                }
+            }
+            if (view is android.view.ViewGroup) repeat(view.childCount) { walk(view.getChildAt(it), childTop, clipBottom) }
+        }
+        walk(root, 0, root.height)
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
     @Test fun narrowAndLargeFontCapacityPreservesReadableSourceCards() {
         assertEquals(1, WidgetSourcePolicy.capacity("Mini", 334, 68, 1f, 4))
         assertEquals(4, WidgetSourcePolicy.capacity("Tall", 334, 252, 1f, 4))

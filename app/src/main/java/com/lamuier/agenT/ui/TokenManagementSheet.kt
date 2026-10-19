@@ -7,9 +7,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.NearMe
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,8 +92,7 @@ internal fun TokenManagementContent(
     val resources = LocalResources.current
     val feedback = LocalAppFeedback.current
     val cursor = provider == TokenProvider.Cursor
-    val antigravity = provider == TokenProvider.Antigravity
-    val apiKey = provider == TokenProvider.DeepSeek || provider == TokenProvider.KimiCode || antigravity
+    val apiKey = provider == TokenProvider.DeepSeek || provider == TokenProvider.KimiCode
     val extra = extraCredentials[provider]
     val revision = if (apiKey) extra?.revision else if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
     val existingMetadata = if (apiKey) extra?.region?.id else if (cursor) cursorAccount?.alias else codexCredential?.accountId
@@ -184,7 +187,8 @@ internal fun TokenManagementContent(
                         token = ""; revealed = null; savedVisible = false; visible = false; copied = false; localError = null; saved = false
                         onClearError(); onProviderChange(item)
                     }
-                }, enabled = !blocked, label = { Text(if (item == TokenProvider.KimiCode) "Kimi Code" else item.name) })
+                }, enabled = !blocked, label = { Text(if (item == TokenProvider.KimiCode) "Kimi Code" else item.name) },
+                    leadingIcon = { Icon(item.mark, contentDescription = null, Modifier.size(FilterChipDefaults.IconSize)) })
             }
         }
         val invalid = if (apiKey) false else if (cursor) cursorAccount?.tokenExpired == true else codexCredential?.let { it.expired || it.invalid } == true
@@ -195,7 +199,6 @@ internal fun TokenManagementContent(
         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         (localError ?: error)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (saved) Text(stringResource(R.string.token_management_save_success), color = MaterialTheme.colorScheme.primary)
-        if (antigravity) Text(stringResource(R.string.antigravity_grant_help), style = MaterialTheme.typography.bodySmall)
         if (provider == TokenProvider.KimiCode) {
             Text(stringResource(R.string.provider_region_help), style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,15 +215,14 @@ internal fun TokenManagementContent(
         )
         OutlinedTextField(
             value = token, onValueChange = { token = it; clearFeedback() },
-            label = { Text(stringResource(if (antigravity) R.string.antigravity_grant_label else if (apiKey) R.string.provider_api_key_label else R.string.token_management_token_label)) },
+            label = { Text(stringResource(if (apiKey) R.string.provider_api_key_label else R.string.token_management_token_label)) },
             supportingText = { Text(stringResource(when {
-                antigravity -> R.string.antigravity_grant_hint
                 apiKey -> R.string.provider_key_hint
                 cursor && hasCredential -> R.string.token_management_replace_hint
                 !cursor && hasCredential -> R.string.codex_replace_hint
                 else -> R.string.token_management_paste_hint
             })) },
-            singleLine = !antigravity, maxLines = if (antigravity) 6 else 1, enabled = !blocked, modifier = Modifier.fillMaxWidth(),
+            singleLine = true, enabled = !blocked, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
@@ -233,7 +235,7 @@ internal fun TokenManagementContent(
         TextButton(onClick = { help = !help }, enabled = !blocked, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.codex_token_help_title))
         }
-        if (help && apiKey) Text(stringResource(if (antigravity) R.string.antigravity_grant_details else R.string.provider_key_help), style = MaterialTheme.typography.bodySmall)
+        if (help && apiKey) Text(stringResource(R.string.provider_key_help), style = MaterialTheme.typography.bodySmall)
         if (help && !cursor && !apiKey) {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -279,6 +281,14 @@ internal fun TokenManagementContent(
     }
     }
 }
+
+private val TokenProvider.mark: ImageVector
+    get() = when (this) {
+        TokenProvider.Cursor -> Icons.Outlined.NearMe
+        TokenProvider.Codex -> Icons.Outlined.Terminal
+        TokenProvider.DeepSeek -> Icons.Outlined.Search
+        TokenProvider.KimiCode -> Icons.Outlined.DarkMode
+    }
 
 private fun Context.tokenActivity(): FragmentActivity? = when (this) {
     is FragmentActivity -> this

@@ -22,6 +22,7 @@ class AgenTApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.lamuier.agenT.providers.RetiredProviderCleanup.purge(this)
         AppLocale.migrate(this)
         if (BuildConfig.DEBUG) UiReviewPreferenceHold.restore(this)
     }

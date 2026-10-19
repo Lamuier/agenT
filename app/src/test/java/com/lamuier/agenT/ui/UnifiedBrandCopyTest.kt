@@ -3,6 +3,7 @@ package com.lamuier.agenT.ui
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,7 +53,7 @@ class UnifiedBrandCopyTest {
                 val copy = strings.getValue(key)
                 assertTrue("$locale/$key must describe the configured sources", copy.contains(if (locale == "values") "来源" else "sources") || copy == "服务状态" || copy == "Service status")
             }
-            assertTrue(strings.getValue("widget_tall_description").contains("Antigravity"))
+            assertFalse(strings.getValue("widget_tall_description").contains("Antigravity"))
             assertTrue(strings.getValue("widget_tall_description").contains(if (locale == "values") "来源" else "sources"))
             for (key in sharedDescriptions) {
                 val copy = strings.getValue(key)

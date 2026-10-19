@@ -53,18 +53,26 @@ internal object WidgetSourceRenderer {
         fit(context, views, R.id.widget_multi_empty, strings.getString(R.string.widget_configure_short), width - 24, 11f)
         views.setViewVisibility(R.id.widget_source_rows, if (sources.isEmpty()) View.GONE else View.VISIBLE)
         views.removeAllViews(R.id.widget_source_rows)
-        val columns = when {
-            capacity == 4 -> 2
-            visible.size == 2 && (tiny || status && width >= 160) -> 2
-            else -> 1
-        }
-        val rowCount = (visible.size + columns - 1) / columns
-        val cardHeight = ((height - if (tiny) 4 else 52) / rowCount.coerceAtLeast(1)).coerceAtLeast(20)
-        val cardWidth = (width - (if (tiny) 12 + if (pageCount > 1) 30 else 0 else 20)) / columns
-        visible.chunked(columns).forEach { rowSources ->
-            val row = RemoteViews(context.packageName, R.layout.widget_sources_row)
+        val footerHasMeter = visible.lastOrNull()?.metrics?.any { it.percent != null } == true
+        val placement = WidgetSourcePolicy.placement(visible.size, capacity, width, tiny, status, footerHasMeter)
+        val chunks = visible.chunked(placement.columns)
+        val contentHeight = (height - if (tiny) 4 else 52).coerceAtLeast(20)
+        val weights = chunks.indices.map { index -> if (placement.emphasizeTop && index == 0) 2 else 1 }
+        val weightSum = weights.sum().coerceAtLeast(1)
+        val horizontalInset = if (tiny) 12 + if (pageCount > 1) 30 else 0 else 20
+        chunks.forEachIndexed { index, rowSources ->
+            val row = RemoteViews(context.packageName, if (placement.emphasizeTop && index == 0) R.layout.widget_sources_row_grow else R.layout.widget_sources_row)
+            val rowHeight = (contentHeight * weights[index] / weightSum).coerceAtLeast(20)
+            val span = placement.stackCompact || rowSources.size == 1 && placement.spanLast
+            val mode = when {
+                span -> CardMode.Span
+                rowSources.size == 1 -> CardMode.Fill
+                else -> CardMode.Cell
+            }
+            val cardWidth = if (rowSources.size == 1) width - horizontalInset else (width - horizontalInset) / placement.columns
             rowSources.forEach { source ->
-                val card = card(context, source, status, cardWidth, cardHeight, tiny, capacity == 4, notice, colors)
+                val card = card(context, source, status, cardWidth, rowHeight, tiny, capacity >= 4 && mode == CardMode.Cell,
+                    mode, pinTop = mode == CardMode.Cell && !(placement.emphasizeTop && index == 0), notice, colors)
                 card.setOnClickPendingIntent(R.id.widget_source_card, openSource(source.id))
                 row.addView(R.id.widget_sources_row, card)
             }
@@ -77,20 +85,27 @@ internal object WidgetSourceRenderer {
         return views
     }
 
+    private enum class CardMode { Cell, Fill, Span }
+
     private fun card(context: Context, source: WidgetSource, status: Boolean, width: Int, height: Int,
-        tiny: Boolean, grid: Boolean, notice: String?, colors: WidgetThemeColors): RemoteViews {
+        tiny: Boolean, grid: Boolean, mode: CardMode, pinTop: Boolean, notice: String?, colors: WidgetThemeColors): RemoteViews {
         val strings = AppLocale.wrap(context)
-        val views = RemoteViews(context.packageName, R.layout.widget_source_card)
+        val span = mode == CardMode.Span
+        val views = RemoteViews(context.packageName, when (mode) {
+            CardMode.Span -> R.layout.widget_source_card_span
+            CardMode.Fill -> R.layout.widget_source_card_fill
+            CardMode.Cell -> R.layout.widget_source_card
+        })
         val font = context.resources.configuration.fontScale
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         val textWidth = (width - if (tiny) 2 else 10).coerceAtLeast(10)
-        if (grid) views.setInt(R.id.widget_source_card, "setGravity", android.view.Gravity.TOP)
-        val padding = if (tiny) 0 else if (height < 100) 1 else 3
+        if (pinTop) views.setInt(R.id.widget_source_card, "setGravity", android.view.Gravity.TOP)
+        val padding = if (tiny) 0 else if (span || height < 100) 1 else 3
         val density = context.resources.displayMetrics.density
         views.setViewPadding(R.id.widget_source_card, if (tiny) 0 else (5 * density).toInt(), (padding * density).toInt(),
             if (tiny) 0 else (5 * density).toInt(), (padding * density).toInt())
         val tinyScale = if (tiny) minOf(1f, (height - 1f) / (lineHeight(context, 9f) + lineHeight(context, 13f))) else 1f
-        fit(context, views, R.id.widget_source_name, source.title, textWidth, if (tiny) 9f * tinyScale else 12f)
+        val nameSize = if (tiny) 9f * tinyScale else 12f
         views.setTextColor(R.id.widget_source_name, colors.onSurface)
         views.setTextColor(R.id.widget_source_note, colors.onSurfaceVariant)
         views.setTextColor(R.id.widget_source_clock, colors.onSurfaceVariant)
@@ -103,30 +118,45 @@ internal object WidgetSourceRenderer {
             WidgetStatusPresentation.incident(source.status, strings.resources, zone, true) else null
         val note = listOfNotNull(notice, if (status) source.statusLine.takeIf { source.status == null }
             else (source.attention ?: source.note).takeIf(String::isNotBlank), incident).joinToString(" · ")
-        val valueSize = if (tiny) 13f * tinyScale else if (!grid && height >= 220 && font <= 1.3f) 18f else 14f
-        val baseHeight = if (tiny) lineHeight(context, 9f * tinyScale) else lineHeight(context, 12f) + lineHeight(context, 9f) + padding * 2
-        val firstMetricHeight = lineHeight(context, valueSize) + if (!tiny && metrics.first().percent != null) 7 else 0
+        val inlineStatus = span && status
+        val inlineBalances = span && !status && metrics.all { it.percent == null }
+        val aside = when {
+            inlineStatus -> metrics.firstOrNull()?.let { metric -> metric.value.ifBlank { metric.label } }.orEmpty()
+            inlineBalances -> metrics.joinToString(" · ") { listOf(it.label, it.value).filter(String::isNotEmpty).joinToString(" ") }
+            else -> ""
+        }
+        val visibleNote = if (aside.isNotBlank() && note == aside) "" else note
+        val body = if (inlineStatus || inlineBalances) emptyList() else metrics
+        val valueSize = if (tiny) 13f * tinyScale else if (!grid && !span && height >= 150 && font <= 1.3f) 18f else 14f
+        val baseHeight = when {
+            tiny -> lineHeight(context, 9f * tinyScale)
+            span -> lineHeight(context, 12f) + padding * 2
+            else -> lineHeight(context, 12f) + lineHeight(context, 9f) + padding * 2
+        }
+        val firstMetricHeight = body.firstOrNull()?.let { lineHeight(context, valueSize) + if (!tiny && it.percent != null) 7 else 0 } ?: 0
         val metadataBudget = (height - baseHeight - firstMetricHeight).coerceAtLeast(0)
-        val showNote = !tiny && note.isNotEmpty() && metadataBudget >= lineHeight(context, 9f)
-        if (!showNote && !status && source.attention != null) metrics = listOf(WidgetMetric("", source.attention))
-        val showResets = !tiny && !grid && metadataBudget - (if (showNote) lineHeight(context, 9f) else 0) >= lineHeight(context, 9f)
-        val titleAndFoot = baseHeight + if (showNote) lineHeight(context, 9f) else 0
+        val showNote = !tiny && visibleNote.isNotEmpty() && metadataBudget >= lineHeight(context, 9f)
+        if (!showNote && !status && source.attention != null && !inlineBalances) metrics = listOf(WidgetMetric("", source.attention))
+        val noteText = visibleNote.replace('\n', ' ')
+        val noteLines = if (!showNote) 0 else if ((span || height >= 120) && textWidthDp(context, noteText, 9f) > textWidth &&
+            metadataBudget >= lineHeight(context, 9f) * 2) 2 else 1
+        val showResets = !tiny && !grid && !span && metadataBudget - noteLines * lineHeight(context, 9f) >= lineHeight(context, 9f)
+        val titleAndFoot = baseHeight + noteLines * lineHeight(context, 9f)
         fun metricHeight(metric: WidgetMetric) = lineHeight(context, valueSize) +
             (if (!tiny && metric.percent != null) 7 else 0) + (if (showResets && metric.reset != null) lineHeight(context, 9f) else 0)
+        val displayBody = if (!showNote && !status && source.attention != null && !inlineBalances) metrics else body
         var used = titleAndFoot
-        val shown = metrics.take(if (tiny) 1 else if (grid) 2 else 4).takeWhile { metric ->
+        val shown = if (displayBody.isEmpty()) emptyList() else displayBody.take(if (tiny) 1 else if (grid || span) 2 else 4).takeWhile { metric ->
             val fits = used + metricHeight(metric) <= height
             if (fits) used += metricHeight(metric)
             fits
-        }.ifEmpty { metrics.take(1) }
-        val limit = shown.size
+        }.ifEmpty { displayBody.take(1) }
+        val accent = if (status) currentStatus?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
+            else if (source.id == "cursor" || source.id == "deepseek") colors.primary else colors.tertiary
         shown.forEach { metric ->
             val row = RemoteViews(context.packageName, R.layout.widget_source_metric)
             val text = listOf(metric.label.takeUnless { tiny && source.id == "cursor" }, metric.value).filterNotNull().filter(String::isNotEmpty).joinToString(" ")
-            fit(context, row, R.id.widget_metric_value, text, textWidth,
-                valueSize)
-            val accent = if (status) currentStatus?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
-                else if (source.id == "cursor" || source.id == "deepseek") colors.primary else colors.tertiary
+            fit(context, row, R.id.widget_metric_value, text, textWidth, valueSize)
             row.setTextColor(R.id.widget_metric_value, accent)
             val showBar = !tiny && metric.percent != null
             row.setViewVisibility(R.id.widget_metric_bar, if (showBar) View.VISIBLE else View.GONE)
@@ -140,7 +170,7 @@ internal object WidgetSourceRenderer {
         }
         val spare = (height - titleAndFoot - shown.sumOf(::metricHeight)).coerceAtLeast(0)
         val components = if (status && !tiny) WidgetStatusPresentation.components(source.status,
-            (spare / lineHeight(context, 10f)).coerceIn(0, if (grid) 2 else 8)) else emptyList()
+            (spare / lineHeight(context, 10f)).coerceIn(0, if (grid && !span) 2 else 8)) else emptyList()
         components.forEach { component ->
             val row = RemoteViews(context.packageName, R.layout.widget_source_metric)
             val text = WidgetStatusPresentation.componentName(source.title, component.name)
@@ -151,27 +181,55 @@ internal object WidgetSourceRenderer {
             row.setContentDescription(R.id.widget_metric, "$text · ${StatusPresentation.componentLabel(component.status, strings.resources)}")
             views.addView(R.id.widget_source_metrics, row)
         }
-        val extra = if (status) (source.status?.components?.size ?: 0) - components.size else metrics.size - minOf(limit, metrics.size)
+        val extra = if (status) (source.status?.components?.size ?: 0) - components.size
+            else if (inlineBalances) 0 else metrics.size - shown.size
+        if (!span || tiny) fit(context, views, R.id.widget_source_name, source.title, textWidth, nameSize)
         if (tiny && extra > 0) {
             fit(context, views, R.id.widget_source_name, "${source.title} +$extra", textWidth, 9f * tinyScale)
             views.setContentDescription(R.id.widget_source_name, source.title + " · " + strings.getString(R.string.widget_more_items, extra))
         }
         views.setViewVisibility(R.id.widget_source_note, if (showNote) View.VISIBLE else View.GONE)
-        views.setInt(R.id.widget_source_note, "setMaxLines", 1)
-        fit(context, views, R.id.widget_source_note, note.replace('\n', ' '), textWidth, 9f, truncate = true)
+        views.setInt(R.id.widget_source_note, "setMaxLines", noteLines.coerceAtLeast(1))
+        if (noteLines <= 1) fit(context, views, R.id.widget_source_note, noteText, textWidth, 9f, truncate = true)
+        else {
+            views.setTextViewText(R.id.widget_source_note, noteText)
+            views.setContentDescription(R.id.widget_source_note, noteText)
+            views.setTextViewTextSize(R.id.widget_source_note, TypedValue.COMPLEX_UNIT_SP, 9f)
+        }
         val stamp = if (status) source.status?.fetchedAt else source.fetchedAt
         val clock = AssistantPresentation.updatedClock(stamp, zone) ?: "—"
         val cached = if (status) source.status?.fromCache != false else source.cached
         views.setViewVisibility(R.id.widget_source_clock, if (tiny) View.GONE else View.VISIBLE)
         val time = strings.getString(if (cached) R.string.widget_status_cached_clock else R.string.widget_updated_time, clock)
-        fit(context, views, R.id.widget_source_clock, time + if (extra > 0) " · +$extra" else "", textWidth, 9f)
+        val clockLabel = time + if (extra > 0) " · +$extra" else ""
+        val clockWidth = if (span) minOf(textWidthDp(context, clockLabel, 9f), (textWidth * 0.46f).toInt()).coerceAtLeast(32) else textWidth
+        fit(context, views, R.id.widget_source_clock, clockLabel, clockWidth, 9f)
         views.setContentDescription(R.id.widget_source_clock, time + if (extra > 0) " · " + strings.getString(R.string.widget_more_items, extra) else "")
+        if (span) {
+            val asideWidth = if (aside.isBlank()) 0 else minOf(textWidthDp(context, aside, 14f), (textWidth * 0.5f).toInt()) + 8
+            val nameWidth = (textWidth - clockWidth - asideWidth).coerceAtLeast(28)
+            fit(context, views, R.id.widget_source_name, source.title, nameWidth, nameSize)
+            if (aside.isBlank()) views.setViewVisibility(R.id.widget_source_aside, View.GONE)
+            else {
+                views.setViewVisibility(R.id.widget_source_aside, View.VISIBLE)
+                fit(context, views, R.id.widget_source_aside, aside, (textWidth - clockWidth - 28).coerceAtLeast(28), 14f)
+                views.setTextColor(R.id.widget_source_aside, accent)
+            }
+        }
         return views
     }
 
     private val lineHeightCache = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val measurePaint = object : ThreadLocal<Paint>() {
         override fun initialValue(): Paint = Paint()
+    }
+
+    private fun textWidthDp(context: Context, text: String, sizeSp: Float): Int {
+        val metrics = context.resources.displayMetrics
+        val paint = measurePaint.get()!!.apply {
+            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, metrics)
+        }
+        return kotlin.math.ceil(paint.measureText(text) / metrics.density.toDouble()).toInt().coerceAtLeast(0)
     }
 
     private fun lineHeight(context: Context, sizeSp: Float): Int {

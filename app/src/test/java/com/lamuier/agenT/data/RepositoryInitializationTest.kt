@@ -59,10 +59,16 @@ class RepositoryInitializationTest {
         tasksCache.clear()
     }
 
-    @Test fun antigravityGrantDecodesFractionalEpochTimestamps() {
-        val raw = """{"access_token":"fixture-access-token-value","refresh_token":"ref","expires_at":1776498123.7894,"project_id":"proj"}"""
-        val grant = com.lamuier.agenT.providers.AntigravityGrant.parse(raw)
-        assertEquals(1776498123789L, grant.expiry)
+    @Test fun retiredAntigravityPreferencesAreClearedLocally() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("official_usage_antigravity_v1", 0).edit().putString("record", "retired-secret").commit()
+        context.getSharedPreferences("usage-page-v1", 0).edit().putString("provider", "antigravity").commit()
+        context.getSharedPreferences("widget-source-pages-v1", 0).edit().putString("7", "antigravity").putString("8", "cursor").commit()
+        com.lamuier.agenT.providers.RetiredProviderCleanup.purge(context)
+        assertNull(context.getSharedPreferences("official_usage_antigravity_v1", 0).getString("record", null))
+        assertNull(context.getSharedPreferences("usage-page-v1", 0).getString("provider", null))
+        assertNull(context.getSharedPreferences("widget-source-pages-v1", 0).getString("7", null))
+        assertEquals("cursor", context.getSharedPreferences("widget-source-pages-v1", 0).getString("8", null))
     }
 
     @Test fun codexRefreshPolicyRefreshesWhenClockMovesBackwardBeyondSkewAllowance() {

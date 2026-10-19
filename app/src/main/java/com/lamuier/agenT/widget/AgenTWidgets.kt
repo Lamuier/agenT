@@ -318,8 +318,6 @@ object AgenTWidgetUpdater {
                 org.json.JSONObject("""{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"128.50","granted_balance":"0","topped_up_balance":"128.50"}]}"""), stamp)),
             UsageProvider.KimiCode to ProviderUsageSnapshot(ProviderCredentialInfo("preview"), ProviderUsageParser.parse(UsageProvider.KimiCode,
                 org.json.JSONObject("""{"usages":{"limit_5h":{"used_ratio":0.18},"limit_7d":{"used_ratio":0.36}}}"""), stamp)),
-            UsageProvider.Antigravity to ProviderUsageSnapshot(ProviderCredentialInfo("preview"), ProviderUsage(UsageProvider.Antigravity,
-                stamp, windows = listOf(QuotaWindow("weekly", java.math.BigDecimal("0.32"), null, label = "Gemini Models · Weekly")))),
         )
         val snapshot = WidgetSnapshot(CursorAccount(1, "Sample", false, stamp, stamp), sample, "", serviceStatus = status,
             codexCredential = CodexCredentialInfo(false, false, stamp), codexUsage = codex, codexServiceStatus = codexStatus,
@@ -657,13 +655,13 @@ object AgenTWidgetUpdater {
                     wallet.remaining?.stripTrailingZeros()?.toPlainString() ?: "—").joinToString(" "))
             })
             val status = snapshot.providerStatuses[provider]
-            val attention = state.failure?.let { strings.getString(if (it in listOf(ProviderFailure.Authentication, ProviderFailure.Permission)) R.string.widget_connection_issue else R.string.widget_refresh_failed) }
+            val attention = state.failure?.let { strings.getString(if (it == ProviderFailure.Authentication) R.string.widget_connection_issue else R.string.widget_refresh_failed) }
             val note = attention ?: if (usage == null) strings.getString(R.string.widget_waiting_first)
                 else if (provider == UsageProvider.DeepSeek) strings.getString(when (usage.available) {
                     true -> R.string.widget_credit_available; false -> R.string.widget_credit_unavailable; null -> R.string.label_data_unavailable
                 }) else ""
             add(WidgetSource(provider.id, provider.title, metrics, note, usage?.fetchedAt,
-                usage?.fromCache != false || state.failure != null, status?.status, if (provider.statusProvider == null) strings.getString(R.string.antigravity_status_unknown) else status?.line.orEmpty(), attention))
+                usage?.fromCache != false || state.failure != null, status?.status, status?.line.orEmpty(), attention))
         }
     }
 

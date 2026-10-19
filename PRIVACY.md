@@ -2,9 +2,9 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-17**
+**生效日期：2026-10-19**
 
-agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、Codex、DeepSeek API、Kimi Code 与 Antigravity 的用量、任务、重置和服务状态：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
+agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、Codex、DeepSeek API 与 Kimi Code 的用量、任务、重置和服务状态：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
 
 ## 我们收集哪些数据
 
@@ -16,7 +16,7 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 | --- | --- | --- | --- |
 | Cursor Access Token | 查询 Cursor 账号、用量与云端任务列表 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证凭据发往 Cursor 官方接口 |
 | Codex / ChatGPT OAuth Access Token 与可选 Account ID | 查询 Codex 限流窗口 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证信息发往 `chatgpt.com/backend-api/wham/usage` |
-| DeepSeek API Key、Kimi Code API Key 与区域、Antigravity OAuth 凭据 | 查询对应服务余额、订阅额度或模型组限额 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅发往对应服务固定官方接口（见下文专节） |
+| DeepSeek API Key、Kimi Code API Key 与区域 | 查询对应服务余额或订阅额度 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅发往对应服务固定官方接口（见下文专节） |
 | 账号别名 | 本地标识账号 | Android Keystore AES-GCM 加密 | 不上传 |
 | Cursor / Codex 用量摘要（套餐、额度、百分比、窗口与重置时间、Credits、按模型 Token、Grok Bot 周额度等） | 界面、小组件、通知与离线回显 | Android Keystore AES-GCM 加密缓存，只保存解析后的摘要 | 不上传摘要或原始响应 |
 | 本机用量观察（解析后的数字、UTC 时间戳、周期边界与重置时间） | 观察趋势与条件节奏估算 | Android Keystore AES-GCM 加密，保存在禁止备份目录 | 不上传；采集控制与保存期限见[本机用量观察](#本机用量观察) |
@@ -59,12 +59,6 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 
 应用不向开发者服务器上传个人凭据、记录或分析数据，也不向第三方公共 API 上传这些数据。
 
-Antigravity 任务入口通过系统浏览器打开 `https://antigravity.google.com/`，连接 / 用量指南仅打开 `www.antigravity.google/docs` 中固定页面，官方支持入口为 `https://antigravity.google/support`。网页 Google 登录及后续网页请求由浏览器处理，agenT 不读取其 Cookie 或浏览器会话，不附加其他服务凭据。
-
-Antigravity 用量连接由用户手动导入已有 OAuth JSON 或访问 Token。访问 Token、可选刷新 Token / OAuth 客户端配置、账号绑定及项目标识与最少额度缓存，使用 Android Keystore AES-GCM 加密，排除备份、迁移、日志、报告和可恢复界面状态。查看需设备解锁；删除连接清除本机授权和额度缓存，但不撤销该 OAuth 客户端在 Google 的其他授权。应用不内置客户端秘密、不读取电脑凭据，不代办订阅或账号开通。
-
-访问 Token 仅发往固定 `www.googleapis.com/oauth2/v3/userinfo` 核对账号，以及 `cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`、`retrieveUserQuotaSummary`、`retrieveUserQuota` 查询额度。刷新 Token 与用户提供的客户端配置仅以表单提交到 `oauth2.googleapis.com/token`；禁止跟随 HTTP 重定向，不向任务网页发送这些凭据。仅缓存解析后的额度组、剩余比例与重置时间，不保存身份或账户接口原始响应。应用前台刷新及已安装用量组件的约十五分钟刷新共用连接；只有状态组件时不查询或续期 Antigravity 用量。失败保留原缓存时间；不采集其 Token 历史、任务正文或发送通知。
-
 ## DeepSeek API 与 Kimi Code
 
 - 手动输入的 API Key、Kimi 区域、凭据修订号与最新账户用量响应使用 Android Keystore AES-GCM 加密保存在本机，不参与备份或迁移，不写入日志、报告或可恢复界面状态。查看已保存密钥须设备解锁，复制标记为敏感内容。更换密钥 / 区域重建账户缓存；删除连接清除密钥与账户缓存。
@@ -100,7 +94,8 @@ AndroidX 另合并 `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`�
 | 在同一位置清空用量观察历史 | 删除 Cursor 与 Codex 的观察历史，使在途采集失效；后续样本按采集开关生成 |
 | 删除 Cursor 账号 | 删除该账号的凭据、用量 / 任务缓存，并清除全部 Cursor 本机用量观察 |
 | 删除 Codex 凭据 | 删除凭据、用量缓存、旧个人重置记录、订阅月设置、窗口观察快照及全部 Codex 本机用量观察；无关的公开重置缓存保留 |
-| 删除 DeepSeek API、Kimi Code 或 Antigravity 连接 | 删除对应凭据及私有用量 / 额度缓存；无关的公开状态缓存保留 |
+| 删除 DeepSeek API 或 Kimi Code 连接 | 删除对应凭据及私有用量 / 额度缓存；无关的公开状态缓存保留 |
+| 升级到移除 Antigravity 支持的版本后首次启动 | 删除本机已保存的 Antigravity 授权、额度缓存，以及用量页和组件中指向该来源的选择；不向任何服务器发送这些数据 |
 | 在实时活动中确认任务结束提示 | 保存本机确认状态，清除对应结束提示；任务列表继续展示已有任务记录 |
 
 删除本机凭据不会在官方服务上撤销 Token；若要撤销，请在对应服务中管理。普通设置和提醒去重元数据通过清除应用数据或卸载删除。

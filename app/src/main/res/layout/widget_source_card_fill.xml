@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_source_card"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:layout_weight="0"
+    android:orientation="vertical" android:gravity="center_vertical" android:paddingHorizontal="5dp" android:paddingVertical="3dp">
+    <TextView android:id="@+id/widget_source_name" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textSize="12sp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="1" />
+    <LinearLayout android:id="@+id/widget_source_metrics" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    <TextView android:id="@+id/widget_source_note" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textSize="10sp" android:includeFontPadding="false" android:maxLines="2" />
+    <TextView android:id="@+id/widget_source_clock" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textSize="9sp" android:includeFontPadding="false" android:maxLines="1" />
+</LinearLayout>

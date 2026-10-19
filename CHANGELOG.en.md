@@ -4,6 +4,18 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 1.5.0 — 2026-10-19
+
+> Version decision: 1.4.1 → 1.5.0, with `versionCode` increased to 8. This release adds per-model cost per million tokens on Cursor usage and changes the visible DeepSeek overview, widgets, reset calendar, Tasks label and token-management controls, while removing experimental Google Antigravity support and the Codex local observation trend. New user-visible capability together with interface changes requires at least a minor (Y) release. The package ID and original signing key stay the same; existing Cursor, Codex, DeepSeek API and Kimi Code connections and data can be upgraded in place. The app deletes local Antigravity data on the first launch after upgrading, without a new signature, permission or manual migration of the remaining data.
+
+- Each Cursor usage model shows its cost per million tokens. The figure divides that model’s reported cost by the sum of input, output, cache read and cache write tokens. A model that does not report cache writes counts that category as zero. It is not an official unit price; a missing cost, input, output or cache read, or a zero token total, stays unknown.
+
+- The DeepSeek overview lists each currency’s total, granted and topped-up balance, with a separate balance-availability label. Codex usage no longer shows the local observation trend; window pace estimates remain. The Tasks tab is marked Cursor-only. Token management chips show an icon for each of the four providers. Daily reset frequency uses a Sunday-aligned calendar with both counts on each day.
+
+- Widget layout follows the number of sources on the page. One source fills its row. Three usage sources keep two columns above a full-width balance or quota row. Three status sources stack across the full width so long component names and incident titles are not cut in half. Four sources stay in the four-card summary.
+
+- Remove Google Antigravity support, including the remote-task entry, unavailable status notice, experimental direct usage, token management and widget source. The first launch after upgrading deletes the locally saved Antigravity grant, quota cache and usage-page or widget selections that pointed at that source, and no longer sends those credentials to Google. Cursor, Codex, DeepSeek API and Kimi Code connections and data stay in place.
+
 ## 1.4.1 — 2026-10-18
 
 > Version decision: 1.4.0 → 1.4.1, with `versionCode` increased to 7. Material Design 3 Expressive motion and accessibility styling optimizations, cold start deadlock compatibility fix, Jetpack DataStore modernization and kotlinx.serialization refactoring without adding independent business features qualify as a patch (Z) release. Package ID, original signing key and on-device data remain compatible.

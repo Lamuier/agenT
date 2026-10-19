@@ -51,11 +51,6 @@ internal class ProviderStore(context: Context, private val provider: UsageProvid
         write(current.copy(rawUsage = usage, fetchedAt = fetchedAt, failure = null))
         true
     }
-    fun updateSecret(revision: String, secret: String): Boolean = synchronized(provider) {
-        val current = read()?.takeIf { it.info.revision == revision } ?: return@synchronized false
-        if (current.key != secret) write(current.copy(key = secret))
-        true
-    }
     fun recordFailure(revision: String, failure: ProviderFailure): Boolean = synchronized(provider) {
         val current = read()?.takeIf { it.info.revision == revision } ?: return@synchronized false
         write(current.copy(failure = failure))

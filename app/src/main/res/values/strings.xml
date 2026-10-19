@@ -10,7 +10,7 @@
     <string name="widget_refresh_description">刷新已配置来源的用量</string>
     <string name="widget_billing_placeholder">周期 —</string>
     <string name="widget_tall_name">用量详情</string>
-    <string name="widget_tall_description">多来源余额与额度，含 Antigravity 实验性直连；未配置隐藏，自动布局或分页，固定 4×3 尺寸</string>
+    <string name="widget_tall_description">多来源余额与额度；未配置隐藏，自动布局或分页，固定 4×3 尺寸</string>
     <string name="widget_mini_name">用量迷你条</string>
     <string name="widget_mini_description">已配置来源的关键余额或额度，点击箭头切换，固定 2×1 尺寸</string>
     <string name="widget_status_brand">服务状态</string>
@@ -560,7 +560,7 @@
     <string name="codex_status_token_problem">Codex Token 需要更新</string>
     <string name="action_save">保存</string>
     <string name="settings_connections_title">服务连接</string>
-    <string name="settings_connections_description">统一管理 Cursor、Codex、DeepSeek API、Kimi Code 与 Antigravity 的连接，凭据仅加密保存在本机。</string>
+    <string name="settings_connections_description">统一管理 Cursor、Codex、DeepSeek API 与 Kimi Code 的连接，凭据仅加密保存在本机。</string>
     <string name="connection_not_configured">尚未配置</string>
     <string name="connection_token_expired">Token 已过期或无效</string>
     <string name="overview_cached">缓存</string>
@@ -593,7 +593,7 @@
     <string name="notification_codex_primary">Codex 5 小时</string>
     <string name="notification_codex_weekly">Codex 每周</string>
     <string name="token_management_title">Token 管理</string>
-    <string name="token_management_description">Cursor、Codex、DeepSeek API、Kimi Code 与 Antigravity 的连接，统一在此管理。</string>
+    <string name="token_management_description">Cursor、Codex、DeepSeek API 与 Kimi Code 的连接，统一在此管理。</string>
     <string name="token_management_connection_summary">Cursor：%1$s · Codex：%2$s</string>
     <string name="token_management_saved">已保存凭据</string>
     <string name="token_management_save_success">已保存，可继续管理另一项服务。</string>
@@ -849,6 +849,8 @@
     <string name="u_sort_cost">按费用</string>
     <string name="u_sort_tokens">按输入＋输出</string>
     <string name="u_cost_share">占统计费用 %1$s</string>
+    <string name="u_per_million">每百万 Token %1$s</string>
+    <string name="u_per_million_description">由该模型的统计费用除以输入、输出、缓存读取与缓存写入 Token 合计，再换算为每百万 Token。未返回缓存写入时按零计入。这不是官方单价；费用、输入、输出或缓存读取缺失，或合计为零时显示未知。</string>
     <string name="u_collapse">收起明细</string>
     <string name="u_exact_details">缓存与精确数值</string>
     <string name="u_all_models">查看全部 %1$d 项</string>
@@ -862,11 +864,9 @@
     <string name="u_pool_remaining">团队池按需剩余</string>
     <string name="u_local_trend">本机观察趋势</string>
     <string name="u_days">%1$d 天</string>
-    <string name="u_additional">附加窗口</string>
     <string name="u_chart_a11y">%1$d 个观察点 · %2$s → %3$s</string>
     <string name="u_latest_sample">最近采样值</string>
     <string name="u_cursor_trend_note">仅显示本机观察到的累计值。跨周期、指标下降或缺测超过 30 分钟处断开，不代表完整每日消耗。</string>
-    <string name="u_codex_trend_note">显示各窗口已用比例的观察值。跨窗口、比例下降或缺测超过 30 分钟处断开；不推算每日 Token 或登记重置事件。</string>
     <string name="u_updated_at">更新：%1$s</string>
     <string name="u_cached_at">缓存：%1$s</string>
     <string name="u_partial">部分接口数据不可用</string>
@@ -920,31 +920,9 @@
     <string name="reset_dash_heatmap_hint">滑动月份 · 点选日期</string>
     <string name="reset_dash_composition_a11y">本周期普通重置 %1$s 条，券发放 %2$s 条</string>
     <string name="reset_dash_day_a11y">%1$s · 普通重置 %2$d · 券发放 %3$d</string>
-    <string name="reset_dash_chart_help">占比环与按日条形图统计已获取的普通重置和券发放记录，颜色与热力图一致。点击条形图或热力图日期查看当天记录，点击记录展开公告及来源。发放记录数不等于券数量、可用余额或个人兑换次数。</string>
+    <string name="reset_dash_chart_help">占比环与按日日历统计已获取的普通重置和券发放记录，颜色与热力图一致。日历从周日排起，每天两行数字分别是普通重置和券发放次数，零次以淡色显示。点击日历或热力图日期查看当天记录，点击记录展开公告及来源。发放记录数不等于券数量、可用余额或个人兑换次数。</string>
     <string name="reset_dash_expand">展开记录</string>
     <string name="reset_dash_collapse">收起记录</string>
-
-    <!-- Antigravity official web integration -->
-    <string name="antigravity_service_name">Antigravity</string>
-    <string name="antigravity_tasks_title">远程任务</string>
-    <string name="antigravity_tasks_description">通过 Google 官方远控网页查看会话、执行状态与待处理请求，也可继续任务。</string>
-    <string name="antigravity_open_tasks">打开官方远控</string>
-    <string name="antigravity_tasks_boundary">Google 登录由系统浏览器处理。任务列表和状态在网页内更新，agenT 不同步这些数据，也不发送 Antigravity 任务通知。</string>
-    <string name="antigravity_setup_title">首次连接</string>
-    <string name="antigravity_setup_desktop">1. 电脑端 Antigravity App：设置 → App → Enable Remote Control，开启远控。</string>
-    <string name="antigravity_setup_cli">2. 使用 CLI 时，在会话中运行 /remote-control，或使用 agy --remote-control 启动。</string>
-    <string name="antigravity_setup_account">3. 手机浏览器登录相同 Google 账号，选择电脑。电脑须保持开机联网，CLI 会话退出后连接结束。此入口面向 Antigravity App / CLI；旧 IDE 的支持以官方说明为准。</string>
-    <string name="antigravity_open_guide">查看官方连接指南</string>
-    <string name="antigravity_status_unknown">服务状态：未接入</string>
-    <string name="antigravity_status_description">尚未找到 Antigravity 独立的官方公开状态数据源，无法确认服务是否正常。任务执行状态请在官方远控中查看；此处不会用 Gemini 或 Google Cloud 的状态代替。</string>
-    <string name="antigravity_open_support">打开官方支持页</string>
-    <string name="antigravity_usage_title">Antigravity 用量支持</string>
-    <string name="antigravity_usage_description">配置 Antigravity OAuth 凭据后，可由手机实验性直连查询模型额度。也可在官方客户端使用 /usage（或 /quota）查看。</string>
-    <string name="antigravity_usage_limits">实际显示接口返回的额度组与重置时间，缺失字段不视为零。额度百分比不能换算为累计 Token 或费用。</string>
-    <string name="antigravity_open_usage_help">查看官方用量说明</string>
-    <string name="antigravity_connection_description">Antigravity：用量可导入已有 OAuth 授权后由手机直连；任务仍在官方远控网页使用 Google 登录。</string>
-    <string name="antigravity_tasks_supporting">任务列表与执行状态在官方网页查看</string>
-    <string name="antigravity_web_label">官方网页</string>
 
     <string name="provider_deepseek_scope">DeepSeek API 账户余额，按原币种分别显示。余额可用表示足以调用 API；服务健康以状态页为准。</string>
     <string name="provider_kimi_scope">Kimi Code 订阅额度，仅显示官方接口提供的窗口。与 Kimi 开放平台 API 余额分开；未返回的额度不会按 0 处理。</string>
@@ -959,6 +937,9 @@
     <string name="provider_usage_error">暂时无法获取用量，保留上次数据与更新时间。</string>
     <string name="provider_status_error">暂时无法获取官方服务状态，保留上次数据。</string>
     <string name="provider_official_console">打开官方控制台</string>
+    <string name="provider_balance_caption">账户余额</string>
+    <string name="provider_balance_granted_label">赠送</string>
+    <string name="provider_balance_topped_label">充值</string>
     <string name="provider_balance_granted">赠送余额：%1$s</string>
     <string name="provider_balance_topped_up">充值余额：%1$s</string>
     <string name="provider_balance_available">余额足以调用 API</string>
@@ -992,12 +973,4 @@
     <string name="widget_credit_available">余额可用</string>
     <string name="widget_credit_unavailable">余额不足</string>
     <string name="widget_reset_short">重置 %1$s</string>
-    <string name="antigravity_direct_scope">实验性直连 · 额度按模型组分别显示，百分比不代表 Token 或费用。</string>
-    <string name="antigravity_grant_label">Antigravity OAuth JSON 或访问 Token</string>
-    <string name="antigravity_grant_hint">粘贴已有 Antigravity 授权。只有访问 Token 时，到期后需手动更换。</string>
-    <string name="antigravity_grant_help">手机直接查询 Google，无需电脑持续在线。导入已有 OAuth 凭据，不是 Google 密码或 Gemini API Key。</string>
-    <string name="antigravity_grant_details">支持官方 CLI OAuth JSON 与 CodexBar 导出的授权格式。必填 access_token（也可单独粘贴访问 Token）；可选 refresh_token、client_id、client_secret、expiry_date（毫秒）和 project_id。自动续期需要同一授权的 refresh_token、client_id，以及该客户端要求的 client_secret。应用不内置 OAuth 客户端凭据；请只在本机导入自己的授权，不要向聊天或日志发送。</string>
-    <string name="antigravity_grant_invalid">授权格式无效。请填写访问 Token 或含 access_token 的 OAuth JSON。</string>
-    <string name="antigravity_permission_error">当前 Google 授权没有 Antigravity 额度访问权限，请更新为可用的 Antigravity 授权后重试。</string>
-    <string name="antigravity_limits_unavailable">接口未返回可验证的额度。暂时保留旧缓存，不将模型可用性当作剩余 100%。</string>
 </resources>

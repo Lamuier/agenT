@@ -30,12 +30,45 @@ import com.lamuier.agenT.usage.UsageObservation
 import com.lamuier.agenT.util.AssistantPresentation
 import com.lamuier.agenT.util.UsageCalculations
 import com.lamuier.agenT.model.ModelTokenUsage
+import java.math.BigDecimal
 import java.math.BigInteger
+import java.math.RoundingMode
 import java.util.Locale
 
 internal fun usageCombinedTokens(model: ModelTokenUsage): BigInteger? =
     if ("input" in model.availableMetrics && "output" in model.availableMetrics && model.inputTokens >= 0 && model.outputTokens >= 0)
         BigInteger.valueOf(model.inputTokens).add(BigInteger.valueOf(model.outputTokens)) else null
+
+/**
+ * Reported cost divided by input, output and cache read.
+ * Models that do not report cache writes count that category as zero; a reported negative write stays unknown.
+ */
+internal fun usageCostPerMillion(model: ModelTokenUsage): BigDecimal? {
+    if ("cost" !in model.availableMetrics || !model.costDollars.isFinite() || model.costDollars < 0) return null
+    val required = listOf("input" to model.inputTokens, "output" to model.outputTokens, "read" to model.cacheReadTokens)
+    if (required.any { (metric, value) -> metric !in model.availableMetrics || value < 0 }) return null
+    val write = if ("write" in model.availableMetrics) model.cacheWriteTokens else 0L
+    if (write < 0) return null
+    val tokens = required.fold(BigInteger.ZERO) { sum, (_, value) -> sum.add(BigInteger.valueOf(value)) }
+        .add(BigInteger.valueOf(write))
+    if (tokens.signum() <= 0) return null
+    return BigDecimal.valueOf(model.costDollars).multiply(BigDecimal.valueOf(1_000_000L))
+        .divide(BigDecimal(tokens), 6, RoundingMode.HALF_UP)
+}
+
+internal fun formatCostPerMillion(rate: BigDecimal): String {
+    if (rate.signum() < 0) return "—"
+    if (rate.signum() == 0) return "$0.00"
+    var scale = if (rate.abs() >= BigDecimal.ONE) 2 else 4
+    var rounded = rate.setScale(scale, RoundingMode.HALF_UP)
+    while (rounded.signum() == 0 && scale < 6) {
+        scale++
+        rounded = rate.setScale(scale, RoundingMode.HALF_UP)
+    }
+    val stripped = rounded.stripTrailingZeros()
+    val shown = if (stripped.scale() < 2) stripped.setScale(2) else stripped
+    return "$" + shown.toPlainString()
+}
 
 internal fun usageMagnitude(value: Double): String = when {
     !value.isFinite() || value < 0 -> "—"

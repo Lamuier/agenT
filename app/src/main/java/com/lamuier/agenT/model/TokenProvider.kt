@@ -1,7 +1,7 @@
 package com.lamuier.agenT.model
 
 enum class TokenProvider {
-    Cursor, Codex, DeepSeek, KimiCode, Antigravity;
+    Cursor, Codex, DeepSeek, KimiCode;
 
     companion object {
         fun initial(hasCursor: Boolean, hasCodex: Boolean, preferred: TokenProvider? = null): TokenProvider =

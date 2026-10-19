@@ -72,18 +72,6 @@ import com.lamuier.agenT.util.CursorCustomTabs
 import com.lamuier.agenT.util.DisplayTime
 import java.util.Locale
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun TaskProviderSelector(antigravity: Boolean, onSelect: (Boolean) -> Unit) {
-    val feedback = LocalAppFeedback.current
-    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = !antigravity, onClick = { if (antigravity) { onSelect(false); feedback.selection() } }, label = { Text("Cursor") }, modifier = Modifier.testTag("tasks-provider-cursor"))
-        FilterChip(selected = antigravity, onClick = { if (!antigravity) { onSelect(true); feedback.selection() } },
-            label = { Text(stringResource(R.string.antigravity_service_name)) },
-            modifier = Modifier.testTag("tasks-provider-antigravity"))
-    }
-}
-
 @Composable
 internal fun TasksTab(
     tasks: AgenTasks?,
@@ -430,7 +418,7 @@ private fun TaskCard(
     }
 }
 
-/** Shared task surface for native tasks and the official Antigravity entry. */
+/** Shared task card surface. */
 @Composable
 internal fun TaskCardContainer(
     modifier: Modifier = Modifier,

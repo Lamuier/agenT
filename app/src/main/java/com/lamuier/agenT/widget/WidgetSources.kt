@@ -34,8 +34,15 @@ internal class WidgetPages(context: Context) {
     fun clear(ids: IntArray) { preferences.edit().apply { ids.forEach { remove(it.toString()) } }.apply() }
 }
 
+internal data class WidgetPlacement(
+    val columns: Int,
+    val spanLast: Boolean,
+    val stackCompact: Boolean,
+    val emphasizeTop: Boolean,
+)
+
 internal object WidgetSourcePolicy {
-    val order = listOf("cursor", "codex", "deepseek", "kimi_code", "antigravity")
+    val order = listOf("cursor", "codex", "deepseek", "kimi_code")
 
     fun capacity(kind: String, width: Int, height: Int, font: Float, count: Int): Int {
         if (kind == "Mini" || kind == "StatusMini" || font > 1.3f) return 1
@@ -43,6 +50,21 @@ internal object WidgetSourcePolicy {
         if (kind == "StatusSquare" && width < 160) return 1
         if (kind in listOf("Tall", "StatusTall") && count > 2 && width >= 330 && height >= 240) return 4
         return if (width >= 210 || height >= 100) 2 else 1
+    }
+
+    /** Place the sources already chosen for this page. A lone card never keeps a weighted half-column. */
+    fun placement(visible: Int, capacity: Int, width: Int, tiny: Boolean, status: Boolean, footerHasMeter: Boolean): WidgetPlacement {
+        if (visible <= 1) return WidgetPlacement(1, spanLast = false, stackCompact = false, emphasizeTop = false)
+        val wideSummary = capacity >= 4 && width >= 300 && !tiny
+        val stackCompact = wideSummary && status && visible == 3
+        val columns = when {
+            stackCompact -> 1
+            wideSummary && visible >= 3 -> 2
+            visible == 2 && (tiny || status && width >= 160) -> 2
+            else -> 1
+        }
+        val spanLast = columns > 1 && visible % columns != 0
+        return WidgetPlacement(columns, spanLast, stackCompact, emphasizeTop = spanLast && !status && !footerHasMeter)
     }
 
     fun page(ids: List<String>, anchor: String?, capacity: Int): List<String> {

@@ -16,14 +16,10 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 internal enum class ProviderFailure(val message: Int, val retry: Boolean = false) {
-    Permission(R.string.antigravity_permission_error), LimitsUnavailable(R.string.antigravity_limits_unavailable),
     Authentication(R.string.provider_auth_error), Credit(R.string.provider_credit_error),
     RateLimit(R.string.provider_rate_error, true), Offline(R.string.widget_cache_offline, true),
     Server(R.string.provider_usage_error, true), InvalidData(R.string.provider_usage_error),
     Storage(R.string.provider_storage_error);
-
-    fun messageFor(provider: UsageProvider): Int =
-        if (this == Authentication && provider == UsageProvider.Antigravity) R.string.connection_token_expired else message
 }
 
 internal data class ProviderUsageSnapshot(
@@ -47,7 +43,6 @@ internal class ProviderUsageRepository(
     private val store: ProviderStore = ProviderStore(context.applicationContext, provider),
     private val request: suspend (String, String) -> JSONObject = { url, key -> providerGet(url, key) },
     private val shared: ProviderRequestState = states.getOrPut(provider) { ProviderRequestState() },
-    private val antigravity: AntigravityDirectClient = AntigravityDirectClient(),
 ) {
     val changes = shared.changes.asStateFlow()
 
@@ -63,8 +58,7 @@ internal class ProviderUsageRepository(
         return ProviderUsageSnapshot(connection.info, usage, connection.failure)
     }
 
-    fun save(key: String, region: KimiRegion): ProviderCredentialInfo = store.save(
-        if (provider == UsageProvider.Antigravity) AntigravityGrant.parse(key).encode() else key, region).info.also { changed() }
+    fun save(key: String, region: KimiRegion): ProviderCredentialInfo = store.save(key, region).info.also { changed() }
     fun clear() { store.clear(); changed() }
     fun reveal(): String = store.read()?.key.orEmpty()
 
@@ -73,7 +67,7 @@ internal class ProviderUsageRepository(
             return ProviderUsageSnapshot(failure = ProviderFailure.Storage)
         } ?: return ProviderUsageSnapshot()
         val cached = snapshotFrom(connection)
-        if (!force && cached.failure in listOf(ProviderFailure.Authentication, ProviderFailure.Permission)) return cached
+        if (!force && cached.failure == ProviderFailure.Authentication) return cached
         if (!force && cached.failure == null && cached.usage?.let { ageSeconds(it.fetchedAt) < maxAgeSeconds } == true) return cached
         val revision = connection.info.revision
         val (flight, start) = synchronized(shared) {
@@ -83,9 +77,7 @@ internal class ProviderUsageRepository(
         }
         if (start) requestScope.launch {
             try {
-                val raw = if (provider == UsageProvider.Antigravity) antigravity.fetch(connection.key) { secret ->
-                    store.updateSecret(revision, secret)
-                } else request(if (provider == UsageProvider.DeepSeek) "https://api.deepseek.com/user/balance"
+                val raw = request(if (provider == UsageProvider.DeepSeek) "https://api.deepseek.com/user/balance"
                     else "${connection.info.region.baseUrl}/usages", connection.key)
                 val at = StatusJsonParser.nowStamp()
                 val usage = ProviderUsageParser.parse(provider, raw, at)
@@ -97,17 +89,12 @@ internal class ProviderUsageRepository(
             } catch (error: CancellationException) {
                 flight.cancel(error)
             } catch (error: Exception) {
-                val failure = when {
-                    error is AntigravityPermissionDenied -> ProviderFailure.Permission
-                    error is AntigravityLimitsUnavailable -> ProviderFailure.LimitsUnavailable
-                    error is ProviderHttpException && error.code == 403 && provider == UsageProvider.Antigravity -> ProviderFailure.Permission
-                    else -> when ((error as? ProviderHttpException)?.code) {
+                val failure = when ((error as? ProviderHttpException)?.code) {
                     401, 403 -> ProviderFailure.Authentication
                     402 -> ProviderFailure.Credit
                     429 -> ProviderFailure.RateLimit
                     in 500..599 -> ProviderFailure.Server
                     else -> if (error is IOException && error !is ProviderHttpException) ProviderFailure.Offline else ProviderFailure.InvalidData
-                }
                 }
                 // Never attach a previous connection's error to a replacement connection.
                 runCatching { if (store.recordFailure(revision, failure)) changed() }

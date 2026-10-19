@@ -75,18 +75,17 @@ internal fun UsageScreen(
     val now = rememberUsageTime(active)
     val feedback = LocalAppFeedback.current
     val cursorFilters = rememberSaveable(state.selectedAccountId, saver = UsagePageFilters.Saver) { UsagePageFilters() }
-    val codexFilters = rememberSaveable(codex.credential?.accountId, saver = UsagePageFilters.Saver) { UsagePageFilters("primary") }
-    LaunchedEffect(active, selected, cursorFilters.days, codexFilters.days) {
+    LaunchedEffect(active, selected, cursorFilters.days) {
         if (active) {
             onHistoryDaysChange("cursor", if (selected == "cursor") cursorFilters.days else 1)
-            onHistoryDaysChange("codex", if (selected == "codex") codexFilters.days else 1)
+            onHistoryDaysChange("codex", 1)
         }
     }
     val statistics = if (selected == "cursor" && state.usage != null) usageStatistics(state, now, onLoadHistory, cursorFilters, active) else null
     val summaryScroll = rememberLazyListState()
     val cursorScroll = rememberLazyListState(); val codexScroll = rememberLazyListState()
-    val deepSeekScroll = rememberLazyListState(); val kimiScroll = rememberLazyListState(); val antigravityScroll = rememberLazyListState()
-    val detailScroll = when (selected) { "antigravity" -> antigravityScroll; "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "codex" -> codexScroll; else -> cursorScroll }
+    val deepSeekScroll = rememberLazyListState(); val kimiScroll = rememberLazyListState()
+    val detailScroll = when (selected) { "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "codex" -> codexScroll; else -> cursorScroll }
     val select: (String) -> Unit = { next ->
         if (next != selected) { provider = next; preferences.edit().putString("provider", next).apply(); feedback.selection() }
     }
@@ -124,7 +123,7 @@ internal fun UsageScreen(
     }
     val details: LazyListScope.(Boolean) -> Unit = {
         if (selected == "cursor") cursorDetails(state, now, onLoadHistory, onManageCursor, onRefresh, cursorFilters, statistics)
-        else if (selected == "codex") codexDetails(codex, now, onManageCodex, onRefreshCodex, codexFilters)
+        else if (selected == "codex") codexDetails(codex, now, onManageCodex, onRefreshCodex)
         else UsageProvider.entries.firstOrNull { it.id == selected }?.let { source ->
             item("official-provider-${source.id}") { OfficialProviderDetails(source, providers[source],
                 { onManageProvider(source) }, { onRefreshProvider(source) }) }
@@ -138,7 +137,7 @@ internal fun UsageScreen(
         title = { Text(stringResource(R.string.u_explanation)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf(R.string.u_dashboard_chart_help, R.string.u_tokens_note, R.string.u_financial_note, R.string.u_pace_note, R.string.u_codex_scope,
-                R.string.u_lookback_note, R.string.u_cursor_trend_note, R.string.u_codex_trend_note, R.string.u_estimate_condition)
+                R.string.u_lookback_note, R.string.u_cursor_trend_note, R.string.u_estimate_condition)
                 .forEach { Text(stringResource(it)) }
         } },
         confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(R.string.action_close)) } })
@@ -220,7 +219,7 @@ private fun LazyListScope.cursorDetails(state: AppUiState, now: Long, load: (Str
         ServiceMessage(false, stringResource(R.string.dashboard_token_expired_usage_body), manage, manage = true)
     }
     item("usage-statistics") { statistics?.let { CursorStatistics(state, load, filters, it) } }
-    item("usage-trend") { Trend(state.usageHistory, true, now, filters) }
+    item("usage-trend") { Trend(state.usageHistory, now, filters) }
     item("cursor-plan") { CursorPlan(usage, state.usageHistory, now, state.error != null || state.usageHistoryError || usage.fromCache || tokenExpired) }
     item("usage-financial") { CursorFinancials(usage) }
 }
@@ -244,7 +243,7 @@ private fun CursorPlan(usage: AgenTOverview, history: List<UsageObservation>, no
     }
 }
 
-private fun LazyListScope.codexDetails(state: CodexQuotaUiState, now: Long, manage: () -> Unit, refresh: () -> Unit, filters: UsagePageFilters) {
+private fun LazyListScope.codexDetails(state: CodexQuotaUiState, now: Long, manage: () -> Unit, refresh: () -> Unit) {
     val usage = state.usage
     if (usage == null) {
         item("codex-state") { ServiceMessage(state.booting || state.refreshing, stringResource(if (state.credential == null) R.string.codex_empty_description else R.string.label_data_unavailable),
@@ -281,7 +280,6 @@ private fun LazyListScope.codexDetails(state: CodexQuotaUiState, now: Long, mana
     usage.additional.forEachIndexed { i, window -> item("window-extra" + i) {
         CodexWindow(stringResource(R.string.codex_window_additional, i + 1), window, state.usageHistory, "extra" + i, now, stale)
     } }
-    item("usage-trend") { Trend(state.usageHistory, false, now, filters) }
 }
 
 @Composable
@@ -457,6 +455,11 @@ private fun ModelRanking(tokens: TokenUsageBreakdown, filters: UsagePageFilters)
             Column(Modifier.fillMaxWidth().testTag("usage-model-" + index), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Metric(model.modelIntent, value?.let { if (filters.sortTokens) usageMagnitude(it) else money(it) } ?: "—")
                 UsageBar(value, maximum, Modifier.semantics { contentDescription = exactDescription })
+                val perMillion = usageCostPerMillion(model)
+                val perMillionDescription = stringResource(R.string.u_per_million_description)
+                Text(stringResource(R.string.u_per_million, perMillion?.let(::formatCostPerMillion) ?: "—"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.semantics { contentDescription = perMillionDescription })
                 TextButton({ filters.expandedModels = if (expanded) filters.expandedModels - modelKey else filters.expandedModels + modelKey }) {
                     Text(stringResource(if (expanded) R.string.u_collapse else R.string.u_exact_details))
                 }
@@ -497,10 +500,8 @@ private fun CursorFinancials(usage: AgenTOverview) {
 }
 
 @Composable
-private fun Trend(history: List<UsageObservation>, cursor: Boolean, now: Long, filters: UsagePageFilters) {
-    val options = remember(history, cursor) { if (cursor) listOf("cost" to R.string.u_api_cost, "input" to R.string.u_input, "output" to R.string.u_output, "read" to R.string.u_cache_read, "write" to R.string.u_cache_write)
-        else listOf("primary" to R.string.codex_window_five_hour, "weekly" to R.string.codex_window_weekly) + history.flatMap { it.values.keys }.filter { it.startsWith("extra") }.distinct().sorted().map { it to R.string.u_additional }
-    }
+private fun Trend(history: List<UsageObservation>, now: Long, filters: UsagePageFilters) {
+    val options = listOf("cost" to R.string.u_api_cost, "input" to R.string.u_input, "output" to R.string.u_output, "read" to R.string.u_cache_read, "write" to R.string.u_cache_write)
     val points = remember(history, filters.days, now / 300_000) { history.filter { it.atMillis in (now - filters.days * UsageAnalysis.DAY)..now }.sortedBy { it.atMillis } }
     val known = remember(points, filters.metric) { points.filter { it.values[filters.metric]?.let { value -> value.isFinite() && value >= 0 } == true } }
     val chosen = known.firstOrNull { it.atMillis == filters.selectedAt } ?: known.lastOrNull()
@@ -512,8 +513,8 @@ private fun Trend(history: List<UsageObservation>, cursor: Boolean, now: Long, f
         AdaptiveFilterRow { options.forEach { (id, label) -> FilterChip(filters.metric == id, { filters.metric = id; filters.selectedAt = null }, label = { Text(stringResource(label)) }) } }
         if (known.isEmpty()) Text(stringResource(R.string.u_wait_samples), style = MaterialTheme.typography.labelMedium)
         else {
-            fun axis(value: Double) = if (!cursor) percent(value) else if (filters.metric == "cost") moneyCompact(value) else usageMagnitude(value)
-            UsageTrendChart(points, filters.metric, !cursor, chosen?.atMillis,
+            fun axis(value: Double) = if (filters.metric == "cost") moneyCompact(value) else usageMagnitude(value)
+            UsageTrendChart(points, filters.metric, false, chosen?.atMillis,
                 stringResource(R.string.u_chart_a11y, known.size, date(known.first().atMillis), date(known.last().atMillis)),
                 ::axis, { formatUsageStamp(it, zone, stampNow) }, { filters.selectedAt = it })
             val sample = requireNotNull(chosen)

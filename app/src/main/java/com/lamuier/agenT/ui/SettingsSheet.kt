@@ -245,8 +245,6 @@ internal fun SettingsSheet(
                     checked = codexUsageAutoRefresh,
                     onCheckedChange = onCodexUsageAutoRefreshChange,
                 )
-                Text(stringResource(R.string.antigravity_connection_description),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 UsageHistorySettings()
             }
                             }

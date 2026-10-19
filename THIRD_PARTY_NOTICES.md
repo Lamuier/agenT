@@ -24,4 +24,4 @@ agenT 本体以 [MIT](LICENSE) 开源。下表列出当前源码的主要组件�
 | AndroidX Benchmark / Baseline Profile / UI Automator / Test Runner | 独立性能测试与编译配置生成，不进入 Release 运行依赖 | Apache License 2.0 |
 | sharp | 可选 Node 静态图标预览 | [Apache License 2.0](https://github.com/lovell/sharp/blob/main/LICENSE)；二进制依赖另有包内声明 |
 
-上述开发工具不属于应用的 Release 运行依赖。依赖或素材变化时同步本页及 [未发布变更记录](CHANGELOG.md#未发布)，不得将开发工具的许可错误归入另一组件的许可章节。
+上述开发工具不属于应用的 Release 运行依赖。依赖或素材变化时同步本页，并记入 [CHANGELOG](CHANGELOG.md) 顶部未发布记录（没有该节时先创建），不得将开发工具的许可错误归入另一组件的许可章节。

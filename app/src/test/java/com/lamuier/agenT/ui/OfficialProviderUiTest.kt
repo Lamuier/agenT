@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
+import com.lamuier.agenT.R
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.TokenProvider
 import com.lamuier.agenT.providers.*
@@ -36,7 +37,6 @@ class OfficialProviderUiTest {
     @get:Rule val compose = createComposeRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun usageState() = ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
-        if (source == UsageProvider.Antigravity) return@associateWith ProviderState()
         val raw = if (source == UsageProvider.DeepSeek) """{"is_available":false,"balance_infos":[{"currency":"CNY","total_balance":"-0.005","granted_balance":"0","topped_up_balance":"-0.005"}]}"""
             else """{"usages":{"limit_5h":{"used_ratio":0.25,"reset_time":"2026-10-18T00:00:00Z"},"limit_month_code":{"used_ratio":0.8}}}"""
         ProviderState(ProviderCredentialInfo("fixture"), ProviderUsageParser.parse(source, JSONObject(raw), "2026-10-17 01:02:03").copy(fromCache = true))
@@ -77,6 +77,22 @@ class OfficialProviderUiTest {
         compose.setContent { AgenTTheme(ThemeSettings()) { StatusTab(null, false, false, null, fixture.codex, {}, {}, providers = usageState()) } }
         compose.onNodeWithTag("status-provider-kimi_code").performScrollTo().performClick().assertIsSelected()
         compose.onNodeWithTag("status-provider-deepseek").performScrollTo().performClick().assertIsSelected()
+    }
+    @Test fun deepSeekOverviewSeparatesCurrenciesAndBalanceParts() {
+        val usage = ProviderUsageParser.parse(UsageProvider.DeepSeek, JSONObject("""
+            {"is_available":true,"balance_infos":[
+              {"currency":"CNY","total_balance":"10.79","granted_balance":"1.25","topped_up_balance":"9.54"},
+              {"currency":"USD","total_balance":"2","granted_balance":"0","topped_up_balance":"2"}]}
+        """.trimIndent()), "2026-10-19 10:15:00")
+        compose.setContent { AgenTTheme(ThemeSettings()) {
+            OfficialProviderOverview(UsageProvider.DeepSeek, ProviderState(ProviderCredentialInfo("saved"), usage)) {}
+        } }
+        compose.onNodeWithTag("overview-DeepSeek").assertIsDisplayed()
+        listOf("CNY", "10.79", "USD", "1.25", "9.54").forEach { compose.onNodeWithText(it).assertIsDisplayed() }
+        compose.onAllNodesWithText("2").assertCountEquals(2)
+        compose.onAllNodesWithText(context.getString(R.string.provider_balance_granted_label)).assertCountEquals(2)
+        compose.onAllNodesWithText(context.getString(R.string.provider_balance_topped_label)).assertCountEquals(2)
+        compose.onNodeWithText(context.getString(R.string.provider_balance_available)).assertIsDisplayed()
     }
     @Test fun apiKeysAreOpaqueAndSourceControlsWrap() {
         var source by mutableStateOf(TokenProvider.DeepSeek)

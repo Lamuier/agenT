@@ -73,42 +73,6 @@ internal class WidgetSourcesRenderingTest(private val profile: String, private v
         assertTrue("$profile/${entry.provider.simpleName}:\n${failures.joinToString("\n")}", failures.isEmpty())
     }
 
-    @Test fun antigravityLastPageKeepsTheSourceAndQuotaReadable() {
-        val english = profile == "en"
-        RuntimeEnvironment.setQualifiers("${if (english) "en-rUS" else "zh-rCN"}-w360dp-h800dp-notnight-xhdpi")
-        val app = RuntimeEnvironment.getApplication()
-        AppLocale.setLanguage(app, if (english) AppLanguage.English else AppLanguage.Chinese)
-        val context = app.createConfigurationContext(Configuration(app.resources.configuration).apply {
-            fontScale = if (profile.contains("font200")) 2f else 1f
-        })
-        val compact = profile.startsWith("compact")
-        val width = if (entry.columns == 2) (if (compact) 110 else 174) else (if (compact) 250 else 334)
-        val height = when (entry.rows) { 1 -> if (compact) 40 else 68; 2 -> if (compact) 110 else 180; else -> if (compact) 180 else 252 }
-        val sources = WidgetSourcePolicy.order.map { id -> if (id == "antigravity") WidgetSource(id, "Antigravity",
-            listOf(WidgetMetric("Gemini Models · Weekly", "30%", 30.0)), statusLine = "Not connected") else WidgetSource(id, id) }
-        val views = AgenTWidgetUpdater.renderSourcesPreview(context, sources, entry.provider, width, height, "antigravity")
-        val parent = FrameLayout(context)
-        val root = views.apply(context, parent)
-        parent.addView(root)
-        val density = context.resources.displayMetrics.density
-        val w = (width * density).toInt(); val h = (height * density).toInt()
-        parent.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
-        parent.layout(0, 0, w, h)
-        val names = mutableListOf<TextView>()
-        fun walk(view: View) {
-            if (view.visibility != View.VISIBLE) return
-            if (view is TextView && view.id == R.id.widget_source_name) names += view
-            if (view is ViewGroup) (0 until view.childCount).forEach { walk(view.getChildAt(it)) }
-        }
-        walk(parent)
-        assertTrue(names.any { it.text.toString().startsWith("Antigravity") })
-        names.forEach { assertTrue(it.layout.height <= it.height - it.compoundPaddingTop - it.compoundPaddingBottom + 1) }
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        parent.draw(Canvas(bitmap))
-        File("build/reports/antigravity-review/widget-$profile-${entry.provider.simpleName}.png").apply { parentFile!!.mkdirs() }
-            .outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    }
-
     companion object {
         @JvmStatic @Parameters(name = "{0}-{1}") fun scenarios() = listOf("zh", "en", "dark", "compact", "font200", "compact-font200").flatMap { profile ->
             WidgetPreviews.entries.map { arrayOf(profile, it) }

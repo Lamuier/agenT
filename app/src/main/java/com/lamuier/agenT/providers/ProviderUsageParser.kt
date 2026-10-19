@@ -7,7 +7,6 @@ internal object ProviderUsageParser {
     fun parse(provider: UsageProvider, json: JSONObject, fetchedAt: String): ProviderUsage = when (provider) {
         UsageProvider.DeepSeek -> deepSeek(json, fetchedAt)
         UsageProvider.KimiCode -> kimi(json, fetchedAt)
-        UsageProvider.Antigravity -> AntigravityQuotaParser.parse(json, fetchedAt)
     }
 
     private fun deepSeek(json: JSONObject, at: String): ProviderUsage {

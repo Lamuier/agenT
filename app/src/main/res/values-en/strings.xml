@@ -10,7 +10,7 @@
     <string name="widget_refresh_description">Refresh usage for configured sources</string>
     <string name="widget_billing_placeholder">Cycle —</string>
     <string name="widget_tall_name">Usage details</string>
-    <string name="widget_tall_description">Balances and quotas across sources, including experimental Antigravity access, with automatic layout and paging; fixed 4×3 size</string>
+    <string name="widget_tall_description">Balances and quotas across sources, with automatic layout and paging; fixed 4×3 size</string>
     <string name="widget_mini_name">Usage mini bar</string>
     <string name="widget_mini_description">Key balance or quota for configured sources; tap the arrow to switch; fixed 2×1 size</string>
     <string name="widget_status_brand">Service status</string>
@@ -557,7 +557,7 @@
     <string name="codex_status_token_problem">Codex token needs attention</string>
     <string name="action_save">Save</string>
     <string name="settings_connections_title">Service connections</string>
-    <string name="settings_connections_description">Manage Cursor, Codex, DeepSeek API, Kimi Code and Antigravity connections. Credentials are encrypted locally.</string>
+    <string name="settings_connections_description">Manage Cursor, Codex, DeepSeek API and Kimi Code connections. Credentials are encrypted locally.</string>
     <string name="connection_not_configured">Not configured</string>
     <string name="connection_token_expired">Token expired or invalid</string>
     <string name="overview_cached">Cached</string>
@@ -590,7 +590,7 @@
     <string name="notification_codex_primary">Codex 5-hour</string>
     <string name="notification_codex_weekly">Codex weekly</string>
     <string name="token_management_title">Token management</string>
-    <string name="token_management_description">Manage Cursor, Codex, DeepSeek API, Kimi Code and Antigravity connections here.</string>
+    <string name="token_management_description">Manage Cursor, Codex, DeepSeek API and Kimi Code connections here.</string>
     <string name="token_management_connection_summary">Cursor: %1$s · Codex: %2$s</string>
     <string name="token_management_saved">Credential saved</string>
     <string name="token_management_save_success">Saved. You can manage the other service here too.</string>
@@ -846,6 +846,8 @@
     <string name="u_sort_cost">By cost</string>
     <string name="u_sort_tokens">By input + output</string>
     <string name="u_cost_share">Share of reported cost: %1$s</string>
+    <string name="u_per_million">Per million tokens: %1$s</string>
+    <string name="u_per_million_description">Reported cost divided by the sum of input, output, cache read and cache write tokens, then scaled to one million tokens. A model that does not report cache writes counts that category as zero. This is not an official unit price. A missing cost, input, output or cache read, or a zero token total, stays unknown.</string>
     <string name="u_collapse">Collapse details</string>
     <string name="u_exact_details">Cache and exact values</string>
     <string name="u_all_models">Show all %1$d rows</string>
@@ -859,11 +861,9 @@
     <string name="u_pool_remaining">Pooled on-demand remaining</string>
     <string name="u_local_trend">Local observation trend</string>
     <string name="u_days">%1$d days</string>
-    <string name="u_additional">Additional window</string>
     <string name="u_chart_a11y">%1$d observations · %2$s → %3$s</string>
     <string name="u_latest_sample">Latest observed value</string>
     <string name="u_cursor_trend_note">Shows locally observed cumulative values. Lines break at period changes, decreases or gaps over 30 minutes. This is not complete daily usage.</string>
-    <string name="u_codex_trend_note">Shows observed used percentages. Lines break at window changes, decreases or gaps over 30 minutes. It does not infer daily tokens or create reset events.</string>
     <string name="u_updated_at">Updated: %1$s</string>
     <string name="u_cached_at">Cached: %1$s</string>
     <string name="u_partial">Some source data is unavailable</string>
@@ -917,31 +917,9 @@
     <string name="reset_dash_heatmap_hint">Scroll months · Tap a date</string>
     <string name="reset_dash_composition_a11y">This period: %1$s regular reset records, %2$s credit grant records</string>
     <string name="reset_dash_day_a11y">%1$s · Regular %2$d · Grants %3$d</string>
-    <string name="reset_dash_chart_help">The composition ring and daily bars count fetched regular reset and credit grant records, using the same colors as the heatmap. Select a chart date to view its records; expand a record for its announcement and source. Grant records are not credit quantities, available balance or account redemptions.</string>
+    <string name="reset_dash_chart_help">The composition ring and daily calendar count fetched regular reset and credit grant records, using the same colors as the heatmap. Weeks start on Sunday. Each day shows regular resets above credit grants; zero is dimmed. Select a calendar or heatmap date to view its records, then expand a record for its announcement and source. Grant records are not credit quantities, available balance or account redemptions.</string>
     <string name="reset_dash_expand">Expand record</string>
     <string name="reset_dash_collapse">Collapse record</string>
-
-    <!-- Antigravity official web integration -->
-    <string name="antigravity_service_name">Antigravity</string>
-    <string name="antigravity_tasks_title">Remote tasks</string>
-    <string name="antigravity_tasks_description">View conversations, execution status and requests for input, or continue tasks on Google’s official Remote Control website.</string>
-    <string name="antigravity_open_tasks">Open Remote Control</string>
-    <string name="antigravity_tasks_boundary">Google sign-in is handled by your system browser. Task lists and status update on the website. agenT does not sync this data or send Antigravity task notifications.</string>
-    <string name="antigravity_setup_title">Connect for the first time</string>
-    <string name="antigravity_setup_desktop">1. In the desktop Antigravity App, open Settings → App → Enable Remote Control.</string>
-    <string name="antigravity_setup_cli">2. For CLI sessions, run /remote-control in the session, or launch agy --remote-control.</string>
-    <string name="antigravity_setup_account">3. Sign in with the same Google Account on your phone and select the computer. Keep it powered on and online; exiting an interactive CLI session ends its connection. This entry supports the App / CLI; consult Google’s documentation for legacy IDE support.</string>
-    <string name="antigravity_open_guide">Read the connection guide</string>
-    <string name="antigravity_status_unknown">Service status: unavailable</string>
-    <string name="antigravity_status_description">No dedicated official public Antigravity status feed has been identified, so availability cannot be confirmed. View task execution status in Remote Control. Gemini or Google Cloud status is not used as a substitute.</string>
-    <string name="antigravity_open_support">Open official support</string>
-    <string name="antigravity_usage_title">Antigravity usage support</string>
-    <string name="antigravity_usage_description">Import an Antigravity OAuth grant to query model quotas directly from your phone using experimental access. Official clients also provide /usage (or /quota).</string>
-    <string name="antigravity_usage_limits">Quota groups and reset times follow the actual response. Missing values are not zero. Percentages cannot be converted into cumulative tokens or billing.</string>
-    <string name="antigravity_open_usage_help">Read the usage guide</string>
-    <string name="antigravity_connection_description">Antigravity: import an existing OAuth grant for direct usage queries. Tasks still use Google sign-in on official Remote Control.</string>
-    <string name="antigravity_tasks_supporting">Task list and execution status on the official website</string>
-    <string name="antigravity_web_label">Official website</string>
 
     <string name="provider_deepseek_scope">DeepSeek API account balance, shown separately in each original currency. Balance availability indicates sufficient credit for API calls; service health comes from the status page.</string>
     <string name="provider_kimi_scope">Kimi Code subscription quota. Only windows returned by the official endpoint appear. This is separate from the Kimi Open Platform API balance; missing quota is not treated as zero.</string>
@@ -956,6 +934,9 @@
     <string name="provider_usage_error">Usage is temporarily unavailable. The previous data and update time are retained.</string>
     <string name="provider_status_error">Official service status is temporarily unavailable. Previous data is retained.</string>
     <string name="provider_official_console">Open official console</string>
+    <string name="provider_balance_caption">Account balance</string>
+    <string name="provider_balance_granted_label">Granted</string>
+    <string name="provider_balance_topped_label">Topped up</string>
     <string name="provider_balance_granted">Granted balance: %1$s</string>
     <string name="provider_balance_topped_up">Topped-up balance: %1$s</string>
     <string name="provider_balance_available">Sufficient balance for API calls</string>
@@ -989,12 +970,4 @@
     <string name="widget_credit_available">Credit available</string>
     <string name="widget_credit_unavailable">Insufficient credit</string>
     <string name="widget_reset_short">Reset %1$s</string>
-    <string name="antigravity_direct_scope">Experimental direct access · Quotas are grouped by model. Percentages are not tokens or costs.</string>
-    <string name="antigravity_grant_label">Antigravity OAuth JSON or access token</string>
-    <string name="antigravity_grant_hint">Paste an existing Antigravity grant. Access-token-only connections require replacement after expiry.</string>
-    <string name="antigravity_grant_help">Queries Google directly from your phone without an always-on computer. Import an existing OAuth grant, not a Google password or Gemini API key.</string>
-    <string name="antigravity_grant_details">Accepts official CLI OAuth JSON and CodexBar credential exports. Requires access_token (or a plain access token); optional refresh_token, client_id, client_secret, expiry_date (milliseconds) and project_id. Automatic renewal needs refresh_token and client_id from the same grant, plus client_secret if required by that client. No OAuth client credentials are bundled. Import only your own grant locally; never send it to chat or logs.</string>
-    <string name="antigravity_grant_invalid">Invalid grant. Enter an access token or OAuth JSON containing access_token.</string>
-    <string name="antigravity_permission_error">This Google grant cannot read Antigravity quotas. Update it with an eligible Antigravity grant and retry.</string>
-    <string name="antigravity_limits_unavailable">No verifiable quota was returned. Existing cache is retained; model availability is never shown as 100% remaining.</string>
 </resources>

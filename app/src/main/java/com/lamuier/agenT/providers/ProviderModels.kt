@@ -10,7 +10,6 @@ enum class UsageProvider(val id: String, val title: String, val tokenProvider: T
     val statusProvider: OfficialStatusProvider?, val consoleUrl: String) {
     DeepSeek("deepseek", "DeepSeek", TokenProvider.DeepSeek, OfficialStatusProvider.DeepSeek, "https://platform.deepseek.com/"),
     KimiCode("kimi_code", "Kimi Code", TokenProvider.KimiCode, OfficialStatusProvider.KimiCode, "https://www.kimi.com/code/console"),
-    Antigravity("antigravity", "Antigravity", TokenProvider.Antigravity, null, "https://www.antigravity.google/docs/cli/commands/usage"),
 }
 
 enum class KimiRegion(val id: String, val baseUrl: String) {

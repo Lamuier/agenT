@@ -2,9 +2,9 @@
 
 > This policy applies to the agenT Android app (package `com.lamuier.agenT`). [中文](PRIVACY.md) | **English**
 
-**Effective date: 2026-10-17**
+**Effective date: 2026-10-19**
 
-agenT is a local-first AI service usage app that displays Cursor, Codex, DeepSeek API, Kimi Code and Antigravity usage, tasks, resets and service status on your device: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
+agenT is a local-first AI service usage app that displays Cursor, Codex, DeepSeek API and Kimi Code usage, tasks, resets and service status on your device: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
 
 The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 
@@ -18,7 +18,7 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 | --- | --- | --- | --- |
 | Cursor Access Token | Query Cursor account, usage and cloud task lists | Android Keystore AES-GCM encryption in app-private storage | Sent only as a credential to official Cursor APIs |
 | Codex / ChatGPT OAuth access token and optional Account ID | Query Codex rate-limit windows | Android Keystore AES-GCM encryption in app-private storage | Sent only as authentication information to `chatgpt.com/backend-api/wham/usage` |
-| DeepSeek API key, Kimi Code API key and region, and Antigravity OAuth credentials | Query balances, subscription quotas or model-group quotas | Android Keystore AES-GCM encryption in app-private storage | Sent only to the corresponding fixed official endpoints (see dedicated sections below) |
+| DeepSeek API key, Kimi Code API key and region | Query balances or subscription quotas | Android Keystore AES-GCM encryption in app-private storage | Sent only to the corresponding fixed official endpoints (see dedicated sections below) |
 | Account alias | Local account label | Android Keystore AES-GCM encryption | Not uploaded |
 | Cursor / Codex usage summaries (plan, quota, percentages, windows and reset times, Credits, per-model tokens, Grok Bot weekly quota and similar fields) | UI, widgets, notifications and offline display | Android Keystore AES-GCM encrypted cache of parsed summaries | Summaries and raw responses are not uploaded |
 | Local usage observations (parsed numbers, UTC timestamps, period boundaries and reset times) | Observation trends and conditional pace estimates | Android Keystore AES-GCM encryption in the no-backup directory | Not uploaded; see [Local usage observations](#local-usage-observations) for controls and retention |
@@ -61,12 +61,6 @@ Task conversations, PRs, official status pages and public-reset source links are
 
 The app uploads no personal credentials, records or analytics to developer-operated servers or to the third-party public API.
 
-Antigravity task entry opens `https://antigravity.google.com/` in the system browser. Connection and usage guides use fixed pages under `www.antigravity.google/docs`, and support opens `https://antigravity.google/support`. Website Google sign-in and subsequent website requests are handled by the browser. agenT does not read browser cookies or sessions, or attach credentials from other services.
-
-Antigravity usage uses a manually imported OAuth grant or access token. Access tokens, optional refresh tokens and OAuth client configuration, account binding, project metadata and minimal quota cache are encrypted with Android Keystore AES-GCM and excluded from backup, transfer, logs, reports and saved UI state. Revealing credentials requires device unlock. Deleting a connection removes local credentials and quota cache; it does not revoke other grants belonging to that OAuth client at Google. No client secrets are bundled; the app does not read desktop credentials, enroll accounts or purchase subscriptions.
-
-Access tokens go only to fixed `www.googleapis.com/oauth2/v3/userinfo` for account verification and `cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`, `retrieveUserQuotaSummary` and `retrieveUserQuota` for quotas. Refresh credentials go only to `oauth2.googleapis.com/token` as form data. Redirects are disabled, and these grants are never attached to task webpages. Only parsed quota groups, fractions and reset times are cached, not raw identity or account responses. Foreground refresh and roughly fifteen-minute installed usage-widget refresh share the connection. Status-only widgets do not fetch or renew Antigravity usage. Failures retain the original cache time. No token history, task bodies or Antigravity alerts are collected or generated.
-
 ## DeepSeek API and Kimi Code
 
 API keys, Kimi region, credential revision and the latest account usage response are encrypted locally with Android Keystore AES-GCM. They are excluded from backup and device transfer, logs, reports and saved UI state. Revealing a saved key requires device unlock; copied keys use the sensitive clipboard flag. Replacing a key or region starts a new account cache; deleting a connection removes its key and account cache.
@@ -104,7 +98,8 @@ AndroidX also merges `com.lamuier.agenT.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 | Clear observation history in the same location | Delete Cursor and Codex observation histories and invalidate in-flight collection; subsequent samples follow the collection switch |
 | Delete a Cursor account | Delete that account's credentials and usage / task caches, and clear all local Cursor usage observations |
 | Delete the Codex credential | Delete credentials, usage cache, legacy personal reset records, subscription settings, window observation snapshots and all local Codex usage observations; unrelated public-reset cache remains |
-| Delete a DeepSeek API, Kimi Code or Antigravity connection | Delete the corresponding credentials and private usage / quota cache; unrelated public-status caches remain |
+| Delete a DeepSeek API or Kimi Code connection | Delete the corresponding credentials and private usage / quota cache; unrelated public-status caches remain |
+| First launch after upgrading to a version that removes Antigravity | Delete the locally saved Antigravity grant and quota cache, plus usage-page and widget selections that pointed at that source; this data is not sent to any server |
 | Confirm ended task messages in live activities | Save local acknowledgement state and clear the corresponding notices; existing task records remain in the task list |
 
 Deleting local credentials does not revoke provider tokens; manage revocation in the corresponding service. Clearing app data or uninstalling removes ordinary settings and reminder deduplication metadata.

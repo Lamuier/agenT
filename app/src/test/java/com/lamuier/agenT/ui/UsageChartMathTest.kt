@@ -2,6 +2,7 @@ package com.lamuier.agenT.ui
 
 import com.lamuier.agenT.model.ModelTokenUsage
 import com.lamuier.agenT.usage.UsageObservation
+import java.math.BigDecimal
 import java.math.BigInteger
 import org.junit.Assert.*
 import org.junit.Test
@@ -27,6 +28,22 @@ class UsageChartMathTest {
         val row = ModelTokenUsage("model", Long.MAX_VALUE, Long.MAX_VALUE, 0, 0, 0.0, null)
         assertEquals(BigInteger("18446744073709551614"), usageCombinedTokens(row))
         assertNull(usageCombinedTokens(row.copy(availableMetrics = setOf("input"))))
+    }
+    @Test fun costPerMillionUsesReportedTokensAndTreatsAMissingCacheWriteAsZero() {
+        val row = ModelTokenUsage("model", 500_000, 250_000, 250_000, 1_000_000, 2.46, null)
+        assertEquals(BigDecimal("1.230000"), usageCostPerMillion(row))
+        assertEquals("$1.23", formatCostPerMillion(requireNotNull(usageCostPerMillion(row))))
+        assertEquals("$0.025", formatCostPerMillion(BigDecimal("0.025")))
+        assertEquals("$0.00", formatCostPerMillion(BigDecimal.ZERO))
+        val withoutWrite = row.copy(cacheWriteTokens = 99, availableMetrics = setOf("input", "output", "read", "cost"))
+        assertEquals(BigDecimal("1.405714"), usageCostPerMillion(withoutWrite))
+        assertNull(usageCostPerMillion(row.copy(inputTokens = 0, outputTokens = 0, cacheWriteTokens = 0, cacheReadTokens = 0, costDollars = 1.0)))
+        assertNull(usageCostPerMillion(row.copy(availableMetrics = setOf("input", "output", "cost"))))
+        assertNull(usageCostPerMillion(row.copy(availableMetrics = setOf("input", "output", "read", "write"))))
+        assertNull(usageCostPerMillion(row.copy(cacheReadTokens = -1)))
+        assertNull(usageCostPerMillion(row.copy(cacheWriteTokens = -1)))
+        val huge = row.copy(inputTokens = Long.MAX_VALUE, outputTokens = Long.MAX_VALUE, cacheWriteTokens = Long.MAX_VALUE, cacheReadTokens = Long.MAX_VALUE, costDollars = 1.0)
+        assertTrue(requireNotNull(usageCostPerMillion(huge)) < BigDecimal("0.001"))
     }
     @Test fun unknownsResetsDropsAndGapsBreakLinesAndBucketReductionKeepsExtrema() {
         fun point(at: Long, value: Double?, period: String = "a") = UsageObservation(at, if (value == null) emptyMap() else mapOf("cost" to value), mapOf("cost" to period), emptyMap())

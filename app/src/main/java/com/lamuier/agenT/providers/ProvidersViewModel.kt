@@ -33,14 +33,14 @@ class ProvidersViewModel(context: Context) : ViewModel() {
                     val cached = repositories.getValue(provider).cached()
                     provider to ProviderState(credential = cached.credential, usage = cached.usage,
                         serviceStatus = runCatching { statuses[provider]?.cached() }.getOrNull(),
-                        error = cached.failure?.let { appContext.getString(it.messageFor(provider)) })
+                        error = cached.failure?.let { appContext.getString(it.message) })
                 } }.awaitAll().toMap()
             }
             mutableState.value = ProvidersUiState(booting = false, sources = restored)
             repositories.forEach { (provider, repository) -> launch {
                 repository.changes.collect {
                     val cached = withContext(Dispatchers.IO) { repository.cached() }
-                    update(provider) { withUsageSnapshot(cached, cached.failure?.let { appContext.getString(it.messageFor(provider)) }) }
+                    update(provider) { withUsageSnapshot(cached, cached.failure?.let { appContext.getString(it.message) }) }
                 }
             } }
         }
@@ -48,10 +48,8 @@ class ProvidersViewModel(context: Context) : ViewModel() {
     fun clearError(provider: UsageProvider) = update(provider) { copy(error = null) }
     fun save(provider: UsageProvider, key: String, region: KimiRegion, done: () -> Unit) {
         if (state.value.booting || state.value[provider].saving) return
-        val secret = if (provider == UsageProvider.Antigravity) try { AntigravityGrant.parse(key).encode() }
-            catch (_: Exception) { update(provider) { copy(error = appContext.getString(R.string.antigravity_grant_invalid)) }; return }
-            else key.trim()
-        if (secret.isEmpty() || provider != UsageProvider.Antigravity && secret.any { it.isWhitespace() || it.isISOControl() }) {
+        val secret = key.trim()
+        if (secret.isEmpty() || secret.any { it.isWhitespace() || it.isISOControl() }) {
             update(provider) { copy(error = appContext.getString(R.string.provider_key_invalid)) }; return
         }
         update(provider) { copy(saving = true, error = null) }
@@ -90,7 +88,7 @@ class ProvidersViewModel(context: Context) : ViewModel() {
                     repositories.getValue(provider).refresh(force)
                 }
                 if (state.value[provider].credential == credential && !state.value[provider].saving && fetched.credential == credential) {
-                    update(provider) { copy(usage = fetched.usage, error = fetched.failure?.let { appContext.getString(it.messageFor(provider)) }) }
+                    update(provider) { copy(usage = fetched.usage, error = fetched.failure?.let { appContext.getString(it.message) }) }
                     result = if (fetched.updated) RefreshResult.Updated else if (fetched.failure != null) RefreshResult.Failed else RefreshResult.Skipped
                 } else result = RefreshResult.Skipped
             } catch (e: CancellationException) { throw e }

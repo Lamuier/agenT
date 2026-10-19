@@ -10,7 +10,6 @@
 | 导航、返回、触感、圆环、图标与界面验收 | [界面与资源](ui.md) | 对照 Compose、资源和测试实现 |
 | 折叠屏、平板、分屏与厂商资料 | [折叠屏适配](foldables.md) | 对照窗口、折痕、页面分区和状态恢复 |
 | DeepSeek API / Kimi Code 用量、状态与缓存 | [官方来源接入](official-providers.md) | 数据口径、区域、匿名状态过滤与凭据边界 |
-| Antigravity 任务、状态边界与手机直连用量 | [Antigravity 接入](antigravity.md) | 官方远控、OAuth 导入与续期、额度解析及验证边界 |
 | 实时活动、提醒、猫语与超级岛 | [通知行为](notifications.md) | 对照聚合模型、通知资源与调度 |
 | 冷启动、缓存、图表与性能对照 | [启动与性能](performance.md) | 优化边界、离线夹具与测量口径 |
 | 数据清单、保存 / 删除规则和权限用途 | [隐私政策](../PRIVACY.md) / [English](../PRIVACY.en.md) | 安全事实以实现为依据 |

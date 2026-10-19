@@ -46,6 +46,8 @@ class UsageScreenTest {
         compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
         compose.onNodeWithTag("usage-detail-list").performScrollToKey("window-primary")
         compose.onNodeWithText(context.getString(R.string.u_used, "12%")).assertIsDisplayed()
+        compose.onNodeWithTag("usage-trend-panel").assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.u_local_trend)).assertDoesNotExist()
     }
     @Test fun rangeSortExpansionComparisonAndPreferenceAreUsable() {
         val fixture = ReviewFixture.create(ZoneId.of("UTC"), Instant.ofEpochMilli(now))
