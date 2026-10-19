@@ -1,6 +1,6 @@
 # agenT
 
-> A native Android dashboard for AI service usage, tasks, resets, and health.
+> A native Android app for Cursor, Codex, DeepSeek API, and Kimi Code usage, tasks, resets, and service status.
 
 [中文](README.md) | **English**
 
@@ -23,7 +23,7 @@ There is no app account system, self-hosted backend, advertising, or analytics S
 
 Reorderable navigation uses a bottom bar and swiping on phones, with a rail on wider windows. Settings are grouped into Service connections, Appearance, Notifications, System entry points and General. The UI supports Chinese / English, light / dark themes, dynamic color, display time zones, large fonts. Foldables use left/right or top/bottom content regions, task list/details and fold-safe dialogs, with support for split-screen and floating windows. Tablets add an information grid to Overview, complete task metadata and content-specific sidebar widths. See [foldable adaptation](docs/foldables.md). Settings use predictive back; navigation, filtering and scroll state can be restored.
 
-- **Live activities and alerts:** ongoing Cursor tasks and recently ended results, plus provider quota and service attention items, with a reset countdown when Codex 5-hour quota is exhausted. Ended results remain for 15 minutes; tap Confirm to clear the currently displayed ended task messages. Quota thresholds and confirmed Codex window renewals trigger independent alerts. Cat-speak is optional and off by default; native Live Updates and Xiaomi HyperIsland presentation depend on the system. [Notification behavior](docs/notifications.md)
+- **Live activities and alerts:** ongoing Cursor tasks and recently ended results, plus Cursor and Codex quota and service attention items, with a reset countdown when Codex 5-hour quota is exhausted. Ended results remain for 15 minutes; tap Confirm to clear the currently displayed ended task messages. Quota thresholds and confirmed Codex window renewals trigger independent alerts. DeepSeek and Kimi Code are not included in notifications. Cat-speak is optional and off by default; native Live Updates and Xiaomi HyperIsland presentation depend on the system. [Notification behavior](docs/notifications.md)
 - **System entry points:** seven multi-source widgets (two usage, five status), hiding unconfigured sources and adapting with paging, sample previews and pinning; Token management, Settings, Overview and Tasks shortcuts; an overview Quick Settings tile.
 - **Haptics:** enabled by default, with a General switch. Light selections and one confirmation after a successful foreground-entry refresh, manual refresh, save, copy or delete. Foreground refresh must include a real update and complete successful queries; failures, cache-only checks, periodic polling and background sync stay silent. System preferences take precedence.
 - **Refresh and offline display:** checks freshness on resume and shows progress in the app bar while refreshing. Generally refreshes every five minutes in the foreground and roughly fifteen in the background, with extra checks near Codex resets. Cached data remains available after failure. Load failures use a brief notice instead of inline exception details; cached content and retry actions remain available. Disable automatic Codex usage refresh while keeping manual refresh and token-save queries.
@@ -34,7 +34,7 @@ Cold startup restores local caches in parallel; network refresh and system-surfa
 
 Overview, usage and status list sources with saved credentials. Unconfigured cards and selectors are hidden; all sources remain available in Settings → Connections → Token management. Expired or temporarily unavailable saved connections remain visible. Deleting the current connection selects another configured source, while an empty dashboard offers one setup entry.
 
-Configure DeepSeek API and Kimi Code API keys under Settings → Connections → Token management. Kimi Code defaults to China, with an explicit international region option; it is separate from Kimi Open Platform. Balance sufficiency is independent of service health, and missing quota stays unknown. The new sources support encrypted cache, foreground refresh and on-demand widget background updates; notification scope stays unchanged. See [official provider integration](docs/official-providers.md) for endpoints and scope.
+Configure DeepSeek API and Kimi Code API keys under Settings → Connections → Token management. Kimi Code defaults to China, with an explicit international region option; it is separate from Kimi Open Platform. Balance sufficiency is independent of service health, and missing quota stays unknown. Both support encrypted cache, foreground refresh and on-demand widget background updates; notifications stay limited to Cursor and Codex. See [official provider integration](docs/official-providers.md) for endpoints and scope.
 
 ## Credentials
 
@@ -44,6 +44,8 @@ Open Settings → Service connections → Token management, then select the serv
 | --- | --- |
 | Cursor | In-app Windows extraction instructions; desktop state database entry `cursorAuth/accessToken`, commonly at `%APPDATA%\Cursor\User\globalStorage\state.vscdb` on Windows |
 | Codex | `~/.codex/auth.json` after Codex CLI login (`%USERPROFILE%\.codex\auth.json` on Windows); use `tokens.access_token` and optionally `tokens.account_id` |
+| DeepSeek API | Official API key, used only for `api.deepseek.com/user/balance`; the app does not read a console session |
+| Kimi Code | Coding-plan API key. China (`api.kimi.com`) is the default, with an explicit international option (`api.kimi.ai`); an Open Platform key does not replace it |
 
 An OpenAI platform API key does not replace a Codex / ChatGPT subscription token. Update expired or invalid credentials from the corresponding provider. Official status requests remain anonymous and carry no token; their in-app visibility follows saved connections. Public reset records are shown independently.
 
@@ -52,7 +54,7 @@ An OpenAI platform API key does not replace a Codex / ChatGPT subscription token
 - Credentials go only to the corresponding fixed official domains. Status and public-reset requests carry no token. Accounts, usage, tasks and personal resets use Android Keystore AES-GCM and are excluded from backup and device transfer.
 - Only parsed usage / task summaries are cached. Full task conversations stay on the official website; checked links open in the system browser.
 - The Resets page displays `regular` resets and `banked` reset credit grants from the `codex-resets.com` API, with separate counts and heatmap colors. It does not infer 5-hour / weekly renewals or personal reset-credit use from quota changes. This third-party summary is not official account history; missing dates do not prove no reset occurred. The page never redeems resets.
-- Local observation collection is enabled by default and records cumulative values seen during successful refreshes, supporting trends for the latest 90 days. Lines break at period changes, decreases or gaps over 30 minutes. They are not complete daily token usage, and quota percentages cannot be converted to token counts. Disable collection while retaining existing history, or clear both services' histories, in Settings → Service connections. Expired daily files are removed on the next history read or sample write. See [retention and deletion rules](PRIVACY.en.md#local-usage-observations).
+- Local observation collection is enabled by default and records cumulative Cursor and Codex values seen during successful refreshes, encrypted for the latest 90 days. The usage page charts only Cursor, for 7 / 30 / 90 days. Codex has no observation trend; recent samples still feed window pace estimates. Lines break at period changes, decreases or gaps over 30 minutes. They are not complete daily token usage, and quota percentages cannot be converted to token counts. Disable collection while retaining existing history, or clear both services' histories, in Settings → Service connections. Expired daily files are removed on the next history read or sample write. See [retention and deletion rules](PRIVACY.en.md#local-usage-observations).
 - Provider usage endpoints may change. Battery and network restrictions can delay background work and alerts; exact timing is not guaranteed. Android 8.0+ and arm64 only.
 
 See the full [Privacy Policy](PRIVACY.en.md) for data handling and permissions.
@@ -81,4 +83,4 @@ At the owner's request, current builds use the shared `release.keystore`, alias 
 
 ## License and contact
 
-agenT is an unofficial, personally maintained tool under [MIT](LICENSE), with no affiliation to Cursor (Anysphere) or OpenAI. Use project GitHub issues for questions and suggestions; review the privacy policy and applicable service terms before use.
+agenT is an unofficial, personally maintained tool under [MIT](LICENSE), with no affiliation to Cursor (Anysphere), OpenAI, DeepSeek, or Moonshot AI. Use project GitHub issues for questions and suggestions; review the privacy policy and applicable service terms before use.

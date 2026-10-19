@@ -4,6 +4,10 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## Unreleased
+
+- Correct the repository description and topic docs so the public description covers Cursor, Codex, DeepSeek API and Kimi Code. Fill in the credential table, status summaries, usage panes, endpoint list, and the status and console addresses the app may open. The privacy policy now states that the usage page charts local observations for Cursor only; recent Codex samples remain for window pace estimates.
+
 ## 1.5.0 — 2026-10-19
 
 > Version decision: 1.4.1 → 1.5.0, with `versionCode` increased to 8. This release adds per-model cost per million tokens on Cursor usage and changes the visible DeepSeek overview, widgets, reset calendar, Tasks label and token-management controls, while removing experimental Google Antigravity support and the Codex local observation trend. New user-visible capability together with interface changes requires at least a minor (Y) release. The package ID and original signing key stay the same; existing Cursor, Codex, DeepSeek API and Kimi Code connections and data can be upgraded in place. The app deletes local Antigravity data on the first launch after upgrading, without a new signature, permission or manual migration of the remaining data.

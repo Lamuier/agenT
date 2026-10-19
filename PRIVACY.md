@@ -30,7 +30,7 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 
 采集**默认开启**。成功的 Cursor / Codex 实时用量查询可记录解析后的数字、UTC 时间戳及相应周期信息；缓存回显和失败请求不产生样本。记录按服务及账号的单向身份摘要隔离，不包含原始 Token 或完整响应。采集复用前台、通知和小组件已有的刷新，不增加轮询。
 
-观察按 UTC 日保存，支持查看最近 90 天；同一额度窗口内、数值未下降的五分钟采样桶会合并，每个日文件最多 1000 个点。过期日文件在下一次历史读取或采样写入时清理。记录使用 Android Keystore AES-GCM 加密，保存在应用私有的禁止备份目录。
+观察按 UTC 日保存，加密保留最近 90 天；同一额度窗口内、数值未下降的五分钟采样桶会合并，每个日文件最多 1000 个点。过期日文件在下一次历史读取或采样写入时清理。记录使用 Android Keystore AES-GCM 加密，保存在应用私有的禁止备份目录。用量页只为 Cursor 绘制 7 / 30 / 90 天趋势；Codex 不绘制该趋势，近期样本仍用于窗口节奏估算。DeepSeek 与 Kimi Code 不写入这套观察记录。
 
 可在「设置 → 服务连接」关闭采集或清空历史。关闭后保留已有历史，并使此前在途采集失效；清空会删除两项服务的观察历史并使在途采集失效。删除账号或凭据会清除对应服务的全部观察历史；可识别为同账号的 Token 续期保留历史，更新凭据导致身份变化时会清除该服务历史。
 
@@ -50,12 +50,12 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 | --- | --- | --- |
 | Cursor 账号、用量与任务 | `api2.cursor.sh`、`cursor.com` | Cursor Token |
 | Codex 用量 | `chatgpt.com/backend-api/wham/usage` | Codex Token 与可选 Account ID |
-| Cursor / Codex 官方状态 | `status.cursor.com`、`status.openai.com` | 不携带 Token 或 Account ID |
+| Cursor / Codex / DeepSeek / Kimi 官方状态 | `status.cursor.com`、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn` | 不携带 Token、API Key 或 Account ID |
 | 第三方公共重置记录 | `codex-resets.com/api/v1/resets` | 不携带 Token、Account ID 或个人记录；仅分页 / 条件缓存参数 |
 
 凭据只发送给对应服务，不随公开状态、公共重置请求或网页外链发送。应用自身的 HTTP 客户端强制 HTTPS、禁止明文传输并拒绝重定向。
 
-任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`stspg.io` 及其子域、`codex-resets.com`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
+任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn`、`stspg.io` 及其子域、`codex-resets.com`，固定控制台地址 `https://platform.deepseek.com/` 与 `https://www.kimi.com/code/console`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
 
 应用不向开发者服务器上传个人凭据、记录或分析数据，也不向第三方公共 API 上传这些数据。
 

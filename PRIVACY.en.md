@@ -32,7 +32,7 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 
 Collection is **enabled by default**. Successful live Cursor / Codex usage requests can record parsed numbers, UTC timestamps and period information; cached displays and failed requests produce no samples. Records are isolated by service and a one-way account identity digest and contain no raw tokens or complete responses. Collection reuses existing foreground, notification and widget refreshes and adds no polling.
 
-Observations are stored by UTC day and support viewing the latest 90 days. Samples in the same five-minute bucket and quota window are coalesced when values have not decreased, with at most 1000 points per daily file. Expired daily files are removed on the next history read or sample write. Records use Android Keystore AES-GCM encryption in the app-private no-backup directory.
+Observations are stored by UTC day and kept encrypted for the latest 90 days. Samples in the same five-minute bucket and quota window are coalesced when values have not decreased, with at most 1000 points per daily file. Expired daily files are removed on the next history read or sample write. Records use Android Keystore AES-GCM encryption in the app-private no-backup directory. The usage page charts only Cursor, for 7 / 30 / 90 days. Codex has no observation trend; recent samples still feed window pace estimates. DeepSeek and Kimi Code are not written into this observation history.
 
 Disable collection or clear history in Settings → Service connections. Disabling keeps existing history and invalidates earlier in-flight collection; clearing deletes both services' observation histories and invalidates in-flight collection. Removing an account or credential clears all observations for the corresponding service. An identified same-account token renewal preserves history; a credential update that changes identity clears that service's history.
 
@@ -52,12 +52,12 @@ Current usage, task and public-status caches preserve the latest successful resu
 | --- | --- | --- |
 | Cursor account, usage and tasks | `api2.cursor.sh`, `cursor.com` | Cursor token |
 | Codex usage | `chatgpt.com/backend-api/wham/usage` | Codex token and optional Account ID |
-| Official Cursor / Codex status | `status.cursor.com`, `status.openai.com` | No token or Account ID |
+| Official Cursor / Codex / DeepSeek / Kimi status | `status.cursor.com`, `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn` | No token, API key or Account ID |
 | Third-party public reset records | `codex-resets.com/api/v1/resets` | No token, Account ID or personal records; only pagination / conditional-cache parameters |
 
 Credentials are sent only to the corresponding service and are not attached to public-status requests, public-reset requests or web links. The app's own HTTP clients require HTTPS, forbid cleartext and reject redirects.
 
-Task conversations, PRs, official status pages and public-reset source links are checked against an allowlist before opening in the system browser's Custom Tabs, with a system-browser fallback. Allowed sources include `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `stspg.io` and its subdomains, `codex-resets.com`, and path-validated `thsottiaux` posts on `x.com` / `twitter.com` (`/thsottiaux/status/<digits>`). Web requests use the browser's own login state and are governed by the browser's and website's data policies.
+Task conversations, PRs, official status pages and public-reset source links are checked against an allowlist before opening in the system browser's Custom Tabs, with a system-browser fallback. Allowed sources include `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn`, `stspg.io` and its subdomains, `codex-resets.com`, the fixed console addresses `https://platform.deepseek.com/` and `https://www.kimi.com/code/console`, and path-validated `thsottiaux` posts on `x.com` / `twitter.com` (`/thsottiaux/status/<digits>`). Web requests use the browser's own login state and are governed by the browser's and website's data policies.
 
 The app uploads no personal credentials, records or analytics to developer-operated servers or to the third-party public API.
 

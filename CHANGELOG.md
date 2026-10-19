@@ -2,6 +2,10 @@
 
 **中文** | [English](CHANGELOG.en.md)
 
+## 未发布
+
+- 更正仓库说明与专题文档，使公开描述覆盖 Cursor、Codex、DeepSeek API 与 Kimi Code。补齐凭据表、状态摘要、用量分栏、接口清单，以及允许打开的状态站和控制台地址。隐私说明写明：用量页只绘制 Cursor 的本机观察趋势，Codex 近期样本仍只用于窗口节奏估算。
+
 ## 1.5.0 — 2026-10-19
 
 > 版本判定：1.4.1 → 1.5.0，`versionCode` 递增为 8。本批新增 Cursor 每个模型的每百万 Token 费用，并调整 DeepSeek 概览、桌面组件、重置日历、任务标记和 Token 管理的可见交互，同时移除实验性 Google Antigravity 与 Codex 本机观察趋势。新增用户可见能力与界面调整并存，至少升级次版本 Y。安装包 ID 与原签名不变；Cursor、Codex、DeepSeek API 与 Kimi Code 的已有连接和数据可覆盖升级。Antigravity 本机数据由应用在升级后首次启动删除，不要求更换签名、权限或手动迁移其余数据。
