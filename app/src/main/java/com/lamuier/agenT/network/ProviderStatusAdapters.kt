@@ -31,6 +31,51 @@ internal object ProviderStatusAdapters {
         return normalized to history
     }
 
+    /**
+     * Keep Cursor rows from the shared xAI status documents.
+     * Component status `info` stays operational so a notice does not raise a service alert.
+     * `disruption` is degraded performance and `outage` is a major outage.
+     */
+    fun cursor(summary: JSONObject, incidents: JSONObject?, uptime: JSONObject?): Pair<JSONObject, JSONObject?> {
+        require(summary.optJSONObject("status")?.optString("indicator")?.isNotBlank() == true) {
+            "Cursor status summary is missing its indicator"
+        }
+        val components = summary.optJSONArray("components")?.objects()
+            ?: throw IllegalArgumentException("Cursor status summary has no components")
+        val groupIds = uptime?.optJSONArray("groups")?.objects().orEmpty()
+            .filter { isCursorLabel(it.optString("name")) }
+            .flatMap { it.optJSONArray("components")?.componentIds().orEmpty() }
+            .toSet()
+        val scoped = components.filter { isCursorComponent(it.optString("id"), it.optString("name"), groupIds) }
+        if (scoped.isEmpty()) throw IllegalArgumentException("Cursor components are not published")
+        val ids = scoped.map { it.getString("id") }.toSet()
+        val normalizedComponents = scoped.mapIndexed { index, component ->
+            JSONObject().put("id", component.getString("id")).put("name", component.getString("name"))
+                .put("position", index).put("status", xaiComponentStatus(component.optString("status")))
+        }
+        fun relevant(event: JSONObject) = event.optJSONArray("components")?.objects().orEmpty().any {
+            it.optString("slug").ifBlank { it.optString("id") } in ids
+        }
+        val fromSummary = summary.optJSONArray("incidents")?.objects().orEmpty().filter(::relevant).map { cursorEvent(it, ids) }
+        val fromHistory = incidents?.optJSONArray("incidents")?.objects().orEmpty().filter(::relevant).map { cursorEvent(it, ids) }
+        val merged = LinkedHashMap<String, JSONObject>()
+        (fromSummary + fromHistory).forEach { event ->
+            val id = event.optString("id")
+            if (id.isNotBlank()) merged.putIfAbsent(id, event)
+        }
+        val unresolved = merged.values.filter { it.optString("status") !in RESOLVED_INCIDENTS }
+        val alerting = unresolved.filter { it.optString("impact") in setOf("minor", "major", "critical") }
+        val page = JSONObject().put("id", "cursor").put("name", "Cursor").put("url", CURSOR_STATUS_URL)
+        uptime?.optString("updated_at")?.takeIf { it.isNotBlank() }?.let { page.put("updated_at", it) }
+        val normalized = JSONObject().put("page", page)
+            .put("status", indicator(normalizedComponents.map { it.getString("status") }, alerting, false))
+            .put("components", JSONArray(normalizedComponents))
+            .put("incidents", JSONArray(unresolved))
+            .put("scheduled_maintenances", JSONArray())
+        val history = incidents?.let { JSONObject().put("incidents", JSONArray(merged.values.toList())) }
+        return normalized to history
+    }
+
     fun deepSeek(summary: JSONObject, history: JSONObject?): Pair<JSONObject, JSONObject?> {
         val data = summary.getJSONObject("data")
         val page = data.getJSONObject("page")
@@ -84,6 +129,62 @@ internal object ProviderStatusAdapters {
             .put("components", JSONArray(affected.map { JSONObject().put("id", it.optString("component_id")).put("name", it.optString("name")) }))
             .put("incident_updates", JSONArray(updates))
     }
+    private fun cursorEvent(event: JSONObject, ids: Set<String>): JSONObject {
+        val id = event.optString("id")
+        val affected = event.optJSONArray("components")?.objects().orEmpty().filter {
+            it.optString("slug").ifBlank { it.optString("id") } in ids
+        }
+        val slug = affected.firstNotNullOfOrNull { it.optString("slug").takeIf(String::isNotBlank) }
+        val link = if (slug != null && SAFE_TOKEN.matches(slug) && SAFE_TOKEN.matches(id)) {
+            "$CURSOR_STATUS_URL/$slug/$id"
+        } else {
+            CURSOR_STATUS_URL
+        }
+        val updates = event.optJSONArray("incident_updates")?.objects().orEmpty().map {
+            JSONObject().put("id", it.optString("id")).put("status", it.optString("status"))
+                .put("body", it.optString("body")).put("created_at", it.optString("created_at"))
+        }
+        val normalized = JSONObject().put("id", id).put("name", event.optString("name"))
+            .put("status", event.optString("status")).put("impact", event.optString("impact"))
+            .put("shortlink", link)
+            .put("components", JSONArray(affected.map {
+                JSONObject().put("id", it.optString("slug").ifBlank { it.optString("id") }).put("name", it.optString("name"))
+            }))
+            .put("incident_updates", JSONArray(updates))
+        listOf("created_at", "updated_at", "resolved_at").forEach { key ->
+            if (!event.isNull(key)) event.optString(key).takeIf { it.isNotBlank() }?.let { normalized.put(key, it) }
+        }
+        return normalized
+    }
+
+    private fun isCursorLabel(value: String): Boolean {
+        val name = value.trim()
+        if (!name.startsWith("Cursor", ignoreCase = true)) return false
+        return name.length == 6 || !name[6].isLetter()
+    }
+
+    private fun isCursorComponent(id: String, name: String, groupIds: Set<String>): Boolean =
+        id in groupIds || id.equals("cursor", ignoreCase = true) || id.startsWith("cursor-", ignoreCase = true) || isCursorLabel(name)
+
+    private fun xaiComponentStatus(value: String): String = when (value.lowercase()) {
+        "available", "info" -> "operational"
+        "disruption" -> "degraded_performance"
+        "outage" -> "major_outage"
+        else -> "unknown"
+    }
+
+    private fun JSONArray.componentIds(): List<String> = buildList {
+        for (index in 0 until length()) {
+            when (val value = opt(index)) {
+                is String -> if (value.isNotBlank()) add(value)
+                is JSONObject -> {
+                    val id = value.optString("id").ifBlank { value.optString("slug") }
+                    if (id.isNotBlank()) add(id)
+                }
+            }
+        }
+    }
+
     private fun componentStatus(value: String): String = when (value.lowercase()) {
         "operational" -> "operational"
         "degraded", "degraded_performance" -> "degraded_performance"
@@ -117,4 +218,7 @@ internal object ProviderStatusAdapters {
     private fun JSONArray.objects() = (0 until length()).mapNotNull { optJSONObject(it) }
     const val DEEPSEEK_PAGE_ID = 6410630422455L
     const val DEEPSEEK_URL = "https://status.deepseek.com"
+    const val CURSOR_STATUS_URL = "https://status.x.ai"
+    private val RESOLVED_INCIDENTS = setOf("resolved", "postmortem", "completed")
+    private val SAFE_TOKEN = Regex("^[A-Za-z0-9_-]+$")
 }

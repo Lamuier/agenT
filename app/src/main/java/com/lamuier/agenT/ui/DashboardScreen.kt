@@ -1,8 +1,11 @@
 package com.lamuier.agenT.ui
 
 import android.provider.Settings
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailDefaults
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.snapshotFlow
@@ -31,11 +34,15 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -224,34 +231,46 @@ internal fun DashboardScreen(
     LaunchedEffect(refreshSource) {
         if (refreshSource != null) { delay(400); if (!refreshBusyUpdated) refreshSource = null }
     }
+    val openTab: (Int) -> Unit = { index ->
+        if (selectedTabId != tabs[index].id) {
+            feedback.selection()
+            userDragged = false
+            selectedTabId = tabs[index].id
+            uiScope.launch { pagerState.animateScrollToPage(index) }
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    NavigationSuiteScaffold(
-        layoutType = if (maxWidth < 600.dp || maxHeight < 480.dp || LocalWindowFolds.current.any { it.width > it.height || it.left < with(LocalDensity.current) { 80.dp.toPx() } }) NavigationSuiteType.NavigationBar else NavigationSuiteType.NavigationRail,
-        navigationSuiteItems = {
-            tabs.forEachIndexed { index, tab ->
-                item(selected = selectedTabId == tab.id,
-                    icon = { Icon(painterResource(tab.navigationIcon), contentDescription = null) },
-                    label = {
-                        val compactLabels = LocalDensity.current.fontScale > 1.3f && maxWidth < 600.dp
-                        val fullLabel = stringResource(tab.labelRes)
-                        Text(stringResource(if (compactLabels) tab.compactLabel else tab.labelRes), maxLines = 2,
-                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
-                            modifier = Modifier.semantics { contentDescription = fullLabel })
-                    },
-                    onClick = {
-                        if (selectedTabId != tab.id) {
-                            feedback.selection()
-                            userDragged = false
-                            selectedTabId = tab.id
-                            uiScope.launch { pagerState.animateScrollToPage(index) }
-                        }
-                    })
+    val useRail = maxWidth >= 600.dp && maxHeight >= 480.dp &&
+        LocalWindowFolds.current.none { it.width > it.height || it.left < with(LocalDensity.current) { 80.dp.toPx() } }
+    val compactLabels = LocalDensity.current.fontScale > 1.3f && maxWidth < 600.dp
+    Row(Modifier.fillMaxSize()) {
+        if (useRail) {
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight(),
+                containerColor = MaterialTheme.colorScheme.background,
+                windowInsets = NavigationRailDefaults.windowInsets,
+            ) {
+                Spacer(Modifier.weight(1f))
+                tabs.forEachIndexed { index, tab ->
+                    DashboardRailItem(tab, selectedTabId == tab.id) { openTab(index) }
+                }
+                Spacer(Modifier.weight(1f))
             }
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) {
+        }
         Scaffold(
-            contentWindowInsets = WindowInsets.safeDrawing,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            contentWindowInsets = if (useRail) {
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.End)
+            } else WindowInsets.safeDrawing,
+            bottomBar = {
+                if (!useRail) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                        tabs.forEachIndexed { index, tab ->
+                            DashboardBarItem(tab, selectedTabId == tab.id, compactLabels) { openTab(index) }
+                        }
+                    }
+                }
+            },
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -369,6 +388,28 @@ internal fun DashboardScreen(
         }
     }
 }
+}
+
+@Composable
+private fun DashboardNavLabel(tab: DashboardTab, compact: Boolean) {
+    val fullLabel = stringResource(tab.labelRes)
+    Text(stringResource(if (compact) tab.compactLabel else tab.labelRes), maxLines = 2,
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+        modifier = Modifier.semantics { contentDescription = fullLabel })
+}
+
+@Composable
+private fun DashboardRailItem(tab: DashboardTab, selected: Boolean, onClick: () -> Unit) {
+    NavigationRailItem(selected = selected, onClick = onClick,
+        icon = { Icon(painterResource(tab.navigationIcon), contentDescription = null) },
+        label = { DashboardNavLabel(tab, compact = false) })
+}
+
+@Composable
+private fun RowScope.DashboardBarItem(tab: DashboardTab, selected: Boolean, compact: Boolean, onClick: () -> Unit) {
+    NavigationBarItem(selected = selected, onClick = onClick,
+        icon = { Icon(painterResource(tab.navigationIcon), contentDescription = null) },
+        label = { DashboardNavLabel(tab, compact) })
 }
 
 internal val DashboardTab.compactLabel: Int get() = when(this) {

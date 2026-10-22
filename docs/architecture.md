@@ -8,7 +8,7 @@ agenT 的业务代码集中在单一 `app` 模块，使用 Kotlin、Jetpack Comp
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.6.0`，`versionCode=9`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.7.0`，`versionCode=10`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -78,11 +78,11 @@ flowchart LR
 | Codex 当前额度窗口 / 重置券字段 | `chatgpt.com/backend-api/wham/usage` | Codex Bearer，可选 Account ID |
 | DeepSeek 余额 | `api.deepseek.com/user/balance` | DeepSeek API Key |
 | Kimi Code 额度 | 用户选定的 `api.kimi.com/coding/v1/usages` 或 `api.kimi.ai/coding/v1/usages` | Kimi Code API Key |
-| Cursor / Codex 官方状态 | `status.cursor.com/api/v2/{summary,incidents}.json`、`status.openai.com/api/v2/{summary,components,incidents}.json` | 无 |
+| Cursor / Codex 官方状态 | `data.x.ai/status/{summary,incidents,uptime}.json`（页面 `status.x.ai`；尚未包含 Cursor 组件时回退 `status.cursor.com/api/v2/{summary,incidents}.json`）、`status.openai.com/api/v2/{summary,components,incidents}.json` | 无 |
 | DeepSeek / Kimi 官方状态 | `status.deepseek.com` 的 API 摘要与最近 90 天变更、`status.moonshot.cn/api/v2/{summary,components,incidents}.json` | 无 |
 | 公共重置公告 / 观测 | `codex-resets.com/api/v1/resets` | 无 |
 
-这些是代码中使用的通道，不代表服务方承诺长期稳定的公共 API。Codex 状态仅筛选 Codex Web / API / CLI / 桌面 / 扩展相关组件；缺少完整组件时显示未知，其他 OpenAI 产品的事件不直接归为 Codex 故障。
+这些是代码中使用的通道，不代表服务方承诺长期稳定的公共 API。Cursor 状态只保留名为 Cursor 的分组，以及 id 为 `cursor` / `cursor-*`、或名称以 Cursor 开头且后面不紧跟字母的组件；`info` 仍视为正常，`disruption` 记为性能下降，`outage` 记为严重中断。新状态页还没有这些组件时继续读取 `status.cursor.com`。Codex 状态仅筛选 Codex Web / API / CLI / 桌面 / 扩展相关组件；缺少完整组件时显示未知，其他 OpenAI 产品的事件不直接归为 Codex 故障。
 
 凭据、账号别名、用量、任务与个人重置历史经 Android Keystore AES-GCM 加密；公开状态和公共重置缓存明文保存。Keystore 的硬件保护取决于设备，应用不保证所有设备使用硬件密钥。默认不允许备份、设备迁移和明文连接；客户端拒绝重定向，响应大小受限。解锁查看、敏感剪贴板与 `FLAG_SECURE` 见 [隐私政策](../PRIVACY.md)。
 

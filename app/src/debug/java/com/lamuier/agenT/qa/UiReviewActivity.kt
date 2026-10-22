@@ -432,7 +432,7 @@ internal data class ReviewFixture(val cursor: AppUiState, val codex: CodexQuotaU
             )
             fun status(codex: Boolean) = ServiceStatus(
                 description = "", indicator = if (codex) StatusIndicator.None else StatusIndicator.Minor,
-                pageUpdatedAt = now.toString(), pageUrl = if (codex) "https://status.openai.com" else "https://status.cursor.com",
+                pageUpdatedAt = now.toString(), pageUrl = if (codex) "https://status.openai.com" else "https://status.x.ai",
                 components = if (codex) listOf("Codex Web", "Codex API", "CLI", "Codex in ChatGPT Desktop", "VS Code extension")
                     .mapIndexed { index, name -> StatusComponent("codex-$index", name, ComponentStatus.Operational, index) }
                 else listOf(StatusComponent("ide", "IDE", ComponentStatus.Operational, 0),

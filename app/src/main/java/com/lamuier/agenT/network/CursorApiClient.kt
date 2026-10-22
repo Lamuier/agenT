@@ -74,16 +74,6 @@ class CursorApiClient(private val context: Context) {
         )
     }
 
-    /** Cursor 官方 Statuspage：当前总览、组件状态、未解决事件与计划维护。无需 Token。 */
-    suspend fun statusSummary(): JSONObject = withContext(Dispatchers.IO) {
-        parseJson(request(url = STATUS_SUMMARY_URL, kind = ApiKind.Status))
-    }
-
-    /** Cursor 官方 Statuspage：近期事件历史（含已恢复）。无需 Token。 */
-    suspend fun statusIncidents(): JSONObject = withContext(Dispatchers.IO) {
-        parseJson(request(url = STATUS_INCIDENTS_URL, kind = ApiKind.Status))
-    }
-
     private fun request(
         url: String,
         accessToken: String? = null,
@@ -240,8 +230,6 @@ class CursorApiClient(private val context: Context) {
         const val CURSOR_API_BASE = "https://api2.cursor.sh"
         const val CURSOR_WEB_BASE = "https://cursor.com"
         const val DASHBOARD_SERVICE = "aiserver.v1.DashboardService"
-        const val STATUS_SUMMARY_URL = "https://status.cursor.com/api/v2/summary.json"
-        const val STATUS_INCIDENTS_URL = "https://status.cursor.com/api/v2/incidents.json"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
         const val MAX_RESPONSE_BYTES = 1024 * 1024

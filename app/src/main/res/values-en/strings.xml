@@ -973,4 +973,27 @@
     <string name="widget_credit_available">Credit available</string>
     <string name="widget_credit_unavailable">Insufficient credit</string>
     <string name="widget_reset_short">Reset %1$s</string>
+<string name="status_widget_style_title">Status widget layout</string>
+    <string name="status_widget_style_note">Applies to the 4×3 service status widget. Smaller sizes and large text keep the compact layout.</string>
+    <string name="status_widget_style_summary">Summary list</string>
+    <string name="status_widget_style_summary_hint">A headline verdict above one row per source</string>
+    <string name="status_widget_style_signals">Signal tiles</string>
+    <string name="status_widget_style_signals_hint">One tile per source, tinted when affected</string>
+    <string name="status_widget_style_alerts">Issues first</string>
+    <string name="status_widget_style_alerts_hint">Expands affected sources and folds the rest into one line</string>
+    <string name="widget_board_usage_title">%1$s · Quota used</string>
+    <string name="widget_board_status_title">%1$s · Service status</string>
+    <string name="widget_board_highest">Highest usage</string>
+    <string name="widget_board_used_up">%1$s %2$s · used up</string>
+    <string name="widget_board_used">%1$s %2$s · %3$s used</string>
+    <string name="widget_board_other_window">%1$s %2$s used</string>
+    <string name="widget_board_all_ok">All services operational</string>
+    <plurals name="widget_board_many_issues"><item quantity="one">%1$d service affected</item><item quantity="other">%1$d services affected</item></plurals>
+    <plurals name="widget_board_source_count"><item quantity="one">%1$d source</item><item quantity="other">%1$d sources</item></plurals>
+    <string name="widget_board_components">%1$d/%2$d up</string>
+    <plurals name="widget_board_tile_ok"><item quantity="one">%1$d component up</item><item quantity="other">%1$d components up</item></plurals>
+    <string name="widget_board_since">since %1$s</string>
+    <string name="widget_board_lasting">for %1$s</string>
+    <string name="widget_board_rest_ok">Others operational</string>
+    <plurals name="widget_board_more_issues"><item quantity="one">%1$d more affected</item><item quantity="other">%1$d more affected</item></plurals>
 </resources>

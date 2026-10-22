@@ -23,10 +23,11 @@ android {
 
     defaultConfig {
         applicationId = "com.lamuier.agenT"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "1.6.0"
+        versionCode = 10
+        versionName = "1.7.0"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -46,6 +47,12 @@ android {
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
+            // Device checks use a side-by-side package so the installed release and its data stay untouched.
+            val previewSuffix = providers.gradleProperty("agentPreviewApplicationIdSuffix").orNull
+            if (!previewSuffix.isNullOrBlank()) {
+                applicationIdSuffix = previewSuffix
+                manifestPlaceholders["appLabel"] = "agenT preview"
+            }
         }
         release {
             isMinifyEnabled = true

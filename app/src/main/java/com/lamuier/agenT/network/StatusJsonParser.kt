@@ -13,7 +13,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 解析 Cursor / OpenAI 官方 Statuspage 兼容 JSON。
+ * 解析官方状态 JSON。Cursor 的 xAI 数据先由 ProviderStatusAdapters 收成同一形状。
  *
  * 选用 `/api/v2/summary.json` + `/api/v2/incidents.json`，而不是 HTML 或 RSS：
  * - 网页结构会变，抓取脆弱，也拿不到结构化的组件状态；
@@ -206,6 +206,6 @@ object StatusJsonParser {
 
     private const val CACHE_SCHEMA = 1
     private const val MAX_RECENT_INCIDENTS = 12
-    private const val DEFAULT_STATUS_URL = "https://status.cursor.com"
+    private const val DEFAULT_STATUS_URL = "https://status.x.ai"
     private val RESOLVED_STATUSES = setOf("resolved", "postmortem", "completed")
 }

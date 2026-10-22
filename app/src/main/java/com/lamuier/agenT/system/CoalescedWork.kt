@@ -18,7 +18,9 @@ internal class CoalescedWork<T>(scope: CoroutineScope, delayMillis: Long = 200L,
                     val next = requests.tryReceive().getOrNull() ?: break
                     latest = next
                 }
-                try { work(latest) } catch (error: CancellationException) { throw error } catch (_: Exception) { }
+                try { work(latest) } catch (error: CancellationException) { throw error } catch (error: Exception) {
+                    android.util.Log.w("AgenTWork", "coalesced request dropped", error)
+                }
             }
         }
     }

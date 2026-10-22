@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.RemoteViews
 import com.lamuier.agenT.R
+import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.data.ThemePreferences
 import com.lamuier.agenT.util.AppLocale
 import kotlinx.coroutines.*
@@ -35,7 +36,7 @@ internal object WidgetPreviews {
         if (Build.VERSION.SDK_INT < 35 || running) return
         val app = context.applicationContext
         val preferences = app.getSharedPreferences("agentt_widget_previews_v1", Context.MODE_PRIVATE)
-        val key = "5:${AppLocale.stored(app)}:${WidgetThemeColors.resolve(app)}:${ThemePreferences.get(app).read()}:${app.resources.configuration.uiMode}:${app.resources.configuration.fontScale}"
+        val key = "6:${DashboardPreferences.get(app).readStatusWidgetStyle().storageKey}:${AppLocale.stored(app)}:${WidgetThemeColors.resolve(app)}:${ThemePreferences.get(app).read()}:${app.resources.configuration.uiMode}:${app.resources.configuration.fontScale}"
         if (preferences.getString("rendered", null) == key) return
         running = true
         scope.launch {

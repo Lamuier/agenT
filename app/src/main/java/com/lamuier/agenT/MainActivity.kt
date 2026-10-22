@@ -62,6 +62,15 @@ class MainActivity : FragmentActivity() {
         val splashScreen = installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Preview installs are a separate package used for on-device layout checks. They open the
+        // debug fixture screen and never read the installed release app.
+        if (BuildConfig.APPLICATION_ID == "com.lamuier.agenT.preview") {
+            startActivity(Intent().setClassName(this, "com.lamuier.agenT.qa.UiReviewActivity").apply {
+                intent.extras?.let(::putExtras)
+            })
+            finish()
+            return
+        }
         splashScreen.setKeepOnScreenCondition { !isContentReady }
         preferWideColorGamut()
         if (savedInstanceState == null) {

@@ -41,9 +41,11 @@ import com.lamuier.agenT.util.StatusPresentation
 import com.lamuier.agenT.util.UsageCalculations
 import com.lamuier.agenT.util.AssistantPresentation
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -54,6 +56,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val ACTION_NEXT_PAGE = "com.lamuier.agenT.action.NEXT_WIDGET_PAGE"
 private const val EXTRA_WIDGET_PAGE_CAPACITY = "com.lamuier.agenT.extra.WIDGET_PAGE_CAPACITY"
@@ -61,12 +64,30 @@ const val EXTRA_WIDGET_SOURCE = "com.lamuier.agenT.extra.WIDGET_SOURCE"
 private const val ACTION_MANUAL_REFRESH = "com.lamuier.agenT.action.MANUAL_WIDGET_REFRESH"
 const val ACTION_OPEN_FROM_WIDGET = "com.lamuier.agenT.action.OPEN_FROM_WIDGET"
 const val EXTRA_WIDGET_OPEN_TAB = "com.lamuier.agenT.extra.OPEN_TAB"
-private const val EXTRA_FORCE_REFRESH = "force_refresh"
-private const val WIDGET_REFRESH_JOB_ID = 0x43505731
-private const val WIDGET_PERIODIC_JOB_ID = 0x43505732
-private const val CACHE_FRESH_SECONDS = 15 * 60
-private const val PERIODIC_REFRESH_MS = 15L * 60 * 1000
+internal const val EXTRA_FORCE_REFRESH = "force_refresh"
+internal const val EXTRA_REQUESTED_AT = "requested_at"
+internal const val WIDGET_REFRESH_JOB_ID = 0x43505731
+internal const val WIDGET_PERIODIC_JOB_ID = 0x43505732
+internal const val PERIODIC_REFRESH_MS = 15L * 60 * 1000
+/** 周期任务只在每个周期的最后五分钟内运行，相邻两次至少隔十分钟。 */
+internal const val PERIODIC_FLEX_MS = 5L * 60 * 1000
+/**
+ * 计划刷新只跳过九分钟内的缓存。新鲜度若和周期一样长，到点的那次常因“还新鲜”而跳过，
+ * 要等下一个周期才真正拉取，组件上的数据会旧到半小时以上。
+ */
+internal const val CACHE_FRESH_SECONDS = 9 * 60
 private const val MANUAL_REFRESH_COOLDOWN_MS = 10_000L
+/** 刷新按钮的广播最多托住这么久，后台广播的系统超时是一分钟。 */
+private const val MANUAL_REFRESH_HOLD_MS = 15_000L
+/** 按钮触发的这一轮（含排队）最多等这么久；各来源超过十秒的先用缓存画上，由兜底任务补齐。 */
+private const val MANUAL_REFRESH_BUDGET_MS = 12_000L
+private const val MANUAL_SOURCE_DEADLINE_MS = 10_000L
+/** 后台任务等这么久就先把已到的结果画上，再等慢的来源补画一次。 */
+private const val JOB_SOFT_DEADLINE_MS = 15_000L
+
+/** 组件渲染失败只写日志，任何一条都不能让桌面停在旧画面却不留痕迹。 */
+private const val WIDGET_LOG_TAG = "AgenTWidget"
+private const val REFRESH_STALE_MS = 10L * 60 * 1000
 
 private fun loc(context: Context): Context = AppLocale.wrap(context)
 
@@ -190,10 +211,45 @@ private data class CodexWidgetLoadResult(
     val shouldRetry: Boolean = false,
 )
 
+/** 刷新期间的临时提示同时盖住各来源的状态行，与按钮按下时的那一帧一致。 */
+private fun WidgetSnapshot.withNotice(text: String) = copy(status = text, serviceStatusLine = text, notice = text)
+
 private data class WidgetLoadResult(
     val snapshot: WidgetSnapshot,
     val shouldRetry: Boolean = false,
+    /** 有来源没在截止时间内返回，这一轮先用了它的缓存。 */
+    val timedOut: Boolean = false,
 )
+
+internal data class RefreshResult(val shouldRetry: Boolean, val timedOut: Boolean = false)
+
+/**
+ * 强制刷新的请求时间早于某次成功的强制刷新开始时间，就已经被那次覆盖。
+ * 按钮那一轮和兜底任务谁先拿到刷新锁都行，后到的一方改按缓存新鲜度刷新，不再把全部来源重拉一遍。
+ */
+internal class ForcedRefreshLedger {
+    private var satisfiedAt = Long.MIN_VALUE
+
+    @Synchronized fun shouldForce(requestedAt: Long): Boolean = requestedAt > satisfiedAt
+
+    @Synchronized fun complete(startedAt: Long, succeeded: Boolean) {
+        if (succeeded) satisfiedAt = maxOf(satisfiedAt, startedAt)
+    }
+}
+
+/**
+ * 等到 [deadline]（elapsedRealtime）为止；超时只取消这次等待，仓库里的请求继续跑完并写入缓存，
+ * 这一轮改用 [onTimeout] 给出的缓存值。没有截止时间时照常等待。
+ */
+internal suspend fun <T : Any> Deferred<T>.awaitUntil(deadline: Long?, onTimeout: () -> T): T {
+    if (deadline == null || isCompleted) return await()
+    val remaining = deadline - SystemClock.elapsedRealtime()
+    val value = if (remaining > 0) withTimeoutOrNull(remaining) { await() } else null
+    return value ?: run {
+        cancel()
+        onTimeout()
+    }
+}
 
 private data class StatusLoadResult(
     val status: ServiceStatus?,
@@ -238,16 +294,9 @@ abstract class BaseCursorWidgetProvider : AppWidgetProvider() {
                     ComponentName(context, javaClass),
                 )
                 if (appWidgetId in ownedIds) {
-                    val accepted = AgenTWidgetUpdater.scheduleManualRefresh(context.applicationContext)
-                    AgenTWidgetUpdater.updateFromCache(
-                        context.applicationContext,
-                        goAsync(),
-                        statusOverride = if (accepted) {
-                            loc(context).getString(R.string.widget_refreshing)
-                        } else {
-                            loc(context).getString(R.string.widget_refresh_later)
-                        },
-                    )
+                    val app = context.applicationContext
+                    val accepted = AgenTWidgetUpdater.scheduleManualRefresh(app)
+                    AgenTWidgetUpdater.refreshFromTap(app, goAsync(), accepted)
                 }
             }
             else -> super.onReceive(context, intent)
@@ -331,6 +380,7 @@ object AgenTWidgetUpdater {
     internal fun renderSourcesPreview(context: Context, sources: List<WidgetSource>, provider: Class<*>,
         width: Int, height: Int, anchor: String? = null): RemoteViews {
         val kind = providerSpecs.first { it.providerClass == provider }.kind
+        renderBoard(context, kind, sources, width, height)?.let { return it }
         val capacity = WidgetSourcePolicy.capacity(kind.name, width, height, context.resources.configuration.fontScale, sources.size)
         return WidgetSourceRenderer.render(context, sources, kind.isStatus, width, height, capacity, anchor)
     }
@@ -348,7 +398,18 @@ object AgenTWidgetUpdater {
     private val scheduleLock = Any()
     private val renderLock = Any()
     private var jobRunning = false
-    private var forceQueuedWhileRunning = false
+    private var jobStartedAt = 0L
+    /** 任务执行期间收到的强制刷新请求时间；这一轮结束后按它再跑一轮。 */
+    private var forceQueuedAt: Long? = null
+    private val forcedRefreshes = ForcedRefreshLedger()
+    /** 按钮触发的刷新画出结果前，期间任何缓存重绘都保留“正在刷新”；超过 [ManualRefresh.until] 自动撤下。 */
+    private class ManualRefresh(val requestedAt: Long, val until: Long)
+    private val manualRefresh = java.util.concurrent.atomic.AtomicReference<ManualRefresh?>(null)
+    private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+
+    private fun refreshingNotice(context: Context): String? =
+        manualRefresh.get()?.takeIf { SystemClock.elapsedRealtime() < it.until }
+            ?.let { loc(context).getString(R.string.widget_refreshing) }
 
     private val providerSpecs = listOf(
         ProviderSpec(MiniCursorWidgetProvider::class.java, WidgetKind.Mini),
@@ -381,13 +442,15 @@ object AgenTWidgetUpdater {
             scheduler.cancel(WIDGET_PERIODIC_JOB_ID)
             return
         }
-        if (scheduler.getPendingJob(WIDGET_PERIODIC_JOB_ID) != null) return
+        // 旧版本按整周期 flex 排过任务，参数不同就重排一次，否则升级后仍是旧的调度窗口。
+        val pending = scheduler.getPendingJob(WIDGET_PERIODIC_JOB_ID)
+        if (pending != null && pending.intervalMillis == PERIODIC_REFRESH_MS && pending.flexMillis == PERIODIC_FLEX_MS) return
         val job = JobInfo.Builder(
             WIDGET_PERIODIC_JOB_ID,
             ComponentName(appContext, AgenTWidgetJobService::class.java),
         )
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPeriodic(PERIODIC_REFRESH_MS)
+            .setPeriodic(PERIODIC_REFRESH_MS, PERIODIC_FLEX_MS)
             .setPersisted(true)
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -400,55 +463,109 @@ object AgenTWidgetUpdater {
 
     internal fun updateFromCache(
         context: Context,
-        pendingResult: android.content.BroadcastReceiver.PendingResult,
+        pendingResult: android.content.BroadcastReceiver.PendingResult? = null,
         statusOverride: String? = null,
     ) {
         val generation = cacheRenderGeneration.incrementAndGet()
         shortScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { WidgetLoader.readCached(context) }
-                renderAll(
-                    context,
-                    statusOverride?.let {
-                        snapshot.copy(status = it, serviceStatusLine = it, notice = it)
-                    } ?: snapshot,
-                    generation,
-                )
+                renderAll(context, statusOverride?.let(snapshot::withNotice) ?: snapshot, generation)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // 广播里的重绘失败只记日志：进程被拖垮会让桌面一直停在旧画面。
+                android.util.Log.w(WIDGET_LOG_TAG, "broadcast redraw failed", error)
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }
 
-    internal fun scheduleManualRefresh(context: Context): Boolean {
+    /**
+     * 刷新按钮：在广播里完成这一轮强制刷新。广播结束前进程处于接收广播状态，系统不会冻结它，也不会切断后台网络；
+     * 广播一结束又没有任务在跑，进程就按缓存进程处理：HyperOS 会停掉刚排上的任务，后台网络随即被切断，
+     * 进程里的请求只能等到超时。兜底任务照常排着，这一轮没能全部拿到时由它补齐。
+     */
+    internal fun refreshFromTap(context: Context, pending: android.content.BroadcastReceiver.PendingResult?,
+        requestedAt: Long?) {
+        if (requestedAt == null) {
+            // 冷却期内再点：上一次还在刷新就继续显示“正在刷新”，否则提示稍后再试。
+            val later = loc(context).getString(R.string.widget_refresh_later).takeIf { refreshingNotice(context) == null }
+            updateFromCache(context, pending, later)
+            return
+        }
+        val tap = ManualRefresh(requestedAt, SystemClock.elapsedRealtime() + MANUAL_REFRESH_HOLD_MS)
+        manualRefresh.set(tap)
+        val finished = AtomicBoolean(false)
+        val finish = Runnable { if (finished.compareAndSet(false, true)) pending?.finish() }
+        // 渲染或读缓存卡住时也必须在系统超时前交还广播。
+        mainHandler.postDelayed(finish, MANUAL_REFRESH_HOLD_MS)
+        shortScope.launch {
+            try {
+                renderCached(context)
+                val result = withTimeoutOrNull(MANUAL_REFRESH_BUDGET_MS) {
+                    performScheduledRefresh(context, force = true, requestedAt, requestedAt + MANUAL_SOURCE_DEADLINE_MS)
+                }
+                if (result == null) {
+                    android.util.Log.w(WIDGET_LOG_TAG, "tap refresh ran out of time, fallback job continues")
+                    manualRefresh.compareAndSet(tap, null)
+                    renderCached(context)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w(WIDGET_LOG_TAG, "tap refresh failed, fallback job continues", error)
+                manualRefresh.compareAndSet(tap, null)
+                runCatching { renderCached(context) }
+            } finally {
+                mainHandler.removeCallbacks(finish)
+                finish.run()
+            }
+        }
+    }
+
+    private suspend fun renderCached(context: Context) {
+        val generation = cacheRenderGeneration.incrementAndGet()
+        renderAll(context, withContext(Dispatchers.IO) { WidgetLoader.readCached(context) }, generation)
+    }
+
+    /** 排上兜底任务后返回这次请求的时间；冷却中或没有组件时返回 null。 */
+    internal fun scheduleManualRefresh(context: Context): Long? {
         val now = SystemClock.elapsedRealtime()
         while (true) {
             val previous = lastManualRefreshAt.get()
-            if (previous != 0L && now - previous < MANUAL_REFRESH_COOLDOWN_MS) return false
+            if (previous != 0L && now - previous < MANUAL_REFRESH_COOLDOWN_MS) return null
             if (lastManualRefreshAt.compareAndSet(previous, now)) break
         }
-        val scheduled = scheduleRefresh(context, force = true)
+        val scheduled = scheduleRefresh(context, force = true, requestedAt = now)
         if (!scheduled) lastManualRefreshAt.compareAndSet(now, 0L)
-        return scheduled
+        return now.takeIf { scheduled }
     }
 
-    internal fun scheduleRefresh(context: Context, force: Boolean): Boolean {
+    internal fun scheduleRefresh(context: Context, force: Boolean,
+        requestedAt: Long = SystemClock.elapsedRealtime()): Boolean {
         if (!hasWidgets(context)) return false
         return synchronized(scheduleLock) {
+            // 任务被取消时可能漏掉收尾；超时后按已结束处理，否则组件再也排不到下一次刷新。
+            if (jobRunning && SystemClock.elapsedRealtime() - jobStartedAt >= REFRESH_STALE_MS) {
+                android.util.Log.w(WIDGET_LOG_TAG, "refresh job slot expired")
+                jobRunning = false
+            }
             if (jobRunning) {
-                forceQueuedWhileRunning = forceQueuedWhileRunning || force
+                if (force) forceQueuedAt = maxOf(forceQueuedAt ?: requestedAt, requestedAt)
                 return@synchronized true
             }
             val scheduler = context.getSystemService(JobScheduler::class.java)
             val pendingJob = scheduler.getPendingJob(WIDGET_REFRESH_JOB_ID)
-            val pendingForce = pendingJob
-                ?.extras
-                ?.getBoolean(EXTRA_FORCE_REFRESH, false)
-                ?: false
-            if (pendingJob != null && (!force || pendingForce)) return@synchronized true
+            if (!force && pendingJob != null) return@synchronized true
+            if (force && pendingJob != null) {
+                scheduler.cancel(WIDGET_REFRESH_JOB_ID)
+            }
 
             val extras = PersistableBundle().apply {
-                putBoolean(EXTRA_FORCE_REFRESH, force || pendingForce)
+                putBoolean(EXTRA_FORCE_REFRESH, force)
+                putLong(EXTRA_REQUESTED_AT, requestedAt)
             }
             val job = JobInfo.Builder(
                 WIDGET_REFRESH_JOB_ID,
@@ -463,44 +580,63 @@ object AgenTWidgetUpdater {
         }
     }
 
-    internal fun onJobStarted(force: Boolean): Boolean = synchronized(scheduleLock) {
-        jobRunning = true
-        val effectiveForce = force || forceQueuedWhileRunning
-        forceQueuedWhileRunning = false
-        effectiveForce
-    }
+    /** 返回这一轮是否强制及对应的请求时间；上一轮执行期间排进来的强制请求并入这一轮。 */
+    internal fun onJobStarted(force: Boolean, requestedAt: Long = SystemClock.elapsedRealtime()): Pair<Boolean, Long> =
+        synchronized(scheduleLock) {
+            jobRunning = true
+            jobStartedAt = SystemClock.elapsedRealtime()
+            val queued = forceQueuedAt
+            forceQueuedAt = null
+            if (queued == null) force to requestedAt else true to maxOf(queued, requestedAt)
+        }
 
-    internal fun takeQueuedForce(): Boolean = synchronized(scheduleLock) {
-        val queued = forceQueuedWhileRunning
-        forceQueuedWhileRunning = false
-        queued
+    internal fun takeQueuedForce(): Long? = synchronized(scheduleLock) {
+        forceQueuedAt.also { forceQueuedAt = null }
     }
 
     internal fun onJobFinished(context: Context) {
-        val scheduleForce = synchronized(scheduleLock) {
+        val queued = synchronized(scheduleLock) {
             jobRunning = false
-            val queued = forceQueuedWhileRunning
-            forceQueuedWhileRunning = false
-            queued
+            forceQueuedAt.also { forceQueuedAt = null }
         }
-        if (scheduleForce) scheduleRefresh(context, force = true)
+        if (queued != null) scheduleRefresh(context, force = true, requestedAt = queued)
     }
 
     internal fun onJobStopped(context: Context) {
         onJobFinished(context)
     }
 
-    internal suspend fun performScheduledRefresh(context: Context, force: Boolean): Boolean =
+    /**
+     * 刷新锁内的一轮。[deadline] 之前没返回的来源先用缓存画上。
+     * 强制请求已被更晚开始的成功强制刷新覆盖时直接返回：组件上已是那一轮刚拉到的数据，
+     * 再按缓存重画一遍只会把页脚的“已更新”改回“缓存”，看起来像没刷新。
+     */
+    internal suspend fun performScheduledRefresh(context: Context, force: Boolean,
+        requestedAt: Long = SystemClock.elapsedRealtime(), deadline: Long? = null): RefreshResult =
         refreshMutex.withLock {
+            if (force && !forcedRefreshes.shouldForce(requestedAt)) return@withLock RefreshResult(shouldRetry = false)
+            val startedAt = SystemClock.elapsedRealtime()
             val loadUsageData = hasKind(context) { !it.isStatus }
             val loadStatusData = hasKind(context) { it.isStatus }
             val result = withContext(Dispatchers.IO) {
-                WidgetLoader.load(context, force, loadUsageData, loadStatusData)
+                WidgetLoader.load(context, force, loadUsageData, loadStatusData, deadline)
+            }
+            if (force) {
+                forcedRefreshes.complete(startedAt, succeeded = !result.shouldRetry)
+                // 点按之后才开始的这一轮已有结果，“正在刷新”随这次重绘撤下。
+                manualRefresh.get()?.takeIf { it.requestedAt <= startedAt }?.let { manualRefresh.compareAndSet(it, null) }
             }
             val generation = cacheRenderGeneration.incrementAndGet()
             renderAll(context, result.snapshot, generation)
-            result.shouldRetry
+            RefreshResult(result.shouldRetry, result.timedOut)
         }
+
+    /** 后台任务的一轮：慢的来源先用缓存画上，再等它们回来补画一次。 */
+    internal suspend fun refreshInJob(context: Context, force: Boolean, requestedAt: Long): Boolean {
+        val first = performScheduledRefresh(context, force, requestedAt, SystemClock.elapsedRealtime() + JOB_SOFT_DEADLINE_MS)
+        if (!first.timedOut) return first.shouldRetry
+        return performScheduledRefresh(context, force = false).shouldRetry
+    }
 
     internal fun cancelIfNoWidgets(context: Context) {
         if (!hasWidgets(context)) {
@@ -527,21 +663,28 @@ object AgenTWidgetUpdater {
     ) {
         synchronized(renderLock) {
             if (expectedGeneration != cacheRenderGeneration.get()) return
-            val stable = if (WidgetLoader.isCurrent(context, snapshot)) snapshot else
-                WidgetLoader.readCached(context).takeIf { WidgetLoader.isCurrent(context, it) } ?: return
+            val current = if (WidgetLoader.isCurrent(context, snapshot)) snapshot else
+                WidgetLoader.readCached(context)
             if (expectedGeneration != cacheRenderGeneration.get()) return
+            // 按钮那一轮还没出结果时，期间的缓存重绘不能抹掉“正在刷新”，否则看起来像点了没反应。
+            val stable = current.takeIf { it.notice != null }
+                ?: refreshingNotice(context)?.let(current::withNotice) ?: current
             val manager = AppWidgetManager.getInstance(context)
             providerSpecs.forEach { spec ->
                 manager.getAppWidgetIds(ComponentName(context, spec.providerClass)).forEach { widgetId ->
-                    val views = render(context, spec, widgetId, stable)
-                    manager.updateAppWidget(widgetId, views)
+                    // 一格画坏不能连带冻住其余组件：跳过这一格，其他组件照常重绘。
+                    val views = runCatching { render(context, spec, widgetId, stable) }
+                        .onFailure { android.util.Log.w(WIDGET_LOG_TAG, "${spec.kind} #$widgetId render failed", it) }
+                        .getOrNull() ?: return@forEach
+                    runCatching { manager.updateAppWidget(widgetId, views) }
+                        .onFailure { android.util.Log.w(WIDGET_LOG_TAG, "${spec.kind} #$widgetId host rejected views", it) }
                 }
             }
         }
     }
 
     internal fun nextPage(context: Context, provider: Class<*>, widgetId: Int,
-        pending: android.content.BroadcastReceiver.PendingResult, requestedCapacity: Int = 0) {
+        pending: android.content.BroadcastReceiver.PendingResult? = null, requestedCapacity: Int = 0) {
         shortScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { WidgetLoader.readCached(context) }
@@ -555,7 +698,7 @@ object AgenTWidgetUpdater {
                 pages.advance(widgetId, ids, capacity)
                 val generation = cacheRenderGeneration.incrementAndGet()
                 renderAll(context, snapshot, generation)
-            } finally { pending.finish() }
+            } finally { pending?.finish() }
         }
     }
 
@@ -589,13 +732,16 @@ object AgenTWidgetUpdater {
         sources: List<WidgetSource>, anchor: String?, width: Int, height: Int): RemoteViews {
         val font = context.resources.configuration.fontScale
         val capacity = WidgetSourcePolicy.capacity(spec.kind.name, width, height, font, sources.size)
+        val open = openAppPendingIntent(context, spec, id, configure = sources.isEmpty(),
+            sourceId = sources.firstOrNull { it.id == anchor }?.id)
+        val refresh = if (spec.kind.hasRefresh && sources.isNotEmpty()) refreshPendingIntent(context, spec, id) else null
+        val openSource = { source: String -> openAppPendingIntent(context, spec, id, sourceId = source) }
+        renderBoard(context, spec.kind, sources, width, height, open, refresh, snapshot.notice, openSource)?.let { return it }
         val legacyPair = sources.map { it.id } == listOf("cursor", "codex") && font <= 1.3f && capacity >= 2
         if (legacyPair && spec.kind == WidgetKind.Tall) return renderUsage(context, spec, id, snapshot,
             compact = compactUsageSize(width, height, font), large = largeUsageSize(width, height, font))
         if (legacyPair && spec.kind == WidgetKind.StatusTall) return renderStatusTall(context, spec, id, snapshot,
             compact = compactUsageSize(width, height, font))
-        val open = openAppPendingIntent(context, spec, id, configure = sources.isEmpty(),
-            sourceId = sources.firstOrNull { it.id == anchor }?.id)
         val next = Intent(context, spec.providerClass).apply {
             action = ACTION_NEXT_PAGE
             data = widgetUri("page-$capacity", spec, id)
@@ -604,9 +750,21 @@ object AgenTWidgetUpdater {
         }.let { PendingIntent.getBroadcast(context, spec.kind.requestBase + id * 10 + capacity, it,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
         return WidgetSourceRenderer.render(context, sources, spec.kind.isStatus, width, height, capacity, anchor,
-            open, next, if (spec.kind.hasRefresh && sources.isNotEmpty()) refreshPendingIntent(context, spec, id) else null, snapshot.notice,
-            openSource = { source -> openAppPendingIntent(context, spec, id, sourceId = source) })
+            open, next, refresh, snapshot.notice, openSource = openSource)
     }
+
+    private fun renderBoard(context: Context, kind: WidgetKind, sources: List<WidgetSource>, width: Int, height: Int,
+        open: PendingIntent? = null, refresh: PendingIntent? = null, notice: String? = null,
+        openSource: (String) -> PendingIntent? = { open }): RemoteViews? = runCatching {
+        when (kind) {
+            WidgetKind.Tall -> WidgetBoardRenderer.usage(context, sources, width, height, open, refresh, notice, openSource)
+            WidgetKind.StatusTall -> WidgetBoardRenderer.status(context, sources, width, height,
+                DashboardPreferences.get(context).readStatusWidgetStyle(), open, refresh, notice, openSource)
+            else -> null
+        }
+    }.onFailure {
+        android.util.Log.w(WIDGET_LOG_TAG, "${kind.name} ${width}x${height} board failed, using paged cards", it)
+    }.getOrNull()
 
     private fun sources(context: Context, snapshot: WidgetSnapshot): List<WidgetSource> = buildList {
         val strings = loc(context)
@@ -717,7 +875,8 @@ object AgenTWidgetUpdater {
         views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent(context, spec, widgetId))
         views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.TRANSPARENT)
         views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
-        views.setInt(R.id.widget_outline, "setColorFilter", colors.surfaceVariant)
+        views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
+        views.setFloat(R.id.widget_outline, "setAlpha", 1f)
         views.setTextViewText(R.id.widget_cursor_name, "Cursor")
         views.setTextViewText(R.id.widget_codex_name, if (kind.hasUsageDetails) "Codex" else "Codex · 5h")
         views.setTextViewText(R.id.widget_cursor_value, cursorValue)
@@ -828,7 +987,8 @@ object AgenTWidgetUpdater {
         val indicator = WidgetSourcePolicy.indicator(sources(context, snapshot))
         val accent = indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
         views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
-        views.setInt(R.id.widget_outline, "setColorFilter", colors.surfaceVariant)
+        views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
+        views.setFloat(R.id.widget_outline, "setAlpha", 1f)
         views.setTextViewText(R.id.widget_brand, strings.getString(R.string.widget_services_title))
         views.setTextColor(R.id.widget_brand, colors.onSurfaceVariant)
         views.setTextViewText(R.id.widget_value, if (indicator == com.lamuier.agenT.model.StatusIndicator.None) strings.getString(R.string.widget_services_healthy)
@@ -1149,12 +1309,11 @@ class AgenTWidgetJobService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val jobId = params.jobId
         val periodic = jobId == WIDGET_PERIODIC_JOB_ID
-        val initialForce = if (periodic) {
-            false
+        val requested = params.extras.getLong(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
+        val (initialForce, initialRequestedAt) = if (periodic) {
+            false to requested
         } else {
-            AgenTWidgetUpdater.onJobStarted(
-                params.extras.getBoolean(EXTRA_FORCE_REFRESH, false),
-            )
+            AgenTWidgetUpdater.onJobStarted(params.extras.getBoolean(EXTRA_FORCE_REFRESH, false), requested)
         }
         activeJobs.remove(jobId)?.cancel()
         val job = serviceScope.launch {
@@ -1162,7 +1321,7 @@ class AgenTWidgetJobService : JobService() {
             try {
                 if (periodic) {
                     retry = try {
-                        AgenTWidgetUpdater.performScheduledRefresh(applicationContext, false)
+                        AgenTWidgetUpdater.refreshInJob(applicationContext, false, initialRequestedAt)
                     } catch (_: CancellationException) {
                         return@launch
                     } catch (_: Exception) {
@@ -1170,15 +1329,17 @@ class AgenTWidgetJobService : JobService() {
                     }
                 } else {
                     var force = initialForce
+                    var requestedAt = initialRequestedAt
                     while (true) {
                         retry = try {
-                            AgenTWidgetUpdater.performScheduledRefresh(applicationContext, force)
-                        } catch (_: CancellationException) {
-                            return@launch
+                            AgenTWidgetUpdater.refreshInJob(applicationContext, force, requestedAt)
+                        } catch (cancelled: CancellationException) {
+                            // 系统停掉时 onStopJob 已交回执行槽；这里再交一次，会把随后重新开始的那一轮也标成已结束。
+                            throw cancelled
                         } catch (_: Exception) {
                             true
                         }
-                        if (!AgenTWidgetUpdater.takeQueuedForce()) break
+                        requestedAt = AgenTWidgetUpdater.takeQueuedForce() ?: break
                         force = true
                     }
                 }
@@ -1217,27 +1378,28 @@ private object WidgetLoader {
         val usageSnapshot = try {
             val repository = CursorRepository(context)
             var result: WidgetSnapshot? = null
-            repeat(3) {
+            // 账号在读的过程中被切换时重读，最多三次；读到一致的一份就停。
+            for (attempt in 0 until 3) {
                 val account = selectedAccount(repository)
                 if (account == null) {
                     if (selectedAccount(repository) == null) {
                         result = WidgetSnapshot(null, null, str(context, R.string.widget_tap_add_account))
-                        return@repeat
+                        break
                     }
-                    return@repeat
+                    continue
                 }
                 val revision = runCatching { repository.accountRevision(account.id) }.getOrNull()
-                    ?: return@repeat
+                    ?: continue
                 val usage = repository.cachedUsage(account.id, allowInvalidCredential = true)
                 val stableAccount = accountAtRevision(repository, account.id, revision)
-                    ?: return@repeat
+                    ?: continue
                 val status = if (stableAccount.tokenExpired) {
                     str(context, R.string.widget_token_expired_tap)
                 } else {
                     usage?.let { cachedStatus(context, it) } ?: str(context, R.string.widget_waiting_first)
                 }
                 result = WidgetSnapshot(stableAccount, usage, status, accountRevision = revision)
-                return@repeat
+                break
             }
             result ?: WidgetSnapshot(null, null, str(context, R.string.widget_account_changed))
         } catch (_: Exception) {
@@ -1255,8 +1417,12 @@ private object WidgetLoader {
         ))
     }
 
+    /** 阻塞的 Codex 请求放在这里跑，等待方超时取消时请求照常跑完并写入缓存。 */
+    private val blockingRequests = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** [deadline] 之前没返回的来源改用缓存值，并标记这一轮需要重试。 */
     suspend fun load(context: Context, force: Boolean, loadUsageData: Boolean = true,
-        loadStatusData: Boolean = true): WidgetLoadResult = coroutineScope {
+        loadStatusData: Boolean = true, deadline: Long? = null): WidgetLoadResult = coroutineScope {
         val base = readCached(context)
         val usageRequest = async { if (loadUsageData && base.account != null) loadUsage(context, force) else WidgetLoadResult(base) }
         val codexRequest = async { if (loadUsageData) loadCodexUsage(context, force) else readCodexCached(context) }
@@ -1273,18 +1439,30 @@ private object WidgetLoader {
             if (loadStatusData && base.providers[provider]?.credential != null && provider.statusProvider != null) loadServiceStatus(context, force, provider.statusProvider)
             else base.providerStatuses.getValue(provider)
         } }
-        val usage = usageRequest.await()
-        val codex = codexRequest.await()
-        val cursorStatus = statusRequests.getValue(OfficialStatusProvider.Cursor).await()
-        val codexStatus = statusRequests.getValue(OfficialStatusProvider.Codex).await()
-        val extras = providerRequests.mapValues { it.value.await() }
-        val statuses = extraStatusRequests.mapValues { it.value.await() }
+        // 一个来源慢不能拖住全部组件：到点没回来的先用缓存，请求本身继续跑完并写入缓存。
+        val late = AtomicBoolean(false)
+        fun <T : Any> cachedInstead(value: T): T = value.also { late.set(true) }
+        val usage = usageRequest.awaitUntil(deadline) { cachedInstead(WidgetLoadResult(base)) }
+        val codex = codexRequest.awaitUntil(deadline) {
+            cachedInstead(CodexWidgetLoadResult(base.codexCredential, base.codexUsage, base.codexUsageLine, base.codexRevision))
+        }
+        val cursorStatus = statusRequests.getValue(OfficialStatusProvider.Cursor)
+            .awaitUntil(deadline) { cachedInstead(StatusLoadResult(base.serviceStatus, base.serviceStatusLine)) }
+        val codexStatus = statusRequests.getValue(OfficialStatusProvider.Codex)
+            .awaitUntil(deadline) { cachedInstead(StatusLoadResult(base.codexServiceStatus, base.codexServiceStatusLine)) }
+        val extras = providerRequests.mapValues { (provider, request) ->
+            request.awaitUntil(deadline) { cachedInstead(base.providers.getValue(provider)) }
+        }
+        val statuses = extraStatusRequests.mapValues { (provider, request) ->
+            request.awaitUntil(deadline) { cachedInstead(base.providerStatuses.getValue(provider)) }
+        }
         WidgetLoadResult(usage.snapshot.copy(serviceStatus = cursorStatus.status, serviceStatusLine = cursorStatus.line,
             codexCredential = codex.credential, codexUsage = codex.usage, codexUsageLine = codex.line,
             codexRevision = codex.revision, codexServiceStatus = codexStatus.status, codexServiceStatusLine = codexStatus.line,
             providers = extras, providerStatuses = statuses),
-            usage.shouldRetry || codex.shouldRetry || cursorStatus.shouldRetry || codexStatus.shouldRetry ||
-                (loadUsageData && extras.values.any { it.shouldRetry }) || statuses.values.any { it.shouldRetry })
+            late.get() || usage.shouldRetry || codex.shouldRetry || cursorStatus.shouldRetry || codexStatus.shouldRetry ||
+                (loadUsageData && extras.values.any { it.shouldRetry }) || statuses.values.any { it.shouldRetry },
+            timedOut = late.get())
     }
 
     private fun readCodexCached(context: Context): CodexWidgetLoadResult = try {
@@ -1315,7 +1493,7 @@ private object WidgetLoader {
         if (!force && cached.usage != null && cached.usage.cacheAgeSeconds < CACHE_FRESH_SECONDS) return cached
         val repository = CodexQuotaRepository(context)
         return try {
-            val usage = repository.fetchUsage(revision)
+            val usage = blockingRequests.async { repository.fetchUsage(revision) }.await()
             cached.copy(usage = usage, line = str(context, R.string.widget_updated_time, usage.fetchedAt))
         } catch (error: CancellationException) {
             throw error
@@ -1466,7 +1644,7 @@ private object WidgetLoader {
             if (snapshot.providers.any { (provider, cached) ->
                 ProviderUsageRepository(context, provider).cached().credential != cached.credential
             }) return false
-            if (snapshot.codexRevision != null && CodexQuotaRepository(context).tokenRevision() != snapshot.codexRevision) {
+            if (snapshot.codexRevision != CodexQuotaRepository(context).tokenRevision()) {
                 return false
             }
             val repository = CursorRepository(context)

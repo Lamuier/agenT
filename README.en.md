@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-Project version: **1.6.0** (`versionCode` 9). This README describes the current source; see the [1.6.0 release notes](CHANGELOG.en.md#160--2026-10-19). Package ID: `com.lamuier.agenT`.
+Project version: **1.7.0** (`versionCode` 10). This README describes the current source; see the [1.7.0 release notes](CHANGELOG.en.md#170--2026-10-23). Package ID: `com.lamuier.agenT`.
 
 There is no app account system, self-hosted backend, advertising, or analytics SDK. Credentials and personal caches stay on the device; queries go directly to provider endpoints, while public reset announcements use an anonymous third-party source.
 
@@ -28,7 +28,7 @@ Reorderable navigation uses a bottom bar and swiping on phones, with a rail on w
 - **Haptics:** enabled by default, with a General switch. Light selections and one confirmation after a successful foreground-entry refresh, manual refresh, save, copy or delete. Foreground refresh must include a real update and complete successful queries; failures, cache-only checks, periodic polling and background sync stay silent. System preferences take precedence.
 - **Refresh and offline display:** checks freshness on resume and shows progress in the app bar while refreshing. Generally refreshes every five minutes in the foreground and roughly fifteen in the background, with extra checks near Codex resets. Cached data remains available after failure. Load failures use a brief notice instead of inline exception details; cached content and retry actions remain available. Disable automatic Codex usage refresh while keeping manual refresh and token-save queries.
 
-The 4×3 widgets keep details for one or two sources. Three usage sources become three columns of ring gauges, three status sources use full-width rows, and four sources use a four-card summary, paging when necessary. Smaller hosts and large text use manual paging without network requests. DeepSeek displays original-currency balances; quota sources retain independent meters and reset times. See [widgets](docs/widgets.md).
+The 4×3 usage widget lists every source on one page, headlines the busiest quota window and labels each percentage with its window name. The 4×3 status widget offers three styles chosen in the app: summary list, signal tiles or alerts first. Smaller hosts and large text use manual paging without network requests. DeepSeek displays original-currency balances; quota sources retain independent meters and reset times. See [widgets](docs/widgets.md).
 
 Cold startup restores local caches in parallel; network refresh and system-surface maintenance begin after the first frame. History is loaded for the visible page and range, and charts reuse drawing data. See [startup and performance](docs/performance.md) for measurement details.
 

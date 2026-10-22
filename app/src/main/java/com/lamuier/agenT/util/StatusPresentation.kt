@@ -98,7 +98,7 @@ object StatusPresentation {
             return false
         }
         val host = uri.host?.lowercase(Locale.US) ?: return false
-        return host == "status.cursor.com" || host == "status.openai.com" ||
+        return host == "status.x.ai" || host == "status.cursor.com" || host == "status.openai.com" ||
             host == "status.deepseek.com" || host == "status.moonshot.cn" ||
             host == "stspg.io" || host.endsWith(".stspg.io")
     }

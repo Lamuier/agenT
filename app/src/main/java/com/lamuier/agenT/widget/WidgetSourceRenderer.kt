@@ -24,6 +24,7 @@ internal object WidgetSourceRenderer {
         val tiny = height < 95 || font > 1.3f && height < 150
         val views = RemoteViews(context.packageName, if (tiny) R.layout.widget_sources_mini else R.layout.widget_sources)
         views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
+        if (!tiny) views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
         views.setOnClickPendingIntent(R.id.widget_root, open)
         val ids = sources.map { it.id }
         val page = WidgetSourcePolicy.page(ids, anchor, capacity)
@@ -316,7 +317,7 @@ internal object WidgetSourceRenderer {
         override fun initialValue(): Paint = Paint()
     }
 
-    private fun textWidthDp(context: Context, text: String, sizeSp: Float): Int {
+    internal fun textWidthDp(context: Context, text: String, sizeSp: Float): Int {
         val metrics = context.resources.displayMetrics
         val paint = measurePaint.get()!!.apply {
             textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, metrics)
@@ -324,7 +325,7 @@ internal object WidgetSourceRenderer {
         return kotlin.math.ceil(paint.measureText(text) / metrics.density.toDouble()).toInt().coerceAtLeast(0)
     }
 
-    private fun lineHeight(context: Context, sizeSp: Float): Int {
+    internal fun lineHeight(context: Context, sizeSp: Float): Int {
         val metrics = context.resources.displayMetrics
         val key = (metrics.density.toRawBits() * 31 + context.resources.configuration.fontScale.toRawBits()) * 31 + sizeSp.toRawBits()
         lineHeightCache[key]?.let { return it }
@@ -342,7 +343,7 @@ internal object WidgetSourceRenderer {
     }
 
     /** Keep amounts and source names complete rather than relying on ellipsis or host clipping. */
-    private fun fit(context: Context, views: RemoteViews, id: Int, text: String, widthDp: Int, sizeSp: Float, truncate: Boolean = false) {
+    internal fun fit(context: Context, views: RemoteViews, id: Int, text: String, widthDp: Int, sizeSp: Float, truncate: Boolean = false) {
         val metrics = context.resources.displayMetrics
         val wanted = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, metrics)
         val paint = measurePaint.get()!!.apply { textSize = wanted }

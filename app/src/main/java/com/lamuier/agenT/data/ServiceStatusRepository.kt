@@ -70,37 +70,86 @@ class ServiceStatusRepository(
     } catch (_: Exception) { null }
 
     private suspend fun fetchLive(): ServiceStatus = coroutineScope {
-        val summaryRequest = async { api.fetch(StatusResource.Summary) }
-        val incidentsRequest = async { optional(StatusResource.Incidents) }
-        // OpenAI's summary omits some Codex components; fetch the complete list.
-        val componentsRequest = if (provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode)) {
-            async { optional(StatusResource.Components) }
-        } else null
-        var summary = summaryRequest.await()
-        var incidents = incidentsRequest.await()
-        val components = componentsRequest?.await()?.optJSONArray("components")
-        if (components != null) summary.put("components", components)
-        val partialComponents = provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode) && components == null
-        val adapted = when (provider) {
-            OfficialStatusProvider.DeepSeek -> ProviderStatusAdapters.deepSeek(summary, incidents)
-            OfficialStatusProvider.KimiCode -> ProviderStatusAdapters.kimi(summary, incidents, partialComponents)
-            else -> summary to incidents
+        val loaded = if (provider == OfficialStatusProvider.Cursor) {
+            val (summary, incidents) = cursorDocuments()
+            LoadedStatus(summary, incidents, partialComponents = false)
+        } else {
+            val summaryRequest = async { api.fetch(StatusResource.Summary) }
+            val incidentsRequest = async { optional(StatusResource.Incidents) }
+            // OpenAI's summary omits some Codex components; fetch the complete list.
+            val componentsRequest = if (provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode)) {
+                async { optional(StatusResource.Components) }
+            } else null
+            var summary = summaryRequest.await()
+            val incidents = incidentsRequest.await()
+            val components = componentsRequest?.await()?.optJSONArray("components")
+            if (components != null) summary.put("components", components)
+            val partialComponents = provider in listOf(OfficialStatusProvider.Codex, OfficialStatusProvider.KimiCode) && components == null
+            val adapted = when (provider) {
+                OfficialStatusProvider.DeepSeek -> ProviderStatusAdapters.deepSeek(summary, incidents)
+                OfficialStatusProvider.KimiCode -> ProviderStatusAdapters.kimi(summary, incidents, partialComponents)
+                else -> summary to incidents
+            }
+            LoadedStatus(adapted.first, adapted.second, partialComponents)
         }
-        summary = adapted.first; incidents = adapted.second
         val fetchedAt = StatusJsonParser.nowStamp()
         val live = StatusJsonParser.parse(
-            summary = summary, incidentsPayload = incidents, fetchedAt = fetchedAt,
-            defaultStatusUrl = provider.baseUrl, partialComponents = partialComponents,
+            summary = loaded.summary, incidentsPayload = loaded.incidents, fetchedAt = fetchedAt,
+            defaultStatusUrl = provider.baseUrl, partialComponents = loaded.partialComponents,
             maxRecentIncidents = if (provider == OfficialStatusProvider.Codex) Int.MAX_VALUE else 12,
         )
         runCatching {
             cacheStore.write(
-                StatusJsonParser.toCacheJson(summary, incidents, fetchedAt, provider.baseUrl, partialComponents),
+                StatusJsonParser.toCacheJson(
+                    loaded.summary, loaded.incidents, fetchedAt, provider.baseUrl, loaded.partialComponents,
+                ),
                 System.currentTimeMillis(),
             )
         }
         scope(live)
     }
+
+    private suspend fun cursorDocuments(): Pair<JSONObject, JSONObject?> = coroutineScope {
+        val summaryRequest = async {
+            try {
+                api.fetch(StatusResource.Summary)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+        }
+        val incidentsRequest = async { optional(StatusResource.Incidents) }
+        val uptimeRequest = async { optional(StatusResource.Uptime) }
+        val summary = summaryRequest.await()
+        val incidents = incidentsRequest.await()
+        val uptime = uptimeRequest.await()
+        if (summary != null) {
+            val adapted = try {
+                ProviderStatusAdapters.cursor(summary, incidents, uptime)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            if (adapted != null) return@coroutineScope adapted
+        }
+        val legacySummary = api.fetchLegacyCursor(StatusResource.Summary)
+        val legacyIncidents = try {
+            api.fetchLegacyCursor(StatusResource.Incidents)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+        legacySummary to legacyIncidents
+    }
+
+    private data class LoadedStatus(
+        val summary: JSONObject,
+        val incidents: JSONObject?,
+        val partialComponents: Boolean,
+    )
 
     private fun scope(status: ServiceStatus): ServiceStatus =
         if (provider == OfficialStatusProvider.Codex) CodexStatusScope.apply(status) else status

@@ -2,6 +2,7 @@ package com.lamuier.agenT.data
 
 import android.content.Context
 import com.lamuier.agenT.model.DashboardTab
+import com.lamuier.agenT.model.StatusWidgetStyle
 import com.lamuier.agenT.model.TaskGroupMode
 import com.lamuier.agenT.util.AppLanguage
 import com.lamuier.agenT.util.AppLocale
@@ -12,7 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** 主界面功能页签顺序、任务分组方式、展示时区与界面语言，保存在本机 SharedPreferences。 */
+/** 主界面功能页签顺序、任务分组方式、展示时区、界面语言与状态组件版式，保存在本机 SharedPreferences。 */
 class DashboardPreferences(context: Context) {
     private val context: Context = context.applicationContext
     private val preferences = this.context
@@ -64,6 +65,13 @@ class DashboardPreferences(context: Context) {
         _taskGroupMode.value = mode
     }
 
+    fun readStatusWidgetStyle(): StatusWidgetStyle =
+        StatusWidgetStyle.fromStorage(preferences.getString(KEY_STATUS_WIDGET_STYLE, null))
+
+    fun setStatusWidgetStyle(style: StatusWidgetStyle) {
+        preferences.edit().putString(KEY_STATUS_WIDGET_STYLE, style.storageKey).apply()
+    }
+
     fun readTimeZoneId(): String =
         DisplayTimeZones.fromStorage(preferences.getString(KEY_TIME_ZONE, null))
 
@@ -109,6 +117,7 @@ class DashboardPreferences(context: Context) {
         private const val KEY_TAB_ORDER = "tab_order"
         private const val KEY_TASK_GROUP_MODE = "task_group_mode"
         private const val KEY_TIME_ZONE = "time_zone"
+        private const val KEY_STATUS_WIDGET_STYLE = "status_widget_style"
         private const val LEGACY_OVERVIEW_USAGE_RING = "overview_usage_ring"
         private const val KEY_CODEX_USAGE_AUTO_REFRESH = "codex_usage_auto_refresh"
 

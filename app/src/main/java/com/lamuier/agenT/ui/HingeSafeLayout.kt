@@ -65,6 +65,9 @@ internal fun paneLayout(window: Rect, folds: List<Rect>, minWidth: Float, minHei
     return PaneLayout(window)
 }
 
+/** Usage and status summaries stay a readable column; the rest of a wide window goes to the detail. */
+internal const val SummaryPaneWidthDp = 320f
+
 /** Account for the actual origin after navigation, app bars, system and keyboard insets. */
 @Composable
 internal fun AdaptivePaneLayout(

@@ -129,7 +129,8 @@ internal fun UsageScreen(
                 { onManageProvider(source) }, { onRefreshProvider(source) }) }
         }
     }
-    AdaptivePaneLayout(allowPair = visibleSources.isNotEmpty(), primaryFraction = 0.34f, maxContentWidthDp = 1440f,
+    AdaptivePaneLayout(allowPair = visibleSources.isNotEmpty(), minPaneWidthDp = SummaryPaneWidthDp,
+        preferredPrimaryWidthDp = SummaryPaneWidthDp, maxContentWidthDp = 1440f,
         single = { AdaptiveLazyTabContent(state = detailScroll, modifier = Modifier.testTag("usage-detail-list")) { compact -> summary(); details(compact) } },
         primary = { AdaptiveLazyTabContent(state = summaryScroll, modifier = Modifier.testTag("usage-summary-list")) { summary() } },
         secondary = { AdaptiveLazyTabContent(state = detailScroll, modifier = Modifier.testTag("usage-detail-list"), content = details) })

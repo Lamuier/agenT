@@ -56,7 +56,7 @@ internal class WidgetSourcesRenderingTest(private val profile: String, private v
             val top = y + view.top
             val clipBottom = minOf(bottom, top + view.height)
             if (view is TextView && view.text.isNotBlank()) {
-                if (view.id == R.id.widget_source_name) sourceNames += view.text.toString()
+                if (view.id in listOf(R.id.widget_source_name, R.id.widget_board_row_name, R.id.widget_board_status_name)) sourceNames += view.text.toString()
                 val text = view.layout
                 if (text == null || view.height <= 0 || text.height > view.height - view.compoundPaddingTop - view.compoundPaddingBottom + 1 ||
                     top + view.compoundPaddingTop + (text?.height ?: 0) > clipBottom + 1 ||

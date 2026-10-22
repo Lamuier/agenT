@@ -976,4 +976,27 @@
     <string name="widget_credit_available">余额可用</string>
     <string name="widget_credit_unavailable">余额不足</string>
     <string name="widget_reset_short">重置 %1$s</string>
+<string name="status_widget_style_title">状态组件版式</string>
+    <string name="status_widget_style_note">用于 4×3 服务状态组件；尺寸不足或字号过大时沿用紧凑布局。</string>
+    <string name="status_widget_style_summary">总览列表</string>
+    <string name="status_widget_style_summary_hint">大标题给出结论，下面逐行列出各来源</string>
+    <string name="status_widget_style_signals">四格信号灯</string>
+    <string name="status_widget_style_signals_hint">每个来源一格，异常的格子染色</string>
+    <string name="status_widget_style_alerts">异常置顶</string>
+    <string name="status_widget_style_alerts_hint">只展开有问题的来源，正常的折叠成一行</string>
+    <string name="widget_board_usage_title">%1$s · 已用额度</string>
+    <string name="widget_board_status_title">%1$s · 服务状态</string>
+    <string name="widget_board_highest">用量最高</string>
+    <string name="widget_board_used_up">%1$s %2$s · 已用尽</string>
+    <string name="widget_board_used">%1$s %2$s · 已用 %3$s</string>
+    <string name="widget_board_other_window">%1$s已用 %2$s</string>
+    <string name="widget_board_all_ok">全部服务正常</string>
+    <plurals name="widget_board_many_issues"><item quantity="other">%1$d 个服务异常</item></plurals>
+    <plurals name="widget_board_source_count"><item quantity="other">%1$d 个来源</item></plurals>
+    <string name="widget_board_components">%1$d/%2$d 正常</string>
+    <plurals name="widget_board_tile_ok"><item quantity="other">%1$d 个组件正常</item></plurals>
+    <string name="widget_board_since">%1$s 起</string>
+    <string name="widget_board_lasting">已持续 %1$s</string>
+    <string name="widget_board_rest_ok">其余正常</string>
+    <plurals name="widget_board_more_issues"><item quantity="other">另有 %1$d 项异常</item></plurals>
 </resources>

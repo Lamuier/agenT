@@ -2,7 +2,7 @@
 
 > This policy applies to the agenT Android app (package `com.lamuier.agenT`). [中文](PRIVACY.md) | **English**
 
-**Effective date: 2026-10-19**
+**Effective date: 2026-10-21**
 
 agenT is a local-first AI service usage app that displays Cursor, Codex, DeepSeek API and Kimi Code usage, tasks, resets and service status on your device: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
 
@@ -52,12 +52,12 @@ Current usage, task and public-status caches preserve the latest successful resu
 | --- | --- | --- |
 | Cursor account, usage and tasks | `api2.cursor.sh`, `cursor.com` | Cursor token |
 | Codex usage | `chatgpt.com/backend-api/wham/usage` | Codex token and optional Account ID |
-| Official Cursor / Codex / DeepSeek / Kimi status | `status.cursor.com`, `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn` | No token, API key or Account ID |
+| Official Cursor / Codex / DeepSeek / Kimi status | `data.x.ai` (Cursor; falls back to `status.cursor.com` until Cursor components are published), `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn` | No token, API key or Account ID |
 | Third-party public reset records | `codex-resets.com/api/v1/resets` | No token, Account ID or personal records; only pagination / conditional-cache parameters |
 
 Credentials are sent only to the corresponding service and are not attached to public-status requests, public-reset requests or web links. The app's own HTTP clients require HTTPS, forbid cleartext and reject redirects.
 
-Task conversations, PRs, official status pages and public-reset source links are checked against an allowlist before opening in the system browser's Custom Tabs, with a system-browser fallback. Allowed sources include `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.cursor.com`, `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn`, `stspg.io` and its subdomains, `codex-resets.com`, the fixed console addresses `https://platform.deepseek.com/` and `https://www.kimi.com/code/console`, and path-validated `thsottiaux` posts on `x.com` / `twitter.com` (`/thsottiaux/status/<digits>`). Web requests use the browser's own login state and are governed by the browser's and website's data policies.
+Task conversations, PRs, official status pages and public-reset source links are checked against an allowlist before opening in the system browser's Custom Tabs, with a system-browser fallback. Allowed sources include `cursor.com` and its subdomains (any path with no query, or only `/agents?id=<bcId>`), `github.com` and its subdomains, `status.x.ai`, `status.cursor.com`, `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn`, `stspg.io` and its subdomains, `codex-resets.com`, the fixed console addresses `https://platform.deepseek.com/` and `https://www.kimi.com/code/console`, and path-validated `thsottiaux` posts on `x.com` / `twitter.com` (`/thsottiaux/status/<digits>`). Web requests use the browser's own login state and are governed by the browser's and website's data policies.
 
 The app uploads no personal credentials, records or analytics to developer-operated servers or to the third-party public API.
 

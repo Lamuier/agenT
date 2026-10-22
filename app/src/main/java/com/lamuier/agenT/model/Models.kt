@@ -207,6 +207,18 @@ enum class TaskGroupMode(val storageKey: String, @StringRes val labelRes: Int) {
     }
 }
 
+/** 4×3 服务状态小组件的版式，由用户在系统入口设置中选择。 */
+enum class StatusWidgetStyle(val storageKey: String, @StringRes val labelRes: Int, @StringRes val summaryRes: Int) {
+    Summary("summary", R.string.status_widget_style_summary, R.string.status_widget_style_summary_hint),
+    Signals("signals", R.string.status_widget_style_signals, R.string.status_widget_style_signals_hint),
+    Alerts("alerts", R.string.status_widget_style_alerts, R.string.status_widget_style_alerts_hint);
+
+    companion object {
+        fun fromStorage(value: String?): StatusWidgetStyle =
+            entries.firstOrNull { it.storageKey.equals(value?.trim(), ignoreCase = true) } ?: Summary
+    }
+}
+
 @Immutable
 data class AgentTask(
     val id: String,
@@ -290,7 +302,7 @@ data class AppUiState(
     val historyErrorKey: String? = null,
 )
 
-/** Cursor 官方状态页（Statuspage）的整体指示灯。 */
+/** 官方状态页的整体指示灯。 */
 enum class StatusIndicator {
     Unknown,
     None,

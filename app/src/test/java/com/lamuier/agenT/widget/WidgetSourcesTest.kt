@@ -1,6 +1,10 @@
 package com.lamuier.agenT.widget
 
 import android.content.Context
+import android.app.job.JobScheduler
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import org.robolectric.Shadows.shadowOf
 import androidx.test.core.app.ApplicationProvider
 import com.lamuier.agenT.model.DashboardTab
 import com.lamuier.agenT.model.ServiceStatus
@@ -34,7 +38,7 @@ class WidgetSourcesTest {
             if (view is android.view.ViewGroup) (0 until view.childCount).forEach { walk(view.getChildAt(it)) }
         }
         walk(views)
-        assertTrue(text.containsAll(listOf("DeepSeek", "Kimi Code", "CNY -0.25")))
+        assertTrue(text.containsAll(listOf("DeepSeek", "Kimi Code", "CNY", "-0.25")))
         assertFalse(text.any { it.contains("Cursor") || it.contains("Codex") })
         assertTrue(text.any { it.contains("Update connection") })
         val mini = AgenTWidgetUpdater.renderSourcesPreview(context, sources, MiniCursorWidgetProvider::class.java, 174, 68).apply(context, parent)
@@ -76,7 +80,7 @@ class WidgetSourcesTest {
             WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "10%", 10.0, caption = "06:00")), fetchedAt = "2026-10-19 10:15:00"),
             WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79"), WidgetMetric("USD", "2")), "余额可用", "2026-10-19 10:15:00"),
         )
-        val root = laidOut(context, sources, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-balance-text")
+        val root = legacyLaidOut(context, sources, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-balance-text")
         val text = mutableListOf<String>()
         var gauges = 0
         fun scan(view: android.view.View) {
@@ -109,7 +113,7 @@ class WidgetSourcesTest {
             WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79"), WidgetMetric("赠送", "1.25"), WidgetMetric("充值", "9.54")), "余额可用", "2026-10-19 10:15:00",
                 split = listOf(1.25, 9.54)),
         )
-        val usageRoot = laidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "usage-3")
+        val usageRoot = legacyLaidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "usage-3")
         val gauges = mutableListOf<android.view.View>()
         val gaugeText = mutableListOf<String>()
         fun scan(view: android.view.View) {
@@ -142,7 +146,7 @@ class WidgetSourcesTest {
             service("codex", "Codex", listOf("ChatGPT Desktop", "Web"), "Degraded performance of the API"),
             service("deepseek", "DeepSeek", listOf("DeepSeek V4 Pro API服务(API Service)", "DeepSeek V4.1 Flash API服务(API Service)"), "DeepSeek V4.1 Flash 服务波动"),
         )
-        val statusRoot = laidOut(context, status, TallCursorStatusWidgetProvider::class.java, 334, 252, "status-3")
+        val statusRoot = legacyLaidOut(context, status, TallCursorStatusWidgetProvider::class.java, 334, 252, "status-3")
         val statusRows = statusRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
         assertEquals(3, statusRows.childCount)
         repeat(3) { index ->
@@ -162,23 +166,23 @@ class WidgetSourcesTest {
         assertNoClipping(statusRoot)
 
         val four = usage + WidgetSource("kimi_code", "Kimi Code", listOf(WidgetMetric("5小时", "18%", 18.0)))
-        val fourRoot = laidOut(context, four, TallCursorWidgetProvider::class.java, 334, 252, "usage-4")
+        val fourRoot = legacyLaidOut(context, four, TallCursorWidgetProvider::class.java, 334, 252, "usage-4")
         val fourRows = fourRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows)
         assertEquals(2, fourRows.childCount)
         assertEquals(2, (fourRows.getChildAt(0) as android.view.ViewGroup).childCount)
         assertEquals(2, (fourRows.getChildAt(1) as android.view.ViewGroup).childCount)
         assertNoClipping(fourRoot)
 
-        val single = laidOut(context, usage.take(1), TallCursorWidgetProvider::class.java, 334, 252, "usage-1")
+        val single = legacyLaidOut(context, usage.take(1), TallCursorWidgetProvider::class.java, 334, 252, "usage-1")
         val singleCard = (single.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup).getChildAt(0)
         assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, singleCard.layoutParams.width)
         assertTrue(singleCard.width > single.width * 3 / 4)
         assertNoClipping(single)
 
-        val paired = laidOut(context, usage.take(2), TallCursorWidgetProvider::class.java, 334, 252, "usage-2")
+        val paired = legacyLaidOut(context, usage.take(2), TallCursorWidgetProvider::class.java, 334, 252, "usage-2")
         assertEquals(2, paired.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).childCount)
         assertNoClipping(paired)
-        val statusPair = laidOut(context, status.take(2), TallCursorStatusWidgetProvider::class.java, 334, 252, "status-2")
+        val statusPair = legacyLaidOut(context, status.take(2), TallCursorStatusWidgetProvider::class.java, 334, 252, "status-2")
         val statusPairRow = statusPair.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup
         assertEquals(2, statusPairRow.childCount)
         assertNoClipping(statusPair)
@@ -192,11 +196,119 @@ class WidgetSourcesTest {
         assertTrue(pairText.any { it.contains("Degraded performance of the API") && !it.endsWith("…") })
         val kimiFooter = usage.take(2) + WidgetSource("kimi_code", "Kimi Code", listOf(
             WidgetMetric("5小时", "18%", 18.0), WidgetMetric("每周", "36%", 36.0)), fetchedAt = "2026-10-19 10:15:00")
-        val kimiRoot = laidOut(context, kimiFooter, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-meters")
+        val kimiRoot = legacyLaidOut(context, kimiFooter, TallCursorWidgetProvider::class.java, 334, 252, "usage-3-meters")
         val kimiRow = kimiRoot.findViewById<android.view.ViewGroup>(com.lamuier.agenT.R.id.widget_source_rows).getChildAt(0) as android.view.ViewGroup
         assertEquals(3, kimiRow.childCount)
         assertTrue(kimiRow.getChildAt(2).width > kimiRoot.width / 4)
         assertNoClipping(kimiRoot)
+    }
+
+    @Test fun usageBoardLabelsEveryPercentAndDropsBalanceBoilerplate() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val strings = com.lamuier.agenT.util.AppLocale.wrap(context)
+        val usage = listOf(
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("自有", "41.9%", 41.9, "周期剩 12天"), WidgetMetric("三方", "52.7%", 52.7)), "本周期 42.85%", "2026-10-19 10:15:00"),
+            WidgetSource("codex", "Codex", listOf(WidgetMetric("5小时", "100%", 100.0, "03/20 06:00"), WidgetMetric("每周", "79%", 79.0, "03/25 08:00")), fetchedAt = "2026-10-19 10:15:00"),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "10.79"), WidgetMetric("赠送", "1.25"), WidgetMetric("充值", "9.54")), "余额可用", "2026-10-19 10:15:00",
+                split = listOf(1.25, 9.54)),
+        )
+        val root = laidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "board-usage-3")
+        val text = visibleText(root)
+        assertTrue(text.contains(strings.getString(com.lamuier.agenT.R.string.widget_board_usage_title, strings.getString(com.lamuier.agenT.R.string.app_name))))
+        assertEquals(strings.getString(com.lamuier.agenT.R.string.widget_board_used_up, "Codex", "5小时"),
+            root.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_board_hero_title).text.toString())
+        assertTrue(text.containsAll(listOf("自有", "三方", "5小时", "每周", "41.9%", "52.7%", "100%", "79%", "CNY", "10.79", "赠送 1.25 · 充值 9.54")))
+        assertFalse(text.any { it.contains("余额可用") || it.contains("本周期") })
+        var bars = 0
+        fun count(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view.id == com.lamuier.agenT.R.id.widget_board_line_bar) bars++
+            if (view is android.view.ViewGroup) repeat(view.childCount) { count(view.getChildAt(it)) }
+        }
+        count(root)
+        assertEquals(4, bars)
+        assertNoClipping(root)
+
+        val four = usage + WidgetSource("kimi_code", "Kimi Code", listOf(WidgetMetric("5小时", "18%", 18.0), WidgetMetric("每周", "36%", 36.0)),
+            fetchedAt = "2026-10-19 10:15:00", attention = "Update connection")
+        val fourRoot = laidOut(context, four, TallCursorWidgetProvider::class.java, 334, 252, "board-usage-4")
+        assertTrue(visibleText(fourRoot).containsAll(listOf("Kimi Code", "18%", "36%")))
+        assertNoClipping(fourRoot)
+        assertNoClipping(laidOut(context, usage.take(2), TallCursorWidgetProvider::class.java, 250, 200, "board-usage-2-small"))
+    }
+
+    @Test fun statusBoardsRenderEveryStyleAndFallBackWhenCramped() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val strings = com.lamuier.agenT.util.AppLocale.wrap(context)
+        val preferences = com.lamuier.agenT.data.DashboardPreferences.get(context)
+        val minor = com.lamuier.agenT.util.StatusPresentation.compactIndicatorLabel(StatusIndicator.Minor, strings.resources)
+        val status = listOf(
+            live("cursor", "Cursor", StatusIndicator.None),
+            live("codex", "Codex", StatusIndicator.Minor, "Degraded performance of the API"),
+            live("deepseek", "DeepSeek", StatusIndicator.None),
+        )
+        val provider = TallCursorStatusWidgetProvider::class.java
+        try {
+            preferences.setStatusWidgetStyle(com.lamuier.agenT.model.StatusWidgetStyle.Summary)
+            val summary = laidOut(context, status, provider, 334, 252, "board-status-summary")
+            assertEquals("Codex $minor", summary.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_board_status_title).text.toString())
+            assertTrue(visibleText(summary).any { it.startsWith("Degraded performance of the API") })
+            assertEquals(3, countIds(summary, com.lamuier.agenT.R.id.widget_board_status_row))
+            assertNoClipping(summary)
+
+            preferences.setStatusWidgetStyle(com.lamuier.agenT.model.StatusWidgetStyle.Signals)
+            val signals = laidOut(context, status, provider, 334, 252, "board-status-signals")
+            assertEquals(3, countIds(signals, com.lamuier.agenT.R.id.widget_board_tile))
+            assertEquals("Codex", signals.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_board_tile_name).text.toString())
+            assertNoClipping(signals)
+            assertNoClipping(laidOut(context, status + live("kimi_code", "Kimi Code", StatusIndicator.None), provider, 334, 252, "board-status-signals-4"))
+
+            preferences.setStatusWidgetStyle(com.lamuier.agenT.model.StatusWidgetStyle.Alerts)
+            val alerts = laidOut(context, status, provider, 334, 252, "board-status-alerts")
+            assertEquals(1, countIds(alerts, com.lamuier.agenT.R.id.widget_board_issue))
+            assertTrue(visibleText(alerts).any { it.contains(strings.getString(com.lamuier.agenT.R.string.widget_board_rest_ok)) && it.contains("DeepSeek") })
+            assertNoClipping(alerts)
+            val calm = laidOut(context, listOf(status[0], status[2]), provider, 334, 252, "board-status-alerts-ok")
+            assertEquals(strings.getString(com.lamuier.agenT.R.string.widget_board_all_ok),
+                calm.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_board_center_title).text.toString())
+            assertNoClipping(calm)
+        } finally {
+            preferences.setStatusWidgetStyle(com.lamuier.agenT.model.StatusWidgetStyle.Summary)
+        }
+        assertNull(WidgetBoardRenderer.status(context, status, 334, 180))
+        assertNull(WidgetBoardRenderer.usage(context, status.take(1), 334, 252))
+        assertEquals(com.lamuier.agenT.model.StatusWidgetStyle.Summary, com.lamuier.agenT.model.StatusWidgetStyle.fromStorage("bogus"))
+    }
+
+    private fun visibleText(root: android.view.View): List<String> = buildList {
+        fun walk(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view is android.widget.TextView) add(view.text.toString())
+            if (view is android.view.ViewGroup) repeat(view.childCount) { walk(view.getChildAt(it)) }
+        }
+        walk(root)
+    }
+
+    private fun countIds(root: android.view.View, id: Int): Int {
+        var count = 0
+        fun walk(view: android.view.View) {
+            if (view.visibility != android.view.View.VISIBLE) return
+            if (view.id == id) count++
+            if (view is android.view.ViewGroup) repeat(view.childCount) { walk(view.getChildAt(it)) }
+        }
+        walk(root)
+        return count
+    }
+
+    private fun live(id: String, title: String, indicator: StatusIndicator, incident: String? = null): WidgetSource {
+        val now = StatusJsonParser.nowStamp()
+        val broken = if (incident != null) com.lamuier.agenT.model.ComponentStatus.DegradedPerformance else com.lamuier.agenT.model.ComponentStatus.Operational
+        val components = listOf(com.lamuier.agenT.model.StatusComponent("$id-0", "API", broken, 0),
+            com.lamuier.agenT.model.StatusComponent("$id-1", "Web", com.lamuier.agenT.model.ComponentStatus.Operational, 1))
+        val active = listOfNotNull(incident?.let { com.lamuier.agenT.model.StatusIncident(id, it, "investigating", "minor",
+            java.time.Instant.now().minusSeconds(5400).toString(), null, null, null, null, null, listOf("API"), emptyList()) })
+        return WidgetSource(id, title, status = ServiceStatus("", indicator, null, "", components, active, emptyList(), emptyList(), now, false),
+            fetchedAt = now, cached = false)
     }
 
     private fun service(id: String, title: String, components: List<String>, incident: String) = WidgetSource(id, title, status = com.lamuier.agenT.model.ServiceStatus(
@@ -208,9 +320,18 @@ class WidgetSourcesTest {
         )), com.lamuier.agenT.network.StatusJsonParser.nowStamp(), false,
     ), fetchedAt = com.lamuier.agenT.network.StatusJsonParser.nowStamp(), cached = false)
 
-    private fun laidOut(context: Context, sources: List<WidgetSource>, provider: Class<*>, widthDp: Int, heightDp: Int, name: String): android.view.View {
+    private fun laidOut(context: Context, sources: List<WidgetSource>, provider: Class<*>, widthDp: Int, heightDp: Int, name: String) =
+        laidOut(context, AgenTWidgetUpdater.renderSourcesPreview(context, sources, provider, widthDp, heightDp), widthDp, heightDp, name)
+
+    private fun legacyLaidOut(context: Context, sources: List<WidgetSource>, provider: Class<*>, widthDp: Int, heightDp: Int, name: String): android.view.View {
+        val status = provider == TallCursorStatusWidgetProvider::class.java
+        val capacity = WidgetSourcePolicy.capacity(if (status) "StatusTall" else "Tall", widthDp, heightDp, 1f, sources.size)
+        return laidOut(context, WidgetSourceRenderer.render(context, sources, status, widthDp, heightDp, capacity, null), widthDp, heightDp, name)
+    }
+
+    private fun laidOut(context: Context, views: android.widget.RemoteViews, widthDp: Int, heightDp: Int, name: String): android.view.View {
         val parent = android.widget.FrameLayout(context)
-        val root = AgenTWidgetUpdater.renderSourcesPreview(context, sources, provider, widthDp, heightDp).apply(context, parent)
+        val root = views.apply(context, parent)
         parent.addView(root, android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         val density = context.resources.displayMetrics.density
         val width = (widthDp * density).toInt()
@@ -290,5 +411,31 @@ class WidgetSourcesTest {
         assertNull(WidgetNavigation.destination.value)
         WidgetNavigation.open("not-a-source", DashboardTab.Usage)
         assertNull(WidgetNavigation.destination.value)
+    }
+    @Test fun forceRefreshCancelsPendingJobAndReschedules() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = AppWidgetManager.getInstance(context)
+        val shadowManager = shadowOf(manager)
+        shadowManager.createWidget(TallCursorWidgetProvider::class.java, com.lamuier.agenT.R.layout.widget_sources)
+
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        scheduler.cancelAll()
+
+        assertTrue(AgenTWidgetUpdater.scheduleRefresh(context, force = false))
+        val initialJob = scheduler.getPendingJob(WIDGET_REFRESH_JOB_ID)
+        assertNotNull(initialJob)
+        assertFalse(initialJob!!.extras.getBoolean(EXTRA_FORCE_REFRESH, false))
+
+        assertTrue(AgenTWidgetUpdater.scheduleRefresh(context, force = false))
+        assertEquals(initialJob, scheduler.getPendingJob(WIDGET_REFRESH_JOB_ID))
+
+        assertTrue(AgenTWidgetUpdater.scheduleRefresh(context, force = true))
+        val forcedJob = scheduler.getPendingJob(WIDGET_REFRESH_JOB_ID)
+        assertNotNull(forcedJob)
+        assertTrue(forcedJob!!.extras.getBoolean(EXTRA_FORCE_REFRESH, false))
+
+        AgenTWidgetUpdater.onJobStarted(force = false)
+        AgenTWidgetUpdater.onJobStopped(context)
+        assertTrue(AgenTWidgetUpdater.scheduleRefresh(context, force = true))
     }
 }

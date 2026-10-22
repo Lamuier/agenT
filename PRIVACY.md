@@ -2,7 +2,7 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-19**
+**生效日期：2026-10-21**
 
 agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、Codex、DeepSeek API 与 Kimi Code 的用量、任务、重置和服务状态：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
 
@@ -50,12 +50,12 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 | --- | --- | --- |
 | Cursor 账号、用量与任务 | `api2.cursor.sh`、`cursor.com` | Cursor Token |
 | Codex 用量 | `chatgpt.com/backend-api/wham/usage` | Codex Token 与可选 Account ID |
-| Cursor / Codex / DeepSeek / Kimi 官方状态 | `status.cursor.com`、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn` | 不携带 Token、API Key 或 Account ID |
+| Cursor / Codex / DeepSeek / Kimi 官方状态 | `data.x.ai`（Cursor；Cursor 组件尚未发布时回退 `status.cursor.com`）、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn` | 不携带 Token、API Key 或 Account ID |
 | 第三方公共重置记录 | `codex-resets.com/api/v1/resets` | 不携带 Token、Account ID 或个人记录；仅分页 / 条件缓存参数 |
 
 凭据只发送给对应服务，不随公开状态、公共重置请求或网页外链发送。应用自身的 HTTP 客户端强制 HTTPS、禁止明文传输并拒绝重定向。
 
-任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.cursor.com`、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn`、`stspg.io` 及其子域、`codex-resets.com`，固定控制台地址 `https://platform.deepseek.com/` 与 `https://www.kimi.com/code/console`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
+任务对话、PR、官方状态页和公共重置来源链接先通过允许列表校验，再交给系统浏览器的 Custom Tabs；不可用时尝试系统浏览器打开。允许来源包括 `cursor.com` 及其子域（无查询串的任意路径，或仅 `/agents?id=<bcId>`）、`github.com` 及其子域、`status.x.ai`、`status.cursor.com`、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn`、`stspg.io` 及其子域、`codex-resets.com`，固定控制台地址 `https://platform.deepseek.com/` 与 `https://www.kimi.com/code/console`，以及经过路径校验的 `x.com` / `twitter.com` 的 `thsottiaux` 原帖。网页请求使用浏览器自己的登录态，并受浏览器和网页服务的数据政策约束。
 
 应用不向开发者服务器上传个人凭据、记录或分析数据，也不向第三方公共 API 上传这些数据。
 

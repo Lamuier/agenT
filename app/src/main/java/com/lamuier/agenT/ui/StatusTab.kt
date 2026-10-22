@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -109,12 +110,13 @@ internal fun StatusTab(
     val kimiScroll = androidx.compose.foundation.rememberScrollState()
     val detailScroll = when (provider) { "deepseek" -> deepSeekScroll; "kimi_code" -> kimiScroll; "codex" -> codexScroll; else -> cursorScroll }
     val summary: @Composable () -> Unit = {
-        Text(stringResource(R.string.status_services_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.status_services_title), Modifier.fillMaxWidth(), style = MaterialTheme.typography.headlineSmall)
         if ("cursor" in visibleSources) StatusOverviewTile("Cursor", status, loading, Modifier.fillMaxWidth())
         if ("codex" in visibleSources) StatusOverviewTile("Codex", codexState.serviceStatus, codexState.loadingStatus, Modifier.fillMaxWidth())
         UsageProvider.entries.filter { it.id in visibleSources }.forEach { source -> StatusOverviewTile(source.title, providers[source].serviceStatus,
             providers[source].loadingStatus, Modifier.fillMaxWidth()) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("cursor" to "Cursor", "codex" to "Codex / OpenAI",
                 "deepseek" to "DeepSeek", "kimi_code" to "Kimi Code").filter { it.first in visibleSources }.forEach { (id, label) ->
                 FilterChip(selected = provider == id,
@@ -139,8 +141,9 @@ internal fun StatusTab(
                 if (codex) codexState.statusError else error, compact, onRetry, openUrl)
         }
     }
-    AdaptivePaneLayout(primaryFraction = 0.4f, maxContentWidthDp = 1440f,
-        primary = { AdaptiveTabContent(scrollState = summaryScroll) { summary() } },
+    AdaptivePaneLayout(minPaneWidthDp = SummaryPaneWidthDp, preferredPrimaryWidthDp = SummaryPaneWidthDp,
+        maxContentWidthDp = 1440f,
+        primary = { Box(Modifier.fillMaxSize().testTag("status-summary-pane")) { AdaptiveTabContent(scrollState = summaryScroll) { summary() } } },
         secondary = { AdaptiveTabContent(scrollState = detailScroll) { compact -> details(compact) } },
         single = { AdaptiveTabContent(scrollState = detailScroll) { compact -> summary(); details(compact) } },
     )

@@ -28,7 +28,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lamuier.agenT.R
 import com.lamuier.agenT.data.NotificationSettings
 import com.lamuier.agenT.system.OverviewTileService
+import com.lamuier.agenT.data.DashboardPreferences
+import com.lamuier.agenT.model.StatusWidgetStyle
+import com.lamuier.agenT.widget.AgenTWidgetUpdater
+import com.lamuier.agenT.widget.TallCursorStatusWidgetProvider
 import com.lamuier.agenT.widget.WidgetPreviews
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 
 internal fun Context.hostActivity(): Activity? = when (this) {
     is Activity -> this
@@ -63,6 +71,7 @@ internal fun SystemEntriesContent() {
         }
     }
     Text(stringResource(R.string.widget_picker_title), style = MaterialTheme.typography.titleMedium)
+    var statusStyle by remember { mutableStateOf(DashboardPreferences.get(context).readStatusWidgetStyle()) }
     WidgetPreviews.entries.forEach { entry ->
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -71,6 +80,7 @@ internal fun SystemEntriesContent() {
                 val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
                 AndroidView(modifier = Modifier.fillMaxWidth().height((entry.rows * 84 * fontScale).dp),
                     factory = { FrameLayout(it) }, update = { frame ->
+                        frame.tag = statusStyle
                         frame.removeAllViews()
                         val preview = WidgetPreviews.preview(frame.context, entry).apply(frame.context, frame)
                         fun inert(view: View) {
@@ -80,6 +90,12 @@ internal fun SystemEntriesContent() {
                         inert(preview)
                         frame.addView(preview, FrameLayout.LayoutParams(-1, -1))
                     })
+                if (entry.provider == TallCursorStatusWidgetProvider::class.java) StatusWidgetStylePicker(statusStyle) { style ->
+                    statusStyle = style
+                    DashboardPreferences.get(context).setStatusWidgetStyle(style)
+                    AgenTWidgetUpdater.pushFromCache(context)
+                    WidgetPreviews.register(context)
+                }
                 Button(enabled = WidgetPreviews.canPin(context), onClick = {
                     result = resources.getString(if (WidgetPreviews.pin(context, entry)) R.string.widget_pin_requested else R.string.widget_pin_unsupported)
                 }) { Text(stringResource(R.string.widget_pin)) }
@@ -88,6 +104,27 @@ internal fun SystemEntriesContent() {
     }
     if (!WidgetPreviews.canPin(context)) Text(stringResource(R.string.widget_pin_unsupported))
     result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
+}
+
+@Composable
+private fun StatusWidgetStylePicker(selected: StatusWidgetStyle, onSelect: (StatusWidgetStyle) -> Unit) {
+    Text(stringResource(R.string.status_widget_style_title), style = MaterialTheme.typography.titleSmall)
+    Column(Modifier.selectableGroup()) {
+        StatusWidgetStyle.entries.forEach { style ->
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .selectable(selected = style == selected, role = Role.RadioButton, onClick = { onSelect(style) })
+                .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = style == selected, onClick = null)
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(stringResource(style.labelRes), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(style.summaryRes), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    Text(stringResource(R.string.status_widget_style_note), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

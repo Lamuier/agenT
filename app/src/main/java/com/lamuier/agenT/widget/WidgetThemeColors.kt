@@ -34,12 +34,14 @@ data class WidgetThemeColors(
                 ThemeMode.Light -> false
                 ThemeMode.Dark -> true
             }
-            if (settings.colorPalette == ColorPalette.System &&
+            val colors = if (settings.colorPalette == ColorPalette.System &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             ) {
-                return systemDynamic(context, dark)
+                systemDynamic(context, dark)
+            } else {
+                staticPalette(settings.colorPalette, dark)
             }
-            return staticPalette(settings.colorPalette, dark)
+            return colors.readableOnLightSurface()
         }
 
         private fun systemDynamic(context: Context, dark: Boolean): WidgetThemeColors {
@@ -213,6 +215,58 @@ data class WidgetThemeColors(
             outline = "#3A4454".toColorInt(),
         )
     }
+}
+
+/**
+ * 浅色壁纸上，系统色板的次要文字和描边可能淡到融进白底。
+ * 只在浅色表面把不够对比的墨色和边线往黑压，深色表面保持原样。
+ */
+internal fun WidgetThemeColors.readableOnLightSurface(): WidgetThemeColors {
+    if (relativeLuminance(surface) < 0.5) return this
+    return copy(
+        onSurface = darkenUntil(onSurface, surface, 7.0),
+        onSurfaceVariant = darkenUntil(onSurfaceVariant, surface, 5.5),
+        outline = darkenUntil(outline, surface, 3.0),
+    )
+}
+
+private fun darkenUntil(color: Int, background: Int, minimum: Double): Int {
+    if (contrastRatio(color, background) >= minimum) return color
+    var low = 0f
+    var high = 1f
+    var best = Color.BLACK
+    repeat(14) {
+        val amount = (low + high) / 2f
+        val mixed = mixTowardBlack(color, amount)
+        if (contrastRatio(mixed, background) >= minimum) {
+            best = mixed
+            high = amount
+        } else {
+            low = amount
+        }
+    }
+    return best
+}
+
+private fun mixTowardBlack(color: Int, amount: Float): Int {
+    fun channel(value: Int) = (value * (1f - amount)).toInt().coerceIn(0, 255)
+    return Color.rgb(channel(Color.red(color)), channel(Color.green(color)), channel(Color.blue(color)))
+}
+
+private fun contrastRatio(foreground: Int, background: Int): Double {
+    val lighter = maxOf(relativeLuminance(foreground), relativeLuminance(background))
+    val darker = minOf(relativeLuminance(foreground), relativeLuminance(background))
+    return (lighter + 0.05) / (darker + 0.05)
+}
+
+private fun relativeLuminance(color: Int): Double {
+    fun channel(value: Int): Double {
+        val s = value / 255.0
+        return if (s <= 0.04045) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channel(Color.red(color)) +
+        0.7152 * channel(Color.green(color)) +
+        0.0722 * channel(Color.blue(color))
 }
 
 /** Alpha-blend [color] onto opaque black/white for tinted chip backgrounds. */

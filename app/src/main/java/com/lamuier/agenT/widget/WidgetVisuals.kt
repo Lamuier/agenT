@@ -97,6 +97,14 @@ internal object WidgetVisuals {
         return bitmap
     }
 
+    fun dotBitmap(context: Context, sizeDp: Int, color: Int): Bitmap {
+        val size = dp(context, sizeDp.toFloat()).roundToInt().coerceIn(1, 64)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+        Canvas(bitmap).drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        return bitmap
+    }
+
     /** One ring split into proportional segments, e.g. granted versus topped-up balance. */
     fun splitDonutBitmap(
         context: Context,

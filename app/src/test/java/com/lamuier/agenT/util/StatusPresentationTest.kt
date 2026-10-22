@@ -52,5 +52,11 @@ class StatusPresentationTest {
             "https://status.cursor.com/incidents/abc",
             StatusPresentation.incidentUrl(null, "abc"),
         )
+        assertTrue(StatusPresentation.isSafeStatusUrl("https://status.x.ai"))
+        assertTrue(StatusPresentation.isSafeStatusUrl("https://status.x.ai/cursor-desktop/ps_abc"))
+        assertFalse(StatusPresentation.isSafeStatusUrl("https://status.x.ai/?incident=cursor-desktop/ps_abc"))
+        assertFalse(StatusPresentation.isSafeStatusUrl("https://data.x.ai/status/summary.json"))
+        assertFalse(StatusPresentation.isSafeStatusUrl("https://status.x.ai.evil.test/cursor-desktop/ps_abc"))
+        assertFalse(StatusPresentation.isSafeStatusUrl("https://evil.status.x.ai/cursor-desktop/ps_abc"))
     }
 }

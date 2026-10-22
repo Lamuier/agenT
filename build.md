@@ -47,6 +47,22 @@ python3 scripts/ui-review-gallery.py
 
 图库位于 `app/build/reports/ui-review/index.html`。脚本不启动模拟器，不调用 adb，不安装到手机。
 
+### 与已安装正式版并排的预览包
+
+不要用 `.\build.ps1 -Install` 或默认 Debug / Release 包覆盖已安装的 `com.lamuier.agenT`。需要在同一台设备上查看界面时，单独构建预览包：
+
+```sh
+./gradlew :app:assembleDebug -PagentPreviewApplicationIdSuffix=.preview
+```
+
+Windows PowerShell 必须给属性加引号，否则 `.preview` 会被当成任务名：
+
+```powershell
+.\gradlew.bat :app:assembleDebug "-PagentPreviewApplicationIdSuffix=.preview"
+```
+
+安装前用 `aapt2 dump badging` 确认包名是 `com.lamuier.agenT.preview`、应用名是 `agenT preview`。该包使用 Debug 签名，启动后只打开调试夹具界面，不读取正式包数据。卸载只执行 `adb uninstall com.lamuier.agenT.preview`。标准 `build.ps1` / `build.sh` 不传这个属性，Release 包名保持 `com.lamuier.agenT`。
+
 ### 使用实际 Token 验收用量
 
 可显式启用 [LiveUsageTest](app/src/test/java/com/lamuier/agenT/usage/LiveUsageTest.kt)，通过应用现有 HTTP 客户端查询 Cursor / Codex 真实接口，再检查生产解析、缓存往返、采样条件及 Compose 用量页交互与渲染。外部 UTF-8 文件须包含各一个 Cursor 和 Codex JWT，支持 Markdown 转义的下划线 / 连字符；仅提取凭据，不执行文件中的其他文字。凭据、账号标识和原始响应只留在测试内存，报告仅保存指标、请求状态及不含账号信息的页面图片。

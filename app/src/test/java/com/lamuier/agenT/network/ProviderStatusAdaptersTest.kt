@@ -80,6 +80,87 @@ class ProviderStatusAdaptersTest {
         val raw = deep(); raw.getJSONObject("data").getJSONObject("page").put("custom_domain", "different.example")
         ProviderStatusAdapters.deepSeek(raw, null)
     }
+    @Test fun cursorFeedKeepsCursorRowsAndDropsOtherXaiProducts() {
+        val summary = xaiStatus(
+            component("grok-com", "grok.com", "outage"),
+            component("cursor-desktop", "Cursor IDE", "disruption"),
+            component("cursor-cli", "CLI", "info"),
+            component("api-global", "Global (api.x.ai)", "outage"),
+        )
+        val history = JSONObject().put("incidents", org.json.JSONArray(listOf(
+            incident("ps_cursor", "IDE degraded", "investigating", "minor", "cursor-desktop", "Cursor IDE"),
+            incident("ps_grok", "grok.com", "resolved", "critical", "grok-com", "grok.com"),
+            incident("ps_note", "Notice", "monitoring", "none", "cursor-cli", "CLI"),
+            incident("ps_old", "CLI restored", "resolved", "minor", "cursor-cli", "CLI"),
+        )))
+        val uptime = JSONObject().put("updated_at", "2026-10-21T01:00:00.000Z").put("groups", org.json.JSONArray(listOf(
+            JSONObject().put("name", "Grok").put("components", org.json.JSONArray(listOf("grok-com"))),
+            JSONObject().put("name", "Cursor").put("components", org.json.JSONArray(listOf("cursor-desktop", "cursor-cli"))),
+        )))
+        val (normalized, incidents) = ProviderStatusAdapters.cursor(summary, history, uptime)
+        val parsed = StatusJsonParser.parse(normalized, incidents, defaultStatusUrl = ProviderStatusAdapters.CURSOR_STATUS_URL)
+        assertEquals(StatusIndicator.Minor, parsed.indicator)
+        assertEquals(listOf("Cursor IDE", "CLI"), parsed.components.map { it.name })
+        assertEquals(com.lamuier.agenT.model.ComponentStatus.DegradedPerformance, parsed.components[0].status)
+        assertEquals(com.lamuier.agenT.model.ComponentStatus.Operational, parsed.components[1].status)
+        assertEquals(listOf("ps_cursor", "ps_note"), parsed.activeIncidents.map { it.id })
+        assertEquals(listOf("Cursor IDE"), parsed.activeIncidents[0].affectedComponents)
+        assertEquals("https://status.x.ai/cursor-desktop/ps_cursor", parsed.activeIncidents[0].shortlink)
+        assertTrue(com.lamuier.agenT.util.StatusPresentation.isSafeStatusUrl(checkNotNull(parsed.activeIncidents[0].shortlink)))
+        assertEquals(listOf("ps_old"), parsed.recentIncidents.map { it.id })
+        assertEquals(ProviderStatusAdapters.CURSOR_STATUS_URL, parsed.pageUrl)
+        assertEquals("2026-10-21T01:00:00.000Z", parsed.pageUpdatedAt)
+    }
+
+    @Test fun cursorGroupMembershipIncludesUnprefixedIdsAndOutageIsCritical() {
+        val summary = xaiStatus(
+            component("grok-com", "grok.com", "outage"),
+            component("ide", "Desktop", "outage"),
+        )
+        val uptime = JSONObject().put("groups", org.json.JSONArray(listOf(
+            JSONObject().put("name", "Cursor IDE").put("components", org.json.JSONArray(listOf("ide"))),
+        )))
+        val parsed = StatusJsonParser.parse(ProviderStatusAdapters.cursor(summary, null, uptime).first, null)
+        assertEquals(StatusIndicator.Critical, parsed.indicator)
+        assertEquals(listOf("Desktop"), parsed.components.map { it.name })
+        assertTrue(parsed.partialHistory)
+    }
+
+    @Test fun cursorInfoNoticeStaysOperational() {
+        val parsed = StatusJsonParser.parse(
+            ProviderStatusAdapters.cursor(xaiStatus(component("cursor-desktop", "Cursor IDE", "info")), null, null).first,
+            null,
+        )
+        assertEquals(StatusIndicator.None, parsed.indicator)
+        assertEquals(com.lamuier.agenT.model.ComponentStatus.Operational, parsed.components.single().status)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cursorWithoutPublishedComponentsStaysOnTheLegacyFeed() {
+        ProviderStatusAdapters.cursor(xaiStatus(component("grok-com", "grok.com", "outage")), null, null)
+    }
+
+    @Test fun cursorStatusRequestsUseXaiDataWhileLegacyStatuspageRemains() {
+        assertEquals(
+            "https://data.x.ai/status/summary.json",
+            officialStatusRequestUrl(OfficialStatusProvider.Cursor, StatusResource.Summary),
+        )
+        assertEquals(
+            "https://data.x.ai/status/incidents.json",
+            officialStatusRequestUrl(OfficialStatusProvider.Cursor, StatusResource.Incidents),
+        )
+        assertEquals(
+            "https://data.x.ai/status/uptime.json",
+            officialStatusRequestUrl(OfficialStatusProvider.Cursor, StatusResource.Uptime),
+        )
+        assertEquals(
+            "https://status.openai.com/api/v2/summary.json",
+            officialStatusRequestUrl(OfficialStatusProvider.Codex, StatusResource.Summary),
+        )
+        assertEquals("https://status.cursor.com/api/v2/summary.json", cursorLegacyStatusUrl(StatusResource.Summary))
+        assertEquals("https://status.cursor.com/api/v2/incidents.json", cursorLegacyStatusUrl(StatusResource.Incidents))
+    }
+
     @Test fun deepSeekHistoryIsFilteredAndSortedBeforeTwelveItemLimit() {
         val events = (1..20).map { i -> JSONObject().put("change_id", i).put("page_id",6410630422455L).put("title", "event $i")
             .put("status", "resolved").put("start_at_seconds", 1792000000L + i).put("close_at_seconds",1792100000L + i)
@@ -89,4 +170,20 @@ class ProviderStatusAdaptersTest {
         assertEquals(12, parsed.recentIncidents.size)
         assertEquals("20", parsed.recentIncidents.first().id)
     }
+
+    private fun component(id: String, name: String, status: String) =
+        JSONObject().put("id", id).put("name", name).put("status", status)
+
+    private fun xaiStatus(vararg components: JSONObject) = JSONObject()
+        .put("status", JSONObject().put("indicator", "none").put("description", "All systems operational"))
+        .put("components", org.json.JSONArray(components.toList()))
+        .put("incidents", org.json.JSONArray())
+
+    private fun incident(id: String, name: String, status: String, impact: String, slug: String, component: String) =
+        JSONObject().put("id", id).put("name", name).put("status", status).put("impact", impact)
+            .put("created_at", "2026-10-21T00:00:00.000Z")
+            .put("components", org.json.JSONArray(listOf(JSONObject().put("slug", slug).put("name", component))))
+            .put("incident_updates", org.json.JSONArray(listOf(
+                JSONObject().put("id", "evt-$id").put("status", status).put("body", name).put("created_at", "2026-10-21T00:00:00.000Z"),
+            )))
 }
