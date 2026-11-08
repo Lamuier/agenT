@@ -431,8 +431,9 @@ def main(argv=None, root=ROOT):
     # Always use the selected metadata; partial/stale caller signing env must not affect Debug.
     for key in SIGNING_KEYS:
         env.pop(key, None)
-    # Standard builds always cover the complete UI matrix, even after a local preview run.
-    for key in ("AGENT_UI_REVIEW_SMOKE", "AGENT_UI_REVIEW_SCENES"):
+    # Standard builds always cover the complete UI matrix, even after a local preview run,
+    # and only verify the committed widget picker previews instead of rewriting them.
+    for key in ("AGENT_UI_REVIEW_SMOKE", "AGENT_UI_REVIEW_SCENES", "AGENT_RECORD_WIDGET_PREVIEWS"):
         env.pop(key, None)
     java_home, major = find_java(root, args.java_home, env, host)
     sdk = find_sdk(root, args.sdk, env, host)

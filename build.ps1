@@ -60,11 +60,25 @@ function Write-Step([string]$Message) {
 }
 
 function Resolve-JavaHome {
-    $java = Join-Path $JavaHome "bin\java.exe"
-    if (-not (Test-Path -LiteralPath $java)) {
-        throw "找不到 Android Studio JBR: $JavaHome（请安装 Android Studio 或调整 build.ps1 中的路径）"
+    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME) -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
+        return $env:JAVA_HOME
     }
-    return $JavaHome
+    $candidates = @($JavaHome)
+    if (Test-Path -LiteralPath "C:\Program Files\Microsoft") {
+        $candidates += (Get-ChildItem -Path "C:\Program Files\Microsoft" -Filter "jdk-*" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    }
+    if (Test-Path -LiteralPath "C:\Program Files\Java") {
+        $candidates += (Get-ChildItem -Path "C:\Program Files\Java" -Filter "jdk-*" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    }
+    if (Test-Path -LiteralPath "C:\Program Files\Eclipse Adoptium") {
+        $candidates += (Get-ChildItem -Path "C:\Program Files\Eclipse Adoptium" -Filter "jdk-*" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    }
+    foreach ($cand in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($cand) -and (Test-Path -LiteralPath (Join-Path $cand "bin\java.exe"))) {
+            return $cand
+        }
+    }
+    throw "找不到 Android Studio JBR: $JavaHome（请安装 Android Studio 或调整 build.ps1 中的路径）"
 }
 
 function Resolve-AndroidSdk {
@@ -126,6 +140,8 @@ function Invoke-Gradle([string[]]$GradleArgs) {
     $env:ANDROID_HOME = Resolve-AndroidSdk
     Remove-Item "Env:AGENT_UI_REVIEW_SMOKE" -ErrorAction SilentlyContinue
     Remove-Item "Env:AGENT_UI_REVIEW_SCENES" -ErrorAction SilentlyContinue
+    # 标准入口只校验已提交的组件选择器预览图，不改写它们。
+    Remove-Item "Env:AGENT_RECORD_WIDGET_PREVIEWS" -ErrorAction SilentlyContinue
     # 必须写到 Host：否则 Gradle 日志会进入函数返回值，污染 $apk = Invoke-Assemble ...
     # JDK 会向 stderr 输出 restricted-method 警告；全局 ErrorActionPreference=Stop 时
     # 这些警告会被当成终止性错误中断构建，故此处临时降为 Continue，成败仍看 $LASTEXITCODE。

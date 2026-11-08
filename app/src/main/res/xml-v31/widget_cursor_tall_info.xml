@@ -6,7 +6,7 @@
     android:minResizeHeight="@dimen/widget_4x3_min_height"
     android:minResizeWidth="@dimen/widget_4x3_min_width"
     android:minWidth="@dimen/widget_4x3_min_width"
-    android:previewLayout="@layout/widget_sources_preview"
+    android:previewImage="@drawable/widget_preview_usage_board"
     android:resizeMode="none"
     android:targetCellHeight="3"
     android:targetCellWidth="4"

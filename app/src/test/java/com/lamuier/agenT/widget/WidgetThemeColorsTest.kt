@@ -51,6 +51,96 @@ class WidgetThemeColorsTest {
         assertEquals(dark, dark.readableOnLightSurface())
     }
 
+    @Test fun resolvePairHonorsThemeModes() {
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-notnight-xhdpi")
+        ThemePreferences.get(app).setColorPalette(ColorPalette.Pulse)
+
+        // System mode - notnight
+        ThemePreferences.get(app).setThemeMode(ThemeMode.System)
+        val systemPair = WidgetThemeColors.resolvePair(app)
+        assertTrue(systemPair.isSystem)
+        assertEquals(0xFFFFFFFF.toInt(), systemPair.light.surface)
+        assertEquals(0xFF13171E.toInt(), systemPair.dark.surface)
+        assertEquals(systemPair.light, systemPair.current)
+        assertEquals(false, systemPair.isNight)
+
+        // System mode - night
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-night-xhdpi")
+        val systemNightPair = WidgetThemeColors.resolvePair(app)
+        assertTrue(systemNightPair.isSystem)
+        assertEquals(systemNightPair.dark, systemNightPair.current)
+        assertEquals(true, systemNightPair.isNight)
+
+        // Forced Light mode
+        ThemePreferences.get(app).setThemeMode(ThemeMode.Light)
+        val lightPair = WidgetThemeColors.resolvePair(app)
+        assertEquals(false, lightPair.isSystem)
+        assertEquals(lightPair.light, lightPair.dark)
+        assertEquals(0xFFFFFFFF.toInt(), lightPair.current.surface)
+        assertEquals(false, lightPair.isNight)
+
+        // Forced Dark mode
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-notnight-xhdpi")
+        ThemePreferences.get(app).setThemeMode(ThemeMode.Dark)
+        val darkPair = WidgetThemeColors.resolvePair(app)
+        assertEquals(false, darkPair.isSystem)
+        assertEquals(darkPair.light, darkPair.dark)
+        assertEquals(0xFF13171E.toInt(), darkPair.current.surface)
+        assertEquals(true, darkPair.isNight)
+    }
+
+    @Test fun applyTextColorAndSurfaceAppliesToRemoteViews() {
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-notnight-xhdpi")
+        ThemePreferences.get(app).setThemeMode(ThemeMode.System)
+        ThemePreferences.get(app).setColorPalette(ColorPalette.Pulse)
+        val pair = WidgetThemeColors.resolvePair(app)
+
+        val views = android.widget.RemoteViews(app.packageName, com.lamuier.agenT.R.layout.widget_sources)
+        pair.applyTextColor(views, com.lamuier.agenT.R.id.widget_multi_title, 0xFF123456.toInt(), 0xFF654321.toInt())
+        pair.applyOnSurface(views, com.lamuier.agenT.R.id.widget_multi_empty)
+        pair.applySurfaceAndOutline(views)
+
+        val root = views.apply(app, android.widget.FrameLayout(app))
+        val title = root.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_multi_title)
+        assertEquals(0xFF123456.toInt(), title.currentTextColor)
+        val empty = root.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_multi_empty)
+        assertEquals(pair.light.onSurface, empty.currentTextColor)
+
+        // Test dynamic switching under launcher reapply without regenerating RemoteViews
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-night-xhdpi")
+        views.reapply(app, root)
+        assertEquals(0xFF654321.toInt(), title.currentTextColor)
+        assertEquals(pair.dark.onSurface, empty.currentTextColor)
+    }
+
+    @Test fun statusWidgetSwitchesColorsDynamicallyWithoutStaticBitmap() {
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-notnight-xhdpi")
+        ThemePreferences.get(app).setThemeMode(ThemeMode.System)
+        ThemePreferences.get(app).setColorPalette(ColorPalette.Pulse)
+        val pair = WidgetThemeColors.resolvePair(app)
+
+        val views = android.widget.RemoteViews(app.packageName, com.lamuier.agenT.R.layout.widget_cursor_status_square)
+        pair.applySurfaceAndOutline(views, hasOutline = false)
+        pair.applyOnSurfaceVariant(views, com.lamuier.agenT.R.id.widget_brand, com.lamuier.agenT.R.id.widget_status)
+        pair.applyOnSurface(views, com.lamuier.agenT.R.id.widget_value)
+
+        val root = views.apply(app, android.widget.FrameLayout(app))
+        val brand = root.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_brand)
+        val value = root.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_value)
+        val surface = root.findViewById<android.widget.ImageView>(com.lamuier.agenT.R.id.widget_surface)
+
+        // Initial light state
+        assertEquals(pair.light.onSurfaceVariant, brand.currentTextColor)
+        assertEquals(pair.light.onSurface, value.currentTextColor)
+        assertTrue(surface.drawable !is android.graphics.drawable.BitmapDrawable)
+
+        // Day -> Night switch
+        RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-night-xhdpi")
+        views.reapply(app, root)
+        assertEquals(pair.dark.onSurfaceVariant, brand.currentTextColor)
+        assertEquals(pair.dark.onSurface, value.currentTextColor)
+    }
+
     private fun contrast(foreground: Int, background: Int): Double {
         val lighter = maxOf(luminance(foreground), luminance(background))
         val darker = minOf(luminance(foreground), luminance(background))

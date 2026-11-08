@@ -33,6 +33,8 @@ import com.lamuier.agenT.widget.EXTRA_WIDGET_OPEN_TAB
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Coordinates quota monitoring and one-shot threshold reminders.
@@ -140,8 +142,10 @@ class AgenTNotificationCoordinator(
 
     /** The background monitor refreshes both providers, even when no widgets are placed. */
     suspend fun refreshLive(forceCodex: Boolean = false, scheduleWindowRefresh: Boolean = true) = coroutineScope {
+        // 一项出错只算它自己失败，其余照常刷新后统一从缓存重绘。等待的共享请求被别处取消时同样只算这一项失败；
+        // 这一轮本身被取消才往外抛。
         suspend fun safely(block: suspend () -> Unit) {
-            try { block() } catch (error: CancellationException) { throw error } catch (_: Exception) { }
+            try { block() } catch (_: CancellationException) { currentCoroutineContext().ensureActive() } catch (_: Exception) { }
         }
         val cursor = async {
             safely {
@@ -155,7 +159,8 @@ class AgenTNotificationCoordinator(
             }
         }
         val tasks = async {
-            if (preferences.read().liveUpdatesEnabled) safely {
+            safely {
+                if (!preferences.read().liveUpdatesEnabled) return@safely
                 val repository = cursorRepository
                 val account = repository.listAccounts().firstOrNull { it.id == repository.selectedAccountId() }
                     ?: repository.listAccounts().firstOrNull()
@@ -176,7 +181,8 @@ class AgenTNotificationCoordinator(
             }
         }
         val statuses = listOf(OfficialStatusProvider.Cursor, OfficialStatusProvider.Codex).map { provider -> async {
-            if (preferences.read().liveUpdatesEnabled) safely {
+            safely {
+                if (!preferences.read().liveUpdatesEnabled) return@safely
                 val repository = ServiceStatusRepository(appContext, provider)
                 if ((repository.cached()?.cacheAgeSeconds ?: Int.MAX_VALUE) >= 5 * 60)
                     repository.fetch(forceRefresh = false)

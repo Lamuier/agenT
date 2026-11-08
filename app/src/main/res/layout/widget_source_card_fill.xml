@@ -3,11 +3,14 @@
     android:layout_width="match_parent" android:layout_height="match_parent" android:layout_weight="0"
     android:orientation="vertical" android:gravity="top" android:paddingHorizontal="5dp" android:paddingVertical="3dp">
     <TextView android:id="@+id/widget_source_name" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="12sp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="1" />
+        android:textSize="12sp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:maxLines="1"
+        android:textColor="@color/widget_on_surface" />
     <LinearLayout android:id="@+id/widget_source_metrics" android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" android:layout_marginTop="4dp" android:orientation="vertical" />
     <TextView android:id="@+id/widget_source_note" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="10sp" android:includeFontPadding="false" android:maxLines="2" android:layout_marginBottom="2dp" />
+        android:textSize="10sp" android:includeFontPadding="false" android:maxLines="2" android:layout_marginBottom="2dp"
+        android:textColor="@color/widget_on_surface_variant" />
     <TextView android:id="@+id/widget_source_clock" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="9sp" android:includeFontPadding="false" android:maxLines="1" />
+        android:textSize="9sp" android:includeFontPadding="false" android:maxLines="1"
+        android:textColor="@color/widget_on_surface_variant" />
 </LinearLayout>

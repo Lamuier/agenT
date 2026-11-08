@@ -5,10 +5,13 @@
     <ImageView android:id="@+id/widget_board_status_dot" android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:importantForAccessibility="no" />
     <TextView android:id="@+id/widget_board_status_name" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:textColor="@color/widget_on_surface"
         android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="13sp" android:includeFontPadding="false" android:maxLines="1" />
     <TextView android:id="@+id/widget_board_status_count" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="@color/widget_on_surface_variant"
         android:layout_marginStart="8dp" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="1" />
     <TextView android:id="@+id/widget_board_status_word" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="@color/widget_on_surface_variant"
         android:minWidth="56dp" android:layout_marginStart="8dp" android:gravity="end" android:textSize="12sp"
         android:includeFontPadding="false" android:maxLines="1" />
 </LinearLayout>

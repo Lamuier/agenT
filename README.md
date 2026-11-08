@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-当前工程版本：**1.7.0**（`versionCode` 10）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#170--2026-10-23)，安装包 ID 为 `com.lamuier.agenT`。
+当前工程版本：**1.7.1**（`versionCode` 11）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#171--2026-11-08)，安装包 ID 为 `com.lamuier.agenT`。
 
 应用没有账号体系、自建后端、广告或分析 SDK。凭据和个人缓存保存在本机；查询直接发往各服务接口，公共重置公告匿名读取第三方来源。
 

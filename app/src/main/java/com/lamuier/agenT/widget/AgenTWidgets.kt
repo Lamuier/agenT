@@ -44,6 +44,7 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +53,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -72,16 +76,30 @@ internal const val PERIODIC_REFRESH_MS = 15L * 60 * 1000
 /** 周期任务只在每个周期的最后五分钟内运行，相邻两次至少隔十分钟。 */
 internal const val PERIODIC_FLEX_MS = 5L * 60 * 1000
 /**
+ * 周期任务的排法版本，写在任务 extras 里。1.7.0 的周期任务每次没拿全都要求系统重排，
+ * 失败计数按指数退避越推越远（实测推到四个多小时一次）；升级后按版本不同重排一次，重排会清零退避计数。
+ */
+internal const val EXTRA_PERIODIC_SCHEMA = "periodic_schema"
+internal const val PERIODIC_SCHEMA = 2
+/**
  * 计划刷新只跳过九分钟内的缓存。新鲜度若和周期一样长，到点的那次常因“还新鲜”而跳过，
  * 要等下一个周期才真正拉取，组件上的数据会旧到半小时以上。
  */
 internal const val CACHE_FRESH_SECONDS = 9 * 60
 private const val MANUAL_REFRESH_COOLDOWN_MS = 10_000L
-/** 刷新按钮的广播最多托住这么久，后台广播的系统超时是一分钟。 */
-private const val MANUAL_REFRESH_HOLD_MS = 15_000L
-/** 按钮触发的这一轮（含排队）最多等这么久；各来源超过十秒的先用缓存画上，由兜底任务补齐。 */
-private const val MANUAL_REFRESH_BUDGET_MS = 12_000L
-private const val MANUAL_SOURCE_DEADLINE_MS = 10_000L
+/** 组件上的点击以前台广播送达（FLAG_RECEIVER_FOREGROUND），十秒内不交还系统就判 ANR 并杀掉进程。 */
+internal const val FOREGROUND_BROADCAST_TIMEOUT_MS = 10_000L
+/**
+ * 刷新按钮的广播最多托住这么久。1.7.0 按后台广播的一分钟上限托住十五秒，来源一慢就在第十秒被判 ANR，
+ * 进程连同这一轮刷新一起被杀。这里给冷启动和主线程排队留出三秒余量。
+ */
+internal const val MANUAL_REFRESH_HOLD_MS = 7_000L
+/** 按钮那一轮（含排队等锁）最多等这么久，赶在交还广播前收尾；没做完的由同时排上的任务接着做。 */
+internal const val MANUAL_REFRESH_BUDGET_MS = 6_500L
+/** 按钮触发的强制刷新到这个时刻先画一次，没回来的来源先用缓存，回来后再补画。 */
+internal const val MANUAL_SOURCE_DEADLINE_MS = 5_000L
+/** “正在刷新”最多保留这么久；接手的任务先画出结果时随之撤下。 */
+private const val MANUAL_REFRESH_NOTICE_MS = 20_000L
 /** 后台任务等这么久就先把已到的结果画上，再等慢的来源补画一次。 */
 private const val JOB_SOFT_DEADLINE_MS = 15_000L
 
@@ -209,6 +227,7 @@ private data class CodexWidgetLoadResult(
     val line: String,
     val revision: Long?,
     val shouldRetry: Boolean = false,
+    val failure: String? = null,
 )
 
 /** 刷新期间的临时提示同时盖住各来源的状态行，与按钮按下时的那一帧一致。 */
@@ -219,43 +238,96 @@ private data class WidgetLoadResult(
     val shouldRetry: Boolean = false,
     /** 有来源没在截止时间内返回，这一轮先用了它的缓存。 */
     val timedOut: Boolean = false,
+    /** 没拿全的来源及原因（HTTP 状态码、异常类名、late 或 cancelled），只写日志，不含账号信息。 */
+    val incomplete: List<String> = emptyList(),
 )
 
 internal data class RefreshResult(val shouldRetry: Boolean, val timedOut: Boolean = false)
 
 /**
- * 强制刷新的请求时间早于某次成功的强制刷新开始时间，就已经被那次覆盖。
- * 按钮那一轮和兜底任务谁先拿到刷新锁都行，后到的一方改按缓存新鲜度刷新，不再把全部来源重拉一遍。
+ * 强制刷新的请求时间早于某一轮强制刷新的开始时间，就已经被那一轮覆盖，不论那一轮是否全部拿到。
+ * 按钮那一轮和兜底任务谁先拿到刷新锁谁强制；后到的任务改按缓存新鲜度刷新：仍在途的请求直接加入，
+ * 失败过且已过新鲜期的来源再试一次，不把全部来源重拉一遍；广播里那一轮后到时直接结束。还没拿全的由补拉任务按次数接着补。
+ * 1.7.0 只认成功的一轮，失败后两边轮流强制重拉，系统退避又让同一个请求无限重试。
  */
 internal class ForcedRefreshLedger {
-    private var satisfiedAt = Long.MIN_VALUE
+    private var coveredAt = Long.MIN_VALUE
 
-    @Synchronized fun shouldForce(requestedAt: Long): Boolean = requestedAt > satisfiedAt
+    @Synchronized fun shouldForce(requestedAt: Long): Boolean = requestedAt > coveredAt
 
-    @Synchronized fun complete(startedAt: Long, succeeded: Boolean) {
-        if (succeeded) satisfiedAt = maxOf(satisfiedAt, startedAt)
+    @Synchronized fun complete(startedAt: Long) {
+        coveredAt = maxOf(coveredAt, startedAt)
     }
 }
 
 /**
- * 等到 [deadline]（elapsedRealtime）为止；超时只取消这次等待，仓库里的请求继续跑完并写入缓存，
- * 这一轮改用 [onTimeout] 给出的缓存值。没有截止时间时照常等待。
+ * 刷新任务结束后一律不交给系统退避。周期任务等下一个周期；一次性任务和补拉任务没拿全时按 [delaysMs]
+ * 再补拉，次数用完交给周期任务。补拉不强制，只重拉新鲜期外的来源。各次补拉用不同的任务 ID，
+ * 排下一次时不会把正在跑的这一次停掉。
  */
-internal suspend fun <T : Any> Deferred<T>.awaitUntil(deadline: Long?, onTimeout: () -> T): T {
-    if (deadline == null || isCompleted) return await()
-    val remaining = deadline - SystemClock.elapsedRealtime()
-    val value = if (remaining > 0) withTimeoutOrNull(remaining) { await() } else null
+internal object WidgetRefreshRetry {
+    val jobIds = intArrayOf(0x43505733, 0x43505734)
+    val delaysMs = longArrayOf(60_000L, 5 * 60_000L)
+
+    fun attemptOf(jobId: Int): Int? = jobIds.indexOf(jobId).takeIf { it >= 0 }?.plus(1)
+
+    /** 下一次补拉的序号（从 1 开始）；周期任务、已经拿全或次数用完时为 null。 */
+    fun next(jobId: Int, incomplete: Boolean): Int? {
+        if (!incomplete || jobId == WIDGET_PERIODIC_JOB_ID) return null
+        return ((attemptOf(jobId) ?: 0) + 1).takeIf { it <= jobIds.size }
+    }
+}
+
+/**
+ * 等到 [deadline]（elapsedRealtime）为止，或 [interrupt] 先完成（按下刷新按钮时后台这一轮让路）；
+ * 超时或让路只取消这次等待，仓库里的请求继续跑完并写入缓存，这一轮改用 [onTimeout] 给出的缓存值。
+ * 没有截止时间也没有让路信号时照常等待。
+ */
+internal suspend fun <T : Any> Deferred<T>.awaitUntil(deadline: Long?, interrupt: Deferred<*>? = null, onTimeout: () -> T): T {
+    if (isCompleted || (deadline == null && interrupt == null)) return await()
+    val remaining = deadline?.let { it - SystemClock.elapsedRealtime() } ?: Long.MAX_VALUE
+    val value = if (remaining > 0 && interrupt?.isCompleted != true) withTimeoutOrNull(remaining) {
+        if (interrupt == null) await() else select<T?> {
+            onAwait { it }
+            interrupt.onAwait { null }
+        }
+    } else null
     return value ?: run {
         cancel()
         onTimeout()
     }
 }
 
+/** [settle] 里到点没返回（或为按钮刷新让路时还没返回）的来源记成这个原因。 */
+internal const val SOURCE_LATE = "late"
+/** 等待的共享请求被别处取消、这一轮本身仍在进行时记成这个原因。 */
+internal const val SOURCE_CANCELLED = "cancelled"
+
+/**
+ * 一个来源的收尾：按时返回就用它的结果；到 [deadline] 没回来（或 [interrupt] 要求让路）、抛了异常，
+ * 或等待的共享请求被别处取消，都只让这一项改用 [fallback] 给出的缓存值（参数是原因：[SOURCE_LATE]、
+ * [SOURCE_CANCELLED] 或异常类名），其他来源照常。只有这一轮本身被取消时才往外抛。
+ */
+internal suspend fun <T : Any> Deferred<T>.settle(deadline: Long?, interrupt: Deferred<*>? = null,
+    fallback: (reason: String) -> T): T = try {
+    awaitUntil(deadline, interrupt) { fallback(SOURCE_LATE) }
+} catch (cancelled: CancellationException) {
+    currentCoroutineContext().ensureActive()
+    fallback(SOURCE_CANCELLED)
+} catch (error: Exception) {
+    fallback(failureReason(error))
+}
+
 private data class StatusLoadResult(
     val status: ServiceStatus?,
     val line: String,
     val shouldRetry: Boolean = false,
+    val failure: String? = null,
 )
+
+/** 日志里的失败原因：只有 HTTP 状态码或异常类名。 */
+private fun failureReason(error: Throwable): String =
+    if (error is ApiException) "http ${error.statusCode}" else error.javaClass.simpleName
 
 abstract class BaseCursorWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(
@@ -405,7 +477,22 @@ object AgenTWidgetUpdater {
     /** 按钮触发的刷新画出结果前，期间任何缓存重绘都保留“正在刷新”；超过 [ManualRefresh.until] 自动撤下。 */
     private class ManualRefresh(val requestedAt: Long, val until: Long)
     private val manualRefresh = java.util.concurrent.atomic.AtomicReference<ManualRefresh?>(null)
+    /**
+     * 正持有刷新锁的非强制那一轮（后台任务、补画）的让路信号。它没有截止时间时会一直等慢的来源，
+     * 实机上一个状态接口 TLS 握手拖了四十多秒，期间按下的刷新只能排在后面干等。按钮按下时完成这个信号，
+     * 那一轮立刻用已有结果画完、放开刷新锁；慢来源的请求照常跑完并写入缓存。
+     */
+    private val backgroundWait = java.util.concurrent.atomic.AtomicReference<CompletableDeferred<Unit>?>(null)
     private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+
+    /** 按钮触发的刷新还在等结果（“正在刷新”尚未撤下且没过期）。 */
+    private fun manualRefreshPending(): Boolean =
+        manualRefresh.get()?.let { SystemClock.elapsedRealtime() < it.until } == true
+
+    /** 让持有刷新锁的非强制那一轮立刻画完并放开锁；没有这样的一轮时什么也不做。 */
+    internal fun yieldToManualRefresh() {
+        backgroundWait.get()?.complete(Unit)
+    }
 
     private fun refreshingNotice(context: Context): String? =
         manualRefresh.get()?.takeIf { SystemClock.elapsedRealtime() < it.until }
@@ -442,9 +529,11 @@ object AgenTWidgetUpdater {
             scheduler.cancel(WIDGET_PERIODIC_JOB_ID)
             return
         }
-        // 旧版本按整周期 flex 排过任务，参数不同就重排一次，否则升级后仍是旧的调度窗口。
+        // 旧版本按整周期 flex 排过任务，1.7.0 的任务又被失败退避推到几个小时一次；
+        // 参数或排法版本不同就重排一次，否则升级后仍沿用旧窗口和退避计数。参数一致时不重排，免得每次打开应用都推迟周期。
         val pending = scheduler.getPendingJob(WIDGET_PERIODIC_JOB_ID)
-        if (pending != null && pending.intervalMillis == PERIODIC_REFRESH_MS && pending.flexMillis == PERIODIC_FLEX_MS) return
+        if (pending != null && pending.intervalMillis == PERIODIC_REFRESH_MS && pending.flexMillis == PERIODIC_FLEX_MS &&
+            pending.extras.getInt(EXTRA_PERIODIC_SCHEMA, 0) == PERIODIC_SCHEMA) return
         val job = JobInfo.Builder(
             WIDGET_PERIODIC_JOB_ID,
             ComponentName(appContext, AgenTWidgetJobService::class.java),
@@ -452,6 +541,7 @@ object AgenTWidgetUpdater {
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setPeriodic(PERIODIC_REFRESH_MS, PERIODIC_FLEX_MS)
             .setPersisted(true)
+            .setExtras(PersistableBundle().apply { putInt(EXTRA_PERIODIC_SCHEMA, PERIODIC_SCHEMA) })
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     setRequiresBatteryNotLow(false)
@@ -483,9 +573,9 @@ object AgenTWidgetUpdater {
     }
 
     /**
-     * 刷新按钮：在广播里完成这一轮强制刷新。广播结束前进程处于接收广播状态，系统不会冻结它，也不会切断后台网络；
-     * 广播一结束又没有任务在跑，进程就按缓存进程处理：HyperOS 会停掉刚排上的任务，后台网络随即被切断，
-     * 进程里的请求只能等到超时。兜底任务照常排着，这一轮没能全部拿到时由它补齐。
+     * 刷新按钮：托住这次广播，在广播里先跑一轮强制刷新。广播结束前进程处于接收广播状态，系统不会冻结它，
+     * 也不会切断后台网络。组件点击是前台广播，必须在 [FOREGROUND_BROADCAST_TIMEOUT_MS] 内交还，
+     * 所以最多托住 [MANUAL_REFRESH_HOLD_MS]；慢的来源先用缓存画上，由同时排上的任务等它们回来补画。
      */
     internal fun refreshFromTap(context: Context, pending: android.content.BroadcastReceiver.PendingResult?,
         requestedAt: Long?) {
@@ -495,35 +585,46 @@ object AgenTWidgetUpdater {
             updateFromCache(context, pending, later)
             return
         }
-        val tap = ManualRefresh(requestedAt, SystemClock.elapsedRealtime() + MANUAL_REFRESH_HOLD_MS)
+        val tap = ManualRefresh(requestedAt, requestedAt + MANUAL_REFRESH_NOTICE_MS)
         manualRefresh.set(tap)
+        // 后台那一轮若正等着某个慢来源，让它先画完放开刷新锁，这次强制刷新不必排在后面。
+        yieldToManualRefresh()
         val finished = AtomicBoolean(false)
         val finish = Runnable { if (finished.compareAndSet(false, true)) pending?.finish() }
-        // 渲染或读缓存卡住时也必须在系统超时前交还广播。
-        mainHandler.postDelayed(finish, MANUAL_REFRESH_HOLD_MS)
+        // 渲染、读缓存或等锁卡住时也必须赶在前台广播超时前交还，否则进程会被判 ANR 杀掉。
+        mainHandler.postDelayed(finish, remainingUntil(requestedAt + MANUAL_REFRESH_HOLD_MS))
+        // 接手的任务还在跑就留着“正在刷新”，由它画出结果时撤下；没有任务在跑才在这里撤下并按缓存重绘。
+        suspend fun handOver() {
+            if (isRefreshJobRunning()) return
+            manualRefresh.compareAndSet(tap, null)
+            renderCached(context)
+        }
         shortScope.launch {
             try {
                 renderCached(context)
-                val result = withTimeoutOrNull(MANUAL_REFRESH_BUDGET_MS) {
-                    performScheduledRefresh(context, force = true, requestedAt, requestedAt + MANUAL_SOURCE_DEADLINE_MS)
+                val result = withTimeoutOrNull(remainingUntil(requestedAt + MANUAL_REFRESH_BUDGET_MS)) {
+                    performScheduledRefresh(context, force = true, requestedAt, requestedAt + MANUAL_SOURCE_DEADLINE_MS,
+                        skipIfCovered = true)
                 }
                 if (result == null) {
-                    android.util.Log.w(WIDGET_LOG_TAG, "tap refresh ran out of time, fallback job continues")
-                    manualRefresh.compareAndSet(tap, null)
-                    renderCached(context)
+                    android.util.Log.i(WIDGET_LOG_TAG, "tap refresh window ended, refresh job continues")
+                    handOver()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                android.util.Log.w(WIDGET_LOG_TAG, "tap refresh failed, fallback job continues", error)
-                manualRefresh.compareAndSet(tap, null)
-                runCatching { renderCached(context) }
+                android.util.Log.w(WIDGET_LOG_TAG, "tap refresh failed, refresh job continues", error)
+                runCatching { handOver() }
             } finally {
                 mainHandler.removeCallbacks(finish)
                 finish.run()
             }
         }
     }
+
+    private fun remainingUntil(deadline: Long): Long = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
+
+    private fun isRefreshJobRunning(): Boolean = synchronized(scheduleLock) { jobRunning }
 
     private suspend fun renderCached(context: Context) {
         val generation = cacheRenderGeneration.incrementAndGet()
@@ -580,6 +681,25 @@ object AgenTWidgetUpdater {
         }
     }
 
+    /**
+     * 排第 [attempt] 次补拉（从 1 开始，见 [WidgetRefreshRetry]）。次数用完或没有组件时不排，返回 false。
+     * 系统退避会把失败计数一直带下去：周期任务因此被推到几个小时一次，一次性任务则无限重试、每次都强制重拉全部来源。
+     */
+    internal fun scheduleRetry(context: Context, attempt: Int): Boolean {
+        val jobId = WidgetRefreshRetry.jobIds.getOrNull(attempt - 1) ?: return false
+        if (!hasWidgets(context)) return false
+        val delay = WidgetRefreshRetry.delaysMs[attempt - 1]
+        val job = JobInfo.Builder(jobId, ComponentName(context, AgenTWidgetJobService::class.java))
+            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+            .setMinimumLatency(delay)
+            .build()
+        val scheduled = runCatching {
+            context.getSystemService(JobScheduler::class.java).schedule(job) == JobScheduler.RESULT_SUCCESS
+        }.getOrDefault(false)
+        android.util.Log.i(WIDGET_LOG_TAG, "refresh incomplete, retry #$attempt in ${delay / 1000}s scheduled=$scheduled")
+        return scheduled
+    }
+
     /** 返回这一轮是否强制及对应的请求时间；上一轮执行期间排进来的强制请求并入这一轮。 */
     internal fun onJobStarted(force: Boolean, requestedAt: Long = SystemClock.elapsedRealtime()): Pair<Boolean, Long> =
         synchronized(scheduleLock) {
@@ -608,21 +728,42 @@ object AgenTWidgetUpdater {
 
     /**
      * 刷新锁内的一轮。[deadline] 之前没返回的来源先用缓存画上。
-     * 强制请求已被更晚开始的成功强制刷新覆盖时直接返回：组件上已是那一轮刚拉到的数据，
-     * 再按缓存重画一遍只会把页脚的“已更新”改回“缓存”，看起来像没刷新。
+     * 强制请求已被更晚开始的一轮强制刷新覆盖时改按缓存新鲜度刷新（见 [ForcedRefreshLedger]）；
+     * 新鲜期内的缓存在页脚仍算“更新”，不会把刚拉到的数据标回“缓存”。
      */
     internal suspend fun performScheduledRefresh(context: Context, force: Boolean,
-        requestedAt: Long = SystemClock.elapsedRealtime(), deadline: Long? = null): RefreshResult =
+        requestedAt: Long = SystemClock.elapsedRealtime(), deadline: Long? = null, firstPaintMs: Long? = null,
+        skipIfCovered: Boolean = false): RefreshResult =
         refreshMutex.withLock {
-            if (force && !forcedRefreshes.shouldForce(requestedAt)) return@withLock RefreshResult(shouldRetry = false)
+            // 广播里那一轮拿到锁时，请求已被接手的任务强制拉过：它的截止时间已过，再跑只会把所有来源记成没回来、按缓存重画一遍。
+            if (skipIfCovered && force && !forcedRefreshes.shouldForce(requestedAt)) return@withLock RefreshResult(shouldRetry = false)
+            val forced = force && forcedRefreshes.shouldForce(requestedAt)
             val startedAt = SystemClock.elapsedRealtime()
+            // [firstPaintMs] 从拿到刷新锁时起算：排在另一轮后面时，进锁前算好的截止时间早已过去，
+            // 实机上所有来源都被当成没回来，先画的那一次只是缓存。
+            val paintAt = firstPaintMs?.let { startedAt + it } ?: deadline
             val loadUsageData = hasKind(context) { !it.isStatus }
             val loadStatusData = hasKind(context) { it.isStatus }
-            val result = withContext(Dispatchers.IO) {
-                WidgetLoader.load(context, force, loadUsageData, loadStatusData, deadline)
+            // 非强制的一轮等慢来源时随时为按钮刷新让路；开始时按钮刷新就在等结果，则一开始就让路。
+            val interrupt = if (forced) null else CompletableDeferred<Unit>().also { wait ->
+                backgroundWait.set(wait)
+                if (manualRefreshPending()) wait.complete(Unit)
+            }
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    WidgetLoader.load(context, forced, loadUsageData, loadStatusData, paintAt, interrupt)
+                }
+            } finally {
+                interrupt?.let { backgroundWait.compareAndSet(it, null) }
+            }
+            if (interrupt?.isCompleted == true && result.timedOut) {
+                android.util.Log.i(WIDGET_LOG_TAG, "background pass yielded to a manual refresh")
+            }
+            if (forced) forcedRefreshes.complete(startedAt)
+            if (result.incomplete.isNotEmpty()) {
+                android.util.Log.i(WIDGET_LOG_TAG, "${if (forced) "forced" else "regular"} pass incomplete: ${result.incomplete.joinToString()}")
             }
             if (force) {
-                forcedRefreshes.complete(startedAt, succeeded = !result.shouldRetry)
                 // 点按之后才开始的这一轮已有结果，“正在刷新”随这次重绘撤下。
                 manualRefresh.get()?.takeIf { it.requestedAt <= startedAt }?.let { manualRefresh.compareAndSet(it, null) }
             }
@@ -631,9 +772,14 @@ object AgenTWidgetUpdater {
             RefreshResult(result.shouldRetry, result.timedOut)
         }
 
-    /** 后台任务的一轮：慢的来源先用缓存画上，再等它们回来补画一次。 */
+    /**
+     * 后台任务的一轮：慢的来源先用缓存画上，再等它们回来补画一次；补画时仍在途的请求直接加入，不另发。
+     * 按钮刚排上的那一轮和广播里那一轮一样五秒先画，这个任务多半比广播里那一轮先拿到刷新锁。
+     */
     internal suspend fun refreshInJob(context: Context, force: Boolean, requestedAt: Long): Boolean {
-        val first = performScheduledRefresh(context, force, requestedAt, SystemClock.elapsedRealtime() + JOB_SOFT_DEADLINE_MS)
+        val firstPaint = if (force && manualRefresh.get()?.requestedAt == requestedAt) MANUAL_SOURCE_DEADLINE_MS
+            else JOB_SOFT_DEADLINE_MS
+        val first = performScheduledRefresh(context, force, requestedAt, firstPaintMs = firstPaint)
         if (!first.timedOut) return first.shouldRetry
         return performScheduledRefresh(context, force = false).shouldRetry
     }
@@ -643,6 +789,7 @@ object AgenTWidgetUpdater {
             val scheduler = context.getSystemService(JobScheduler::class.java)
             scheduler.cancel(WIDGET_REFRESH_JOB_ID)
             scheduler.cancel(WIDGET_PERIODIC_JOB_ID)
+            WidgetRefreshRetry.jobIds.forEach(scheduler::cancel)
         }
     }
 
@@ -864,7 +1011,8 @@ object AgenTWidgetUpdater {
         }
         val views = RemoteViews(context.packageName, layoutId)
         val strings = loc(context)
-        val colors = WidgetThemeColors.resolve(context)
+        val theme = WidgetThemeColors.resolvePair(context)
+        val colors = theme.current
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         val usage = snapshot.usage?.takeUnless { snapshot.account?.tokenExpired == true }
         val codex = snapshot.codexUsage?.takeUnless { snapshot.codexCredential?.let { it.expired || it.invalid } == true }
@@ -874,8 +1022,7 @@ object AgenTWidgetUpdater {
         val codexValue = AssistantPresentation.percent(codex?.primary?.usedPercent)
         views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent(context, spec, widgetId))
         views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.TRANSPARENT)
-        views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
-        views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
+        theme.applySurfaceAndOutline(views)
         views.setFloat(R.id.widget_outline, "setAlpha", 1f)
         views.setTextViewText(R.id.widget_cursor_name, "Cursor")
         views.setTextViewText(R.id.widget_codex_name, if (kind.hasUsageDetails) "Codex" else "Codex · 5h")
@@ -883,23 +1030,22 @@ object AgenTWidgetUpdater {
         views.setTextViewText(R.id.widget_codex_primary_value, codexValue)
         views.setTextViewText(R.id.widget_codex_week, strings.getString(R.string.widget_codex_weekly,
             AssistantPresentation.percent(codex?.secondary?.usedPercent)))
-        listOf(R.id.widget_cursor_name, R.id.widget_codex_name).forEach { views.setTextColor(it, colors.onSurface) }
-        listOf(R.id.widget_cursor_value, R.id.widget_codex_primary_value).forEach { views.setTextColor(it, colors.onSurface) }
-        views.setTextColor(R.id.widget_codex_week, colors.onSurfaceVariant)
+        theme.applyOnSurface(views, R.id.widget_cursor_name, R.id.widget_codex_name, R.id.widget_cursor_value, R.id.widget_codex_primary_value)
+        theme.applyOnSurfaceVariant(views, R.id.widget_codex_week)
         views.setTextViewText(R.id.widget_cursor_info, strings.getString(R.string.widget_current_cycle))
-        views.setTextColor(R.id.widget_cursor_info, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(views, R.id.widget_cursor_info)
         val meters = buildList {
             add(Triple(R.id.widget_cursor_progress, cursorPercent, colors.primary))
             add(Triple(R.id.widget_codex_primary_progress, codex?.primary?.usedPercent, colors.tertiary))
             if (kind.hasUsageDetails) add(Triple(R.id.widget_codex_weekly_progress, codex?.secondary?.usedPercent, colors.tertiary))
         }
-        val darkSurface = ((colors.surface ushr 16) and 255) < 128
+        val darkSurface = theme.isNight
         meters.forEach { (id, value, normal) ->
             val accent = WidgetAppearance.accent(value, normal, colors.onSurfaceVariant, darkSurface)
             val track = WidgetAppearance.blend(colors.surface, normal, 0.10f)
             views.setImageViewBitmap(id, WidgetVisuals.quotaBarBitmap(value, accent, track))
         }
-        if (!kind.hasUsageDetails) views.setInt(R.id.widget_mini_divider, "setBackgroundColor", colors.surfaceVariant)
+        if (!kind.hasUsageDetails) theme.applyDivider(views, R.id.widget_mini_divider)
         if (kind.hasUsageDetails) {
             fun connectionLabel(hasCredential: Boolean, invalid: Boolean): String = strings.getString(
                 if (invalid) R.string.widget_token_update_short
@@ -916,27 +1062,22 @@ object AgenTWidgetUpdater {
             views.setTextViewText(R.id.widget_cursor_plan, cursorPlan)
             views.setTextViewText(R.id.widget_codex_plan, codexPlan)
             listOf(R.id.widget_cursor_plan, R.id.widget_codex_plan).forEach { id ->
-                views.setTextColor(id, colors.onSurfaceVariant)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    views.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(colors.surfaceContainer))
-                }
+                theme.applyOnSurfaceVariant(views, id)
+                theme.applyChipBackground(views, id)
             }
             views.setTextViewText(R.id.widget_cursor_caption, strings.getString(R.string.overview_cycle_used))
             views.setViewVisibility(R.id.widget_cursor_caption, if (largeFont || compact) android.view.View.GONE else android.view.View.VISIBLE)
             views.setTextViewText(R.id.widget_codex_primary_label, strings.getString(R.string.quota_five_hour_short))
             views.setTextViewText(R.id.widget_codex_weekly_label, strings.getString(R.string.quota_weekly_short))
-            listOf(R.id.widget_brand, R.id.widget_cursor_caption, R.id.widget_cursor_info,
+            theme.applyOnSurfaceVariant(views,
+                R.id.widget_brand, R.id.widget_cursor_caption, R.id.widget_cursor_info,
                 R.id.widget_codex_primary_label, R.id.widget_codex_weekly_label,
                 R.id.widget_codex_primary_reset, R.id.widget_codex_weekly_reset,
-                R.id.widget_updated).forEach { views.setTextColor(it, colors.onSurfaceVariant) }
+                R.id.widget_updated)
             views.setTextViewText(R.id.widget_codex_week, AssistantPresentation.percent(codex?.secondary?.usedPercent))
-            views.setTextColor(R.id.widget_codex_week, colors.onSurface)
-            views.setInt(R.id.widget_usage_divider, "setBackgroundColor", colors.surfaceVariant)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !compact) {
-                listOf(R.id.widget_cursor_section to colors.primary, R.id.widget_codex_section to colors.tertiary).forEach { (id, accent) ->
-                    views.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(WidgetAppearance.blend(colors.surface, accent, 0.09f)))
-                }
-            }
+            theme.applyOnSurface(views, R.id.widget_codex_week)
+            theme.applyDivider(views, R.id.widget_usage_divider)
+            theme.applySections(views, compact)
             if (largeFont) {
                 fun px(dp: Int) = (dp * context.resources.displayMetrics.density).toInt()
                 views.setViewPadding(R.id.widget_contents, px(if (compact) 8 else 12), px(if (compact) 4 else 10),
@@ -964,9 +1105,8 @@ object AgenTWidgetUpdater {
             val cursorClock = AssistantPresentation.updatedClock(usage?.fetchedAt, zone) ?: "—"
             val codexClock = AssistantPresentation.updatedClock(codex?.fetchedAt, zone) ?: "—"
             views.setTextViewText(R.id.widget_updated, strings.getString(R.string.widget_sync_clocks, cursorClock, codexClock))
-            tintRefreshButton(views, colors)
+            theme.applyRefreshButton(context, views)
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context, spec, widgetId))
-            views.setImageViewBitmap(R.id.widget_refresh, WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant))
         }
         if (kind.hasUsageDetails) {
             views.setOnClickPendingIntent(R.id.widget_cursor_section, openAppPendingIntent(context, spec, widgetId, sourceId = "cursor"))
@@ -982,50 +1122,59 @@ object AgenTWidgetUpdater {
         snapshot: WidgetSnapshot, compact: Boolean): RemoteViews {
         val views = RemoteViews(context.packageName, if (compact) R.layout.widget_cursor_status_tall_compact else R.layout.widget_cursor_status_tall)
         val strings = loc(context)
-        val colors = WidgetThemeColors.resolve(context)
+        val theme = WidgetThemeColors.resolvePair(context)
+        val colors = theme.current
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         val indicator = WidgetSourcePolicy.indicator(sources(context, snapshot))
         val accent = indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
-        views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
-        views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
+        theme.applySurfaceAndOutline(views)
         views.setFloat(R.id.widget_outline, "setAlpha", 1f)
         views.setTextViewText(R.id.widget_brand, strings.getString(R.string.widget_services_title))
-        views.setTextColor(R.id.widget_brand, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(views, R.id.widget_brand)
         views.setTextViewText(R.id.widget_value, if (indicator == com.lamuier.agenT.model.StatusIndicator.None) strings.getString(R.string.widget_services_healthy)
             else indicator?.let { StatusPresentation.compactIndicatorLabel(it, strings.resources) } ?: "—")
-        views.setTextColor(R.id.widget_value, accent)
+        if (indicator == null || indicator == com.lamuier.agenT.model.StatusIndicator.None) {
+            theme.applyTextColor(views, R.id.widget_value, theme.light.onSurface, theme.dark.onSurface)
+        } else {
+            theme.applyTextColor(views, R.id.widget_value, accent, accent)
+        }
         views.setImageViewBitmap(R.id.widget_status_badge, WidgetVisuals.statusBadgeBitmap(context, 16, accent, WidgetCalculations.statusBadgeGlyph(indicator)))
         views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent(context, spec, widgetId))
-        tintRefreshButton(views, colors)
-        views.setImageViewBitmap(R.id.widget_refresh, WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant))
+        theme.applyRefreshButton(context, views)
         views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context, spec, widgetId))
         val limit = if (compact) 3 else if (context.resources.configuration.fontScale > 1.3f) 5 else 8
         data class Panel(val name: String, val status: ServiceStatus?, val title: Int, val summary: Int,
-            val body: Int, val overflow: Int, val incident: Int, val surface: Int, val tint: Int)
+            val body: Int, val overflow: Int, val incident: Int, val surface: Int, val lightTint: Int, val darkTint: Int)
         val panels = listOf(
             Panel("Cursor", snapshot.serviceStatus, R.id.widget_cursor_name, R.id.widget_cursor_summary,
-                R.id.widget_cursor_components, R.id.widget_cursor_overflow, R.id.widget_cursor_incident, R.id.widget_cursor_panel, colors.primary),
+                R.id.widget_cursor_components, R.id.widget_cursor_overflow, R.id.widget_cursor_incident, R.id.widget_cursor_panel, theme.light.primary, theme.dark.primary),
             Panel("Codex", snapshot.codexServiceStatus, R.id.widget_codex_name, R.id.widget_codex_summary,
-                R.id.widget_codex_components, R.id.widget_codex_overflow, R.id.widget_codex_incident, R.id.widget_codex_panel, colors.tertiary),
+                R.id.widget_codex_components, R.id.widget_codex_overflow, R.id.widget_codex_incident, R.id.widget_codex_panel, theme.light.tertiary, theme.dark.tertiary),
         )
         panels.forEach { panel ->
             val panelIntent = openAppPendingIntent(context, spec, widgetId, sourceId = panel.name.lowercase(java.util.Locale.ROOT))
             listOf(panel.surface, panel.title, panel.summary, panel.body, panel.overflow, panel.incident).forEach { viewId ->
                 views.setOnClickPendingIntent(viewId, panelIntent)
             }
-            views.setInt(panel.surface, "setColorFilter", WidgetAppearance.blend(colors.surface, panel.tint, 0.055f))
+            theme.applyStatusPanel(views, panel.surface, panel.lightTint, panel.darkTint)
             views.setTextViewText(panel.title, panel.name)
-            views.setTextColor(panel.title, colors.onSurface)
+            theme.applyOnSurface(views, panel.title)
             views.setTextViewText(panel.summary, panel.status?.let { WidgetCalculations.summaryChip(it) + if (it.partialComponents) "+" else "" } ?: "—")
-            views.setTextColor(panel.summary, panel.status?.indicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant)
+            if (panel.status?.indicator == null || panel.status.indicator == com.lamuier.agenT.model.StatusIndicator.None) {
+                theme.applyOnSurfaceVariant(views, panel.summary)
+            } else {
+                val color = WidgetCalculations.indicatorColor(panel.status.indicator)
+                theme.applyTextColor(views, panel.summary, color, color)
+            }
             views.removeAllViews(panel.body)
             val components = WidgetStatusPresentation.components(panel.status, limit)
             components.forEach { component ->
                 val row = RemoteViews(context.packageName, R.layout.widget_status_component)
-                val color = if (component.status == com.lamuier.agenT.model.ComponentStatus.Unknown) colors.onSurfaceVariant else WidgetCalculations.componentColor(component.status)
+                val isUnknown = component.status == com.lamuier.agenT.model.ComponentStatus.Unknown
+                val color = if (isUnknown) colors.onSurfaceVariant else WidgetCalculations.componentColor(component.status)
                 row.setImageViewBitmap(R.id.widget_component_dot, WidgetVisuals.chipBitmap(context, color, 6, 6))
                 row.setTextViewText(R.id.widget_component_name, WidgetStatusPresentation.componentName(panel.name, component.name))
-                row.setTextColor(R.id.widget_component_name, colors.onSurface)
+                theme.applyOnSurface(row, R.id.widget_component_name)
                 val state = when (component.status) {
                     com.lamuier.agenT.model.ComponentStatus.Operational -> null
                     com.lamuier.agenT.model.ComponentStatus.DegradedPerformance -> R.string.widget_component_degraded_short
@@ -1035,7 +1184,11 @@ object AgenTWidgetUpdater {
                 }
                 row.setViewVisibility(R.id.widget_component_state, if (state == null) android.view.View.GONE else android.view.View.VISIBLE)
                 state?.let { row.setTextViewText(R.id.widget_component_state, strings.getString(it)) }
-                row.setTextColor(R.id.widget_component_state, color)
+                if (isUnknown) {
+                    theme.applyOnSurfaceVariant(row, R.id.widget_component_state)
+                } else {
+                    theme.applyTextColor(row, R.id.widget_component_state, color, color)
+                }
                 row.setContentDescription(R.id.widget_component_row,
                     "${panel.name} · ${component.name} · ${StatusPresentation.componentLabel(component.status, strings.resources)}")
                 views.addView(panel.body, row)
@@ -1043,20 +1196,21 @@ object AgenTWidgetUpdater {
             val remaining = (panel.status?.components?.size ?: 0) - components.size
             views.setViewVisibility(panel.overflow, if (remaining > 0) android.view.View.VISIBLE else android.view.View.GONE)
             views.setTextViewText(panel.overflow, strings.getString(R.string.widget_status_overflow, remaining.coerceAtLeast(0)))
-            views.setTextColor(panel.overflow, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(views, panel.overflow)
             views.setTextViewText(panel.incident, WidgetStatusPresentation.incident(panel.status, strings.resources, zone, compact))
             panel.status?.let { views.setContentDescription(panel.incident, WidgetCalculations.incidentHeadline(it, strings.resources, zone)) }
-            views.setTextColor(panel.incident, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(views, panel.incident)
         }
         fun clock(status: ServiceStatus?): String {
             val time = AssistantPresentation.updatedClock(status?.fetchedAt, zone) ?: "—"
-            return if (status?.fromCache == true) strings.getString(R.string.widget_status_cached_clock, time) else time
+            val stale = status != null && status.fromCache && WidgetSourcePolicy.isStale(status.fetchedAt, true)
+            return if (stale) strings.getString(R.string.widget_status_cached_clock, time) else time
         }
         val transientMessages = listOf(R.string.widget_refreshing, R.string.widget_refresh_later,
             R.string.widget_cache_offline, R.string.widget_cache_refresh_failed, R.string.widget_refresh_failed).map(strings::getString)
         val message = listOf(snapshot.serviceStatusLine, snapshot.codexServiceStatusLine).firstOrNull { it in transientMessages }
         views.setTextViewText(R.id.widget_status, message ?: strings.getString(R.string.widget_status_clocks, clock(snapshot.serviceStatus), clock(snapshot.codexServiceStatus)))
-        views.setTextColor(R.id.widget_status, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(views, R.id.widget_status)
         if (context.resources.configuration.fontScale > 1.3f) {
             views.setTextViewText(R.id.widget_brand, strings.getString(R.string.widget_services_title_compact))
             views.setTextViewTextSize(R.id.widget_brand, android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
@@ -1080,7 +1234,8 @@ object AgenTWidgetUpdater {
         val views = RemoteViews(context.packageName, kind.layoutId)
         val service = snapshot.serviceStatus
         val codexService = snapshot.codexServiceStatus
-        val colors = WidgetThemeColors.resolve(context)
+        val theme = WidgetThemeColors.resolvePair(context)
+        val colors = theme.current
         val combinedIndicator = WidgetCalculations.combinedIndicator(service, codexService)
         val badgeColor = combinedIndicator?.let(WidgetCalculations::indicatorColor) ?: colors.onSurfaceVariant
         val badgeGlyph = WidgetCalculations.statusBadgeGlyph(combinedIndicator)
@@ -1117,13 +1272,23 @@ object AgenTWidgetUpdater {
             views = views,
             kind = kind,
             widgetId = widgetId,
-            colors = colors,
+            theme = theme,
             badgeColor = badgeColor,
             badgeGlyph = badgeGlyph,
         )
-        views.setTextColor(R.id.widget_brand, service?.let { WidgetCalculations.indicatorColor(it.indicator) } ?: colors.onSurfaceVariant)
+        if (service != null && service.indicator != com.lamuier.agenT.model.StatusIndicator.None) {
+            val color = WidgetCalculations.indicatorColor(service.indicator)
+            theme.applyTextColor(views, R.id.widget_brand, color, color)
+        } else {
+            theme.applyOnSurfaceVariant(views, R.id.widget_brand)
+        }
         if (kind == WidgetKind.StatusMini) views.setViewVisibility(R.id.widget_status_badge, android.view.View.GONE)
-        views.setTextColor(R.id.widget_value, codexService?.let { WidgetCalculations.indicatorColor(it.indicator) } ?: colors.onSurfaceVariant)
+        if (codexService != null && codexService.indicator != com.lamuier.agenT.model.StatusIndicator.None) {
+            val color = WidgetCalculations.indicatorColor(codexService.indicator)
+            theme.applyTextColor(views, R.id.widget_value, color, color)
+        } else {
+            theme.applyOnSurfaceVariant(views, R.id.widget_value)
+        }
         views.setTextViewTextSize(R.id.widget_brand, android.util.TypedValue.COMPLEX_UNIT_SP, if (kind.compactLabel) 11f else 14f)
         views.setTextViewTextSize(R.id.widget_value, android.util.TypedValue.COMPLEX_UNIT_SP, if (kind.compactLabel) 12f else 18f)
         views.setContentDescription(R.id.widget_root,
@@ -1157,24 +1322,19 @@ object AgenTWidgetUpdater {
         views: RemoteViews,
         kind: WidgetKind,
         widgetId: Int,
-        colors: WidgetThemeColors,
+        theme: WidgetThemePair,
         badgeColor: Int,
         badgeGlyph: StatusBadgeGlyph,
     ) {
+        val colors = theme.current
         views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.TRANSPARENT)
-        views.setImageViewBitmap(
-            R.id.widget_surface,
-            WidgetVisuals.surfaceBitmap(
-                context,
-                widgetId,
-                WidgetVisuals.glassSurface(colors.surface),
-                kind.fallbackWidthDp,
-                kind.fallbackHeightDp,
-            ),
-        )
-        views.setTextColor(R.id.widget_brand, colors.onSurfaceVariant)
-        views.setTextColor(R.id.widget_status, colors.onSurfaceVariant)
-        views.setTextColor(R.id.widget_value, badgeColor)
+        theme.applySurfaceAndOutline(views, hasOutline = false)
+        theme.applyOnSurfaceVariant(views, R.id.widget_brand, R.id.widget_status)
+        if (badgeColor == colors.onSurfaceVariant) {
+            theme.applyOnSurfaceVariant(views, R.id.widget_value)
+        } else {
+            theme.applyTextColor(views, R.id.widget_value, badgeColor, badgeColor)
+        }
         views.setImageViewBitmap(
             R.id.widget_status_badge,
             WidgetVisuals.statusBadgeBitmap(
@@ -1185,41 +1345,15 @@ object AgenTWidgetUpdater {
             ),
         )
         if (kind.hasRefresh) {
-            tintRefreshButton(views, colors)
-            views.setImageViewBitmap(
-                R.id.widget_refresh,
-                WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant),
-            )
+            theme.applyRefreshButton(context, views)
         }
         if (kind.hasChip) {
-            tintChipBackground(views, R.id.widget_plan, colors.surfaceContainer)
-            views.setTextColor(R.id.widget_plan, colors.onSurfaceVariant)
+            theme.applyChipBackground(views, R.id.widget_plan)
+            theme.applyOnSurfaceVariant(views, R.id.widget_plan)
         }
         if (kind.hasIncident) {
-            tintChipBackground(views, R.id.widget_incident, colors.surfaceContainer)
-            views.setTextColor(R.id.widget_incident, colors.onSurface)
-        }
-    }
-
-    private fun tintRefreshButton(views: RemoteViews, colors: WidgetThemeColors) {
-        views.setInt(R.id.widget_refresh, "setBackgroundResource", R.drawable.widget_refresh_background)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColorStateList(
-                R.id.widget_refresh,
-                "setBackgroundTintList",
-                ColorStateList.valueOf(colors.surfaceVariant),
-            )
-        }
-    }
-
-    private fun tintChipBackground(views: RemoteViews, viewId: Int, color: Int) {
-        views.setInt(viewId, "setBackgroundResource", R.drawable.widget_metric_background)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColorStateList(
-                viewId,
-                "setBackgroundTintList",
-                ColorStateList.valueOf(color),
-            )
+            theme.applyChipBackground(views, R.id.widget_incident)
+            theme.applyOnSurface(views, R.id.widget_incident)
         }
     }
 
@@ -1309,8 +1443,10 @@ class AgenTWidgetJobService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val jobId = params.jobId
         val periodic = jobId == WIDGET_PERIODIC_JOB_ID
+        // 周期任务与补拉任务都不强制，也不占一次性任务的执行槽。
+        val background = periodic || WidgetRefreshRetry.attemptOf(jobId) != null
         val requested = params.extras.getLong(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
-        val (initialForce, initialRequestedAt) = if (periodic) {
+        val (initialForce, initialRequestedAt) = if (background) {
             false to requested
         } else {
             AgenTWidgetUpdater.onJobStarted(params.extras.getBoolean(EXTRA_FORCE_REFRESH, false), requested)
@@ -1319,12 +1455,13 @@ class AgenTWidgetJobService : JobService() {
         val job = serviceScope.launch {
             var retry = false
             try {
-                if (periodic) {
+                if (background) {
                     retry = try {
                         AgenTWidgetUpdater.refreshInJob(applicationContext, false, initialRequestedAt)
                     } catch (_: CancellationException) {
                         return@launch
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        android.util.Log.w(WIDGET_LOG_TAG, "background refresh failed", error)
                         true
                     }
                 } else {
@@ -1336,7 +1473,8 @@ class AgenTWidgetJobService : JobService() {
                         } catch (cancelled: CancellationException) {
                             // 系统停掉时 onStopJob 已交回执行槽；这里再交一次，会把随后重新开始的那一轮也标成已结束。
                             throw cancelled
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            android.util.Log.w(WIDGET_LOG_TAG, "refresh job failed", error)
                             true
                         }
                         requestedAt = AgenTWidgetUpdater.takeQueuedForce() ?: break
@@ -1347,8 +1485,10 @@ class AgenTWidgetJobService : JobService() {
                 activeJobs.remove(jobId, coroutineContext[Job])
             }
             withContext(Dispatchers.Main) {
-                jobFinished(params, retry)
-                if (!periodic) AgenTWidgetUpdater.onJobFinished(applicationContext)
+                // 一律不要求系统重排：失败计数会按指数退避一直带下去，周期任务实测被推到四个多小时才跑一次。
+                jobFinished(params, false)
+                if (!background) AgenTWidgetUpdater.onJobFinished(applicationContext)
+                followUp(jobId, retry)
             }
         }
         activeJobs[jobId] = job
@@ -1358,10 +1498,28 @@ class AgenTWidgetJobService : JobService() {
     override fun onStopJob(params: JobParameters): Boolean {
         val jobId = params.jobId
         activeJobs.remove(jobId)?.cancel()
-        if (jobId != WIDGET_PERIODIC_JOB_ID) {
+        if (jobId != WIDGET_PERIODIC_JOB_ID && WidgetRefreshRetry.attemptOf(jobId) == null) {
             AgenTWidgetUpdater.onJobStopped(applicationContext)
         }
-        return true
+        val cancelledByApp = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            params.stopReason == JobParameters.STOP_REASON_CANCELLED_BY_APP
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            android.util.Log.i(WIDGET_LOG_TAG, "refresh job $jobId stopped, reason=${params.stopReason}")
+        }
+        // 被系统停掉的这一轮按没拿全处理；应用自己取消（换成新的强制刷新）的不用补。
+        // 返回 false：周期任务按原周期继续，其余由补拉任务接手，都不走系统退避。
+        if (!cancelledByApp) followUp(jobId, incomplete = true)
+        return false
+    }
+
+    private fun followUp(jobId: Int, incomplete: Boolean) {
+        val next = WidgetRefreshRetry.next(jobId, incomplete)
+        when {
+            next != null -> AgenTWidgetUpdater.scheduleRetry(applicationContext, next)
+            incomplete && jobId == WIDGET_PERIODIC_JOB_ID ->
+                android.util.Log.i(WIDGET_LOG_TAG, "periodic refresh incomplete, waiting for the next period")
+            incomplete -> android.util.Log.i(WIDGET_LOG_TAG, "refresh incomplete, retries used up until the next periodic pass")
+        }
     }
 
     override fun onDestroy() {
@@ -1409,7 +1567,11 @@ private object WidgetLoader {
         return attachCachedStatus(context, usageSnapshot.copy(
             codexCredential = codex.credential, codexUsage = codex.usage,
             codexUsageLine = codex.line, codexRevision = codex.revision,
-            providers = UsageProvider.entries.associateWith { ProviderUsageRepository(context, it).cached() },
+            // 每家的连接用各自的密钥加密，一家读不出来只让它自己显示存储错误。
+            providers = UsageProvider.entries.associateWith { provider ->
+                runCatching { ProviderUsageRepository(context, provider).cached() }
+                    .getOrElse { ProviderUsageSnapshot(failure = ProviderFailure.Storage) }
+            },
             providerStatuses = UsageProvider.entries.associateWith { provider ->
                 val status = runCatching { provider.statusProvider?.let { ServiceStatusRepository(context, it).cached() } }.getOrNull()
                 StatusLoadResult(status, status?.let { cachedServiceLine(context, it) }.orEmpty())
@@ -1420,9 +1582,12 @@ private object WidgetLoader {
     /** 阻塞的 Codex 请求放在这里跑，等待方超时取消时请求照常跑完并写入缓存。 */
     private val blockingRequests = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** [deadline] 之前没返回的来源改用缓存值，并标记这一轮需要重试。 */
+    /**
+     * 各来源并行拉取、各自写缓存。[deadline] 之前没返回（或 [interrupt] 要求让路时还没返回）、出错或被别处取消的
+     * 来源只让它自己改用缓存值，并标记这一轮需要重试；不会取消其他来源，也不会让这一轮作废。
+     */
     suspend fun load(context: Context, force: Boolean, loadUsageData: Boolean = true,
-        loadStatusData: Boolean = true, deadline: Long? = null): WidgetLoadResult = coroutineScope {
+        loadStatusData: Boolean = true, deadline: Long? = null, interrupt: Deferred<*>? = null): WidgetLoadResult = supervisorScope {
         val base = readCached(context)
         val usageRequest = async { if (loadUsageData && base.account != null) loadUsage(context, force) else WidgetLoadResult(base) }
         val codexRequest = async { if (loadUsageData) loadCodexUsage(context, force) else readCodexCached(context) }
@@ -1439,30 +1604,44 @@ private object WidgetLoader {
             if (loadStatusData && base.providers[provider]?.credential != null && provider.statusProvider != null) loadServiceStatus(context, force, provider.statusProvider)
             else base.providerStatuses.getValue(provider)
         } }
-        // 一个来源慢不能拖住全部组件：到点没回来的先用缓存，请求本身继续跑完并写入缓存。
-        val late = AtomicBoolean(false)
-        fun <T : Any> cachedInstead(value: T): T = value.also { late.set(true) }
-        val usage = usageRequest.awaitUntil(deadline) { cachedInstead(WidgetLoadResult(base)) }
-        val codex = codexRequest.awaitUntil(deadline) {
-            cachedInstead(CodexWidgetLoadResult(base.codexCredential, base.codexUsage, base.codexUsageLine, base.codexRevision))
+        // 一个来源慢、出错或被别处取消都不能拖住全部组件：只有它先用缓存，请求本身继续跑完并写入缓存。
+        val late = mutableListOf<String>()
+        val failed = mutableListOf<String>()
+        fun <T : Any> cachedInstead(source: String, value: T): (String) -> T = { reason ->
+            (if (reason == SOURCE_LATE) late else failed) += "$source $reason"
+            value
         }
+        val usage = usageRequest.settle(deadline, interrupt, cachedInstead("cursor", WidgetLoadResult(base)))
+        val codex = codexRequest.settle(deadline, interrupt,
+            cachedInstead("codex", CodexWidgetLoadResult(base.codexCredential, base.codexUsage, base.codexUsageLine, base.codexRevision)))
         val cursorStatus = statusRequests.getValue(OfficialStatusProvider.Cursor)
-            .awaitUntil(deadline) { cachedInstead(StatusLoadResult(base.serviceStatus, base.serviceStatusLine)) }
+            .settle(deadline, interrupt, cachedInstead("cursor-status", StatusLoadResult(base.serviceStatus, base.serviceStatusLine)))
         val codexStatus = statusRequests.getValue(OfficialStatusProvider.Codex)
-            .awaitUntil(deadline) { cachedInstead(StatusLoadResult(base.codexServiceStatus, base.codexServiceStatusLine)) }
+            .settle(deadline, interrupt, cachedInstead("codex-status", StatusLoadResult(base.codexServiceStatus, base.codexServiceStatusLine)))
         val extras = providerRequests.mapValues { (provider, request) ->
-            request.awaitUntil(deadline) { cachedInstead(base.providers.getValue(provider)) }
+            request.settle(deadline, interrupt, cachedInstead(provider.id, base.providers.getValue(provider)))
         }
         val statuses = extraStatusRequests.mapValues { (provider, request) ->
-            request.awaitUntil(deadline) { cachedInstead(base.providerStatuses.getValue(provider)) }
+            request.settle(deadline, interrupt, cachedInstead("${provider.id}-status", base.providerStatuses.getValue(provider)))
+        }
+        // 只记来源名与原因，桌面停在“缓存”时用 adb 日志就能看出是哪一家、为什么没拿到。
+        val incomplete = buildList {
+            addAll(late)
+            addAll(failed)
+            addAll(usage.incomplete)
+            if (codex.shouldRetry) add("codex ${codex.failure}")
+            if (cursorStatus.shouldRetry) add("cursor-status ${cursorStatus.failure}")
+            if (codexStatus.shouldRetry) add("codex-status ${codexStatus.failure}")
+            if (loadUsageData) extras.forEach { (provider, state) -> if (state.shouldRetry) add("${provider.id} ${state.failure?.name}") }
+            statuses.forEach { (provider, status) -> if (status.shouldRetry) add("${provider.id}-status ${status.failure}") }
         }
         WidgetLoadResult(usage.snapshot.copy(serviceStatus = cursorStatus.status, serviceStatusLine = cursorStatus.line,
             codexCredential = codex.credential, codexUsage = codex.usage, codexUsageLine = codex.line,
             codexRevision = codex.revision, codexServiceStatus = codexStatus.status, codexServiceStatusLine = codexStatus.line,
             providers = extras, providerStatuses = statuses),
-            late.get() || usage.shouldRetry || codex.shouldRetry || cursorStatus.shouldRetry || codexStatus.shouldRetry ||
+            late.isNotEmpty() || failed.isNotEmpty() || usage.shouldRetry || codex.shouldRetry || cursorStatus.shouldRetry || codexStatus.shouldRetry ||
                 (loadUsageData && extras.values.any { it.shouldRetry }) || statuses.values.any { it.shouldRetry },
-            timedOut = late.get())
+            timedOut = late.isNotEmpty(), incomplete = incomplete)
     }
 
     private fun readCodexCached(context: Context): CodexWidgetLoadResult = try {
@@ -1504,9 +1683,10 @@ private object WidgetLoader {
                 usage = if (invalid) null else cached.usage,
                 line = str(context, if (invalid) R.string.connection_token_expired else R.string.widget_cache_refresh_failed),
                 shouldRetry = error.statusCode == 429 || error.statusCode >= 500,
+                failure = "http ${error.statusCode}",
             )
-        } catch (_: IOException) {
-            cached.copy(line = str(context, R.string.widget_cache_offline), shouldRetry = true)
+        } catch (error: IOException) {
+            cached.copy(line = str(context, R.string.widget_cache_offline), shouldRetry = true, failure = failureReason(error))
         } catch (_: Exception) {
             cached.copy(line = str(context, R.string.widget_refresh_failed))
         }
@@ -1554,6 +1734,7 @@ private object WidgetLoader {
                     WidgetSnapshot(latestAccount, cached, str(context, R.string.widget_token_expired_tap), accountRevision = revision),
                 )
             } else {
+                val retry = error.statusCode == 429 || error.statusCode in 500..599
                 WidgetLoadResult(
                     WidgetSnapshot(
                         latestAccount,
@@ -1561,12 +1742,13 @@ private object WidgetLoader {
                         if (cached != null) str(context, R.string.widget_cache_refresh_failed) else str(context, R.string.widget_refresh_failed),
                         accountRevision = revision,
                     ),
-                    shouldRetry = error.statusCode == 429 || error.statusCode in 500..599,
+                    shouldRetry = retry,
+                    incomplete = if (retry) listOf("cursor ${failureReason(error)}") else emptyList(),
                 )
             }
         } catch (_: AccountRevisionChangedException) {
             WidgetLoadResult(readCached(context))
-        } catch (_: IOException) {
+        } catch (error: IOException) {
             val latestAccount = accountAtRevision(repository, stableAccount.id, revision)
                 ?: return WidgetLoadResult(readCached(context))
             WidgetLoadResult(
@@ -1577,6 +1759,7 @@ private object WidgetLoader {
                     accountRevision = revision,
                 ),
                 shouldRetry = true,
+                incomplete = listOf("cursor ${failureReason(error)}"),
             )
         } catch (error: CancellationException) {
             throw error
@@ -1609,12 +1792,14 @@ private object WidgetLoader {
                 status = cached,
                 line = if (cached != null) str(context, R.string.widget_cache_refresh_failed) else str(context, R.string.widget_refresh_failed),
                 shouldRetry = error.statusCode == 429 || error.statusCode in 500..599,
+                failure = failureReason(error),
             )
-        } catch (_: IOException) {
+        } catch (error: IOException) {
             StatusLoadResult(
                 status = cached,
                 line = if (cached != null) str(context, R.string.widget_cache_offline) else str(context, R.string.widget_offline),
                 shouldRetry = true,
+                failure = failureReason(error),
             )
         } catch (error: CancellationException) {
             throw error

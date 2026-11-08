@@ -6,7 +6,9 @@
         android:importantForAccessibility="no" />
     <TextView android:id="@+id/widget_board_center_title" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_marginTop="10dp" android:gravity="center" android:textSize="18sp" android:fontFamily="sans-serif-medium"
-        android:includeFontPadding="false" android:maxLines="1" />
+        android:includeFontPadding="false" android:maxLines="1"
+        android:textColor="@color/widget_on_surface" />
     <TextView android:id="@+id/widget_board_center_names" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="6dp" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="2" />
+        android:layout_marginTop="6dp" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="2"
+        android:textColor="@color/widget_on_surface_variant" />
 </LinearLayout>

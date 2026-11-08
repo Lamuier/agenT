@@ -69,7 +69,7 @@ node scripts/preview-island-styles.cjs
 
 七种组件支持多来源，按配置隐藏并随宿主尺寸和字号分页。4×3 在常规尺寸下改为单页总览：用量以用量最高的额度窗口作大标题，下方逐行列出带窗口名称的百分比；服务状态提供总览列表、四格信号灯、异常置顶三种版式，在「系统入口」的预览下选择。尺寸不足或大字号时回到分页布局。规则、刷新和兼容性统一维护在 [小组件](widgets.md)。
 
-[WidgetRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetRenderingTest.kt) 保留双来源详情的原生绘制检查，[WidgetSourcesRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetSourcesRenderingTest.kt) 覆盖七种组件的四来源、中英文、深浅色、最小尺寸和 200% 字号。截图位于 `app/build/reports/widget-review/`；运行 `python3 scripts/widget-review-gallery.py` 生成图库。用量条独立比例与重新应用见 [WidgetUsageMeterTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetUsageMeterTest.kt)。JVM 原生渲染不等同于实际 OEM 桌面截图。
+[WidgetRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetRenderingTest.kt) 保留双来源详情的原生绘制检查，[WidgetSourcesRenderingTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetSourcesRenderingTest.kt) 覆盖七种组件的四来源、中英文、深浅色、最小尺寸和 200% 字号。[WidgetPickerPreviewTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetPickerPreviewTest.kt) 用同一份样例生成系统组件选择器的预览图，并校验已提交的图与当前渲染一致。截图位于 `app/build/reports/widget-review/`；运行 `python3 scripts/widget-review-gallery.py` 生成图库。用量条独立比例与重新应用见 [WidgetUsageMeterTest](../app/src/test/java/com/lamuier/agenT/widget/WidgetUsageMeterTest.kt)。JVM 原生渲染不等同于实际 OEM 桌面截图。
 
 ## 界面验收
 

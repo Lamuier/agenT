@@ -10,18 +10,22 @@
             <ImageView android:id="@+id/widget_board_issue_badge" android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:importantForAccessibility="no" />
             <TextView android:id="@+id/widget_board_issue_name" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/widget_on_surface"
                 android:layout_marginStart="6dp" android:textSize="14sp" android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false" android:maxLines="1" />
             <TextView android:id="@+id/widget_board_issue_word" android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginStart="6dp" android:textSize="12sp" android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false" android:maxLines="1" />
             <TextView android:id="@+id/widget_board_issue_lasting" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:textColor="@color/widget_on_surface_variant"
                 android:layout_weight="1" android:layout_marginStart="6dp" android:gravity="end" android:textSize="11sp"
                 android:includeFontPadding="false" android:maxLines="1" />
         </LinearLayout>
         <TextView android:id="@+id/widget_board_issue_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="@color/widget_on_surface"
             android:layout_marginTop="5dp" android:textSize="12sp" android:includeFontPadding="false" android:maxLines="2" />
         <TextView android:id="@+id/widget_board_issue_parts" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="@color/widget_on_surface_variant"
             android:layout_marginTop="4dp" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="1" />
     </LinearLayout>
 </FrameLayout>

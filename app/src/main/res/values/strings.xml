@@ -792,6 +792,9 @@
     <string name="widget_incident_recent_detail">近期 · %1$s\n%2$s</string>
     <string name="widget_status_clocks">Cursor %1$s · Codex %2$s</string>
     <string name="widget_status_cached_clock">%1$s 缓存</string>
+    <!-- 4×3 总览页脚：其他来源已更新时，附在“更新 HH:MM”后面的停在缓存的来源，例如“DeepSeek 14:41 缓存”。 -->
+    <string name="widget_footer_stale">%1$s %2$s 缓存</string>
+    <string name="widget_name_separator">、</string>
     <string name="widget_component_degraded_short">受影响</string>
     <string name="widget_component_outage_short">中断</string>
     <string name="widget_component_maintenance_short">维护</string>

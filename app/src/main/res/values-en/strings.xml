@@ -789,6 +789,9 @@
     <string name="widget_incident_recent_detail">Recent · %1$s\n%2$s</string>
     <string name="widget_status_clocks">Cursor %1$s · Codex %2$s</string>
     <string name="widget_status_cached_clock">%1$s cache</string>
+    <!-- 4×3 board footer: sources still on old cache while the others updated, e.g. "DeepSeek cached 14:41". -->
+    <string name="widget_footer_stale">%1$s cached %2$s</string>
+    <string name="widget_name_separator">", "</string>
     <string name="widget_component_degraded_short">Issue</string>
     <string name="widget_component_outage_short">Outage</string>
     <string name="widget_component_maintenance_short">Maint.</string>

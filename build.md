@@ -47,6 +47,18 @@ python3 scripts/ui-review-gallery.py
 
 图库位于 `app/build/reports/ui-review/index.html`。脚本不启动模拟器，不调用 adb，不安装到手机。
 
+### 组件选择器预览图
+
+系统组件选择器显示的预览图（`app/src/main/res/drawable*-nodpi/widget_preview_*.webp`）由 [WidgetPickerPreviewTest](app/src/test/java/com/lamuier/agenT/widget/WidgetPickerPreviewTest.kt) 用组件真实的渲染器生成。标准入口会清除 `AGENT_RECORD_WIDGET_PREVIEWS`，只校验已提交的图与当前渲染一致。改了组件外观导致校验失败时，先单独重新生成，检查图片后再走标准入口：
+
+```sh
+AGENT_RECORD_WIDGET_PREVIEWS=1 ./gradlew :app:testDebugUnitTest --tests 'com.lamuier.agenT.widget.WidgetPickerPreviewTest'
+```
+
+```powershell
+$env:AGENT_RECORD_WIDGET_PREVIEWS = "1"; .\gradlew.bat :app:testDebugUnitTest --tests "com.lamuier.agenT.widget.WidgetPickerPreviewTest"; $env:AGENT_RECORD_WIDGET_PREVIEWS = $null
+```
+
 ### 与已安装正式版并排的预览包
 
 不要用 `.\build.ps1 -Install` 或默认 Debug / Release 包覆盖已安装的 `com.lamuier.agenT`。需要在同一台设备上查看界面时，单独构建预览包：

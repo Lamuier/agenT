@@ -140,6 +140,7 @@ class BuildSupportTest(unittest.TestCase):
             self.used_env = env
             self.assertNotIn("AGENT_UI_REVIEW_SMOKE", env)
             self.assertNotIn("AGENT_UI_REVIEW_SCENES", env)
+            self.assertNotIn("AGENT_RECORD_WIDGET_PREVIEWS", env)
             raise build.BuildError("fixture build failed")
         with patch.object(build.platform, "system", return_value="Linux"), \
              patch.object(build, "app_config", return_value=config), \
@@ -149,7 +150,8 @@ class BuildSupportTest(unittest.TestCase):
              patch.object(build, "gradle_command", return_value=[":app:assembleRelease"]), \
              patch.object(build, "run_gradle", side_effect=fail), \
              patch.object(build, "export_release") as export, patch("builtins.print"), \
-             patch.dict(os.environ, {"AGENT_UI_REVIEW_SMOKE": "1", "AGENT_UI_REVIEW_SCENES": "overview"}):
+             patch.dict(os.environ, {"AGENT_UI_REVIEW_SMOKE": "1", "AGENT_UI_REVIEW_SCENES": "overview",
+                                     "AGENT_RECORD_WIDGET_PREVIEWS": "1"}):
             with self.assertRaisesRegex(build.BuildError, "fixture build failed"):
                 build.main(["--release"], self.root)
             export.assert_not_called()

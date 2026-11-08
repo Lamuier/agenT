@@ -52,8 +52,9 @@ internal object WidgetBoardRenderer {
         refresh: PendingIntent? = null, notice: String? = null, openSource: (String) -> PendingIntent? = { open }): RemoteViews? {
         if (sources.size !in 2..MAX_SOURCES || !fits(width, height, context.resources.configuration.fontScale)) return null
         val strings = AppLocale.wrap(context)
-        val colors = WidgetThemeColors.resolve(context)
-        val dark = (colors.surface ushr 16 and 255) < 128
+        val theme = WidgetThemeColors.resolvePair(context)
+        val colors = theme.current
+        val dark = theme.isNight
         val rows = sources.map { it to lines(strings, it) }
         val meterHeight = lineHeight(context, 13f) + 2
         val noteHeight = lineHeight(context, 10f) + 2
@@ -71,13 +72,12 @@ internal object WidgetBoardRenderer {
         val heroLevel = heroOptions.indexOfFirst { it == 0 || it + 13 <= budget }
         if (heroOptions[heroLevel] == 0 && budget < 0) return null
         val showHero = heroOptions[heroLevel] > 0
-        val views = chrome(context, strings, colors, strings.getString(R.string.widget_board_usage_title, strings.getString(R.string.app_name)),
+        val views = chrome(context, strings, theme, strings.getString(R.string.widget_board_usage_title, strings.getString(R.string.app_name)),
             open, refresh, R.string.widget_refresh_description)
         val textWidth = width - 24
         if (showHero && busiest != null) {
             val (source, meter) = busiest
             val metric = meter.metric
-            val color = WidgetAppearance.accent(meter.percent, colors.primary, colors.onSurfaceVariant, dark)
             val hero = RemoteViews(context.packageName, R.layout.widget_board_hero)
             val caption = heroLevel == 0
             val sub = heroLevel <= 1
@@ -85,36 +85,37 @@ internal object WidgetBoardRenderer {
             hero.setViewVisibility(R.id.widget_board_hero_sub, if (sub) View.VISIBLE else View.GONE)
             if (caption) {
                 fit(context, hero, R.id.widget_board_hero_caption, strings.getString(R.string.widget_board_highest), textWidth, 10f)
-                hero.setTextColor(R.id.widget_board_hero_caption, colors.onSurfaceVariant)
+                theme.applyOnSurfaceVariant(hero, R.id.widget_board_hero_caption)
             }
             val headline = if (meter.percent >= 100) strings.getString(R.string.widget_board_used_up, source.title, metric.label)
                 else strings.getString(R.string.widget_board_used, source.title, metric.label, metric.value)
             fit(context, hero, R.id.widget_board_hero_title, headline, textWidth, 18f)
-            hero.setTextColor(R.id.widget_board_hero_title, color)
+            theme.applyAccentText(hero, R.id.widget_board_hero_title, meter.percent)
             if (sub) {
                 val other = source.metrics.firstOrNull { it !== metric && it.percent != null }
                 val detail = listOfNotNull(metric.reset, other?.let { strings.getString(R.string.widget_board_other_window, it.label, it.value) })
                     .joinToString(" · ")
                 fit(context, hero, R.id.widget_board_hero_sub, detail, textWidth, 11f, truncate = true)
-                hero.setTextColor(R.id.widget_board_hero_sub, colors.onSurfaceVariant)
+                theme.applyOnSurfaceVariant(hero, R.id.widget_board_hero_sub)
             }
             hero.setOnClickPendingIntent(R.id.widget_board_hero, openSource(source.id))
             views.addView(R.id.widget_source_rows, hero)
-            views.addView(R.id.widget_source_rows, divider(context, colors))
+            views.addView(R.id.widget_source_rows, divider(context, theme))
         }
         val lineWidth = textWidth - NAME_WIDTH
         rows.forEach { (source, lines) ->
             val row = RemoteViews(context.packageName, R.layout.widget_board_row)
             fit(context, row, R.id.widget_board_row_name, source.title, NAME_WIDTH - 4, 12f)
-            row.setTextColor(R.id.widget_board_row_name, colors.onSurface)
-            lines.forEach { line -> row.addView(R.id.widget_board_row_lines, line(context, line, lineWidth, colors, dark)) }
+            theme.applyOnSurface(row, R.id.widget_board_row_name)
+            lines.forEach { line -> row.addView(R.id.widget_board_row_lines, line(context, line, lineWidth, theme)) }
             row.setContentDescription(R.id.widget_board_row, source.title + " · " + lines.joinToString(" · ") { describe(it) })
             row.setOnClickPendingIntent(R.id.widget_board_row, openSource(source.id))
             views.addView(R.id.widget_source_rows, RemoteViews(context.packageName, R.layout.widget_source_gap))
             views.addView(R.id.widget_source_rows, row)
         }
         views.addView(R.id.widget_source_rows, RemoteViews(context.packageName, R.layout.widget_source_gap))
-        views.addView(R.id.widget_source_rows, footer(context, strings, colors, sources.map { it.fetchedAt to it.cached }, textWidth, notice))
+        views.addView(R.id.widget_source_rows, footer(context, strings, theme,
+            sources.map { WidgetSourcePolicy.Stamp(it.title, it.fetchedAt, it.cached) }, textWidth, notice))
         return views
     }
 
@@ -123,34 +124,33 @@ internal object WidgetBoardRenderer {
         refresh: PendingIntent? = null, notice: String? = null, openSource: (String) -> PendingIntent? = { open }): RemoteViews? {
         if (sources.size !in 1..MAX_SOURCES || !fits(width, height, context.resources.configuration.fontScale)) return null
         val strings = AppLocale.wrap(context)
-        val colors = WidgetThemeColors.resolve(context)
+        val theme = WidgetThemeColors.resolvePair(context)
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
         val services = sources.map { service(strings.resources, it, zone) }
-        val views = chrome(context, strings, colors, strings.getString(R.string.widget_board_status_title, strings.getString(R.string.app_name)),
+        val views = chrome(context, strings, theme, strings.getString(R.string.widget_board_status_title, strings.getString(R.string.app_name)),
             open, refresh, R.string.widget_status_refresh_description)
         val textWidth = width - 24
         when (style) {
-            StatusWidgetStyle.Summary -> summary(context, strings, colors, views, services, textWidth, openSource)
-            StatusWidgetStyle.Signals -> signals(context, strings, colors, views, services, textWidth, openSource)
-            StatusWidgetStyle.Alerts -> alerts(context, strings, colors, views, services, textWidth, height, openSource)
+            StatusWidgetStyle.Summary -> summary(context, strings, theme, views, services, textWidth, openSource)
+            StatusWidgetStyle.Signals -> signals(context, strings, theme, views, services, textWidth, openSource)
+            StatusWidgetStyle.Alerts -> alerts(context, strings, theme, views, services, textWidth, height, openSource)
         }
-        views.addView(R.id.widget_source_rows, footer(context, strings, colors,
-            sources.map { it.status?.fetchedAt to (it.status?.fromCache != false) }, textWidth, notice))
+        views.addView(R.id.widget_source_rows, footer(context, strings, theme,
+            sources.map { WidgetSourcePolicy.Stamp(it.title, it.status?.fetchedAt, it.status?.fromCache != false) }, textWidth, notice))
         return views
     }
 
-    private fun chrome(context: Context, strings: Context, colors: WidgetThemeColors, title: String, open: PendingIntent?,
+    private fun chrome(context: Context, strings: Context, theme: WidgetThemePair, title: String, open: PendingIntent?,
         refresh: PendingIntent?, refreshLabel: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_sources)
-        views.setInt(R.id.widget_surface, "setColorFilter", WidgetAppearance.blend(colors.surface, colors.primary, 0.025f))
-        views.setInt(R.id.widget_outline, "setColorFilter", colors.outline)
+        theme.applySurfaceAndOutline(views)
         views.setOnClickPendingIntent(R.id.widget_root, open)
         views.setTextViewText(R.id.widget_multi_title, title)
-        views.setTextColor(R.id.widget_multi_title, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(views, R.id.widget_multi_title)
         views.setViewVisibility(R.id.widget_next_page, View.GONE)
         views.setViewVisibility(R.id.widget_multi_empty, View.GONE)
         views.setViewVisibility(R.id.widget_refresh, if (refresh != null) View.VISIBLE else View.GONE)
-        views.setImageViewBitmap(R.id.widget_refresh, WidgetVisuals.refreshIconBitmap(context, colors.onSurfaceVariant))
+        theme.applyRefreshButton(context, views)
         views.setOnClickPendingIntent(R.id.widget_refresh, refresh)
         views.setContentDescription(R.id.widget_refresh, strings.getString(refreshLabel))
         views.setViewVisibility(R.id.widget_source_rows, View.VISIBLE)
@@ -179,18 +179,23 @@ internal object WidgetBoardRenderer {
         is Line.Note -> line.text
     }
 
-    private fun line(context: Context, line: Line, width: Int, colors: WidgetThemeColors, dark: Boolean): RemoteViews {
+    private fun line(context: Context, line: Line, width: Int, theme: WidgetThemePair): RemoteViews {
+        val colors = theme.current
+        val dark = theme.isNight
         if (line is Line.Note) {
             val note = RemoteViews(context.packageName, R.layout.widget_board_text)
             fit(context, note, R.id.widget_board_text, line.text, width, 10f, truncate = true)
-            note.setTextColor(R.id.widget_board_text, if (line.alert) WidgetAppearance.accent(100.0, colors.primary, colors.onSurfaceVariant, dark)
-                else colors.onSurfaceVariant)
+            if (line.alert) {
+                theme.applyAccentText(note, R.id.widget_board_text, 100.0)
+            } else {
+                theme.applyOnSurfaceVariant(note, R.id.widget_board_text)
+            }
             note.setInt(R.id.widget_board_text, "setGravity", if (line.alert) Gravity.START else Gravity.END)
             note.setInt(R.id.widget_board_text, "setMaxLines", 1)
             return note
         }
         val row = RemoteViews(context.packageName, R.layout.widget_board_line)
-        row.setTextColor(R.id.widget_board_line_label, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(row, R.id.widget_board_line_label)
         when (line) {
             is Line.Meter -> {
                 val color = WidgetAppearance.accent(line.percent, colors.primary, colors.onSurfaceVariant, dark)
@@ -198,33 +203,39 @@ internal object WidgetBoardRenderer {
                 row.setImageViewBitmap(R.id.widget_board_line_bar, WidgetVisuals.quotaBarBitmap(line.percent, color,
                     WidgetAppearance.blend(colors.surface, colors.primary, 0.10f)))
                 fit(context, row, R.id.widget_board_line_value, line.metric.value, VALUE_WIDTH, 13f)
-                row.setTextColor(R.id.widget_board_line_value, color)
+                theme.applyAccentText(row, R.id.widget_board_line_value, line.percent)
             }
             is Line.Amount -> {
                 fit(context, row, R.id.widget_board_line_label, line.label, LABEL_WIDTH - 4, 10f)
                 row.setViewVisibility(R.id.widget_board_line_bar, View.INVISIBLE)
                 val valueWidth = maxOf(VALUE_WIDTH, minOf(textWidthDp(context, line.value, 13f) + 2, width - LABEL_WIDTH))
                 fit(context, row, R.id.widget_board_line_value, line.value, valueWidth, 13f)
-                row.setTextColor(R.id.widget_board_line_value, colors.onSurface)
+                theme.applyOnSurface(row, R.id.widget_board_line_value)
             }
             is Line.Note -> Unit
         }
         return row
     }
 
-    private fun divider(context: Context, colors: WidgetThemeColors) = RemoteViews(context.packageName, R.layout.widget_board_divider).apply {
-        setInt(R.id.widget_board_divider, "setBackgroundColor", WidgetAppearance.blend(colors.surface, colors.onSurface, 0.12f))
+    private fun divider(context: Context, theme: WidgetThemePair) = RemoteViews(context.packageName, R.layout.widget_board_divider).apply {
+        theme.applyBoardDivider(this, R.id.widget_board_divider)
     }
 
-    private fun footer(context: Context, strings: Context, colors: WidgetThemeColors, stamps: List<Pair<String?, Boolean>>, width: Int, notice: String?): RemoteViews {
+    private fun footer(context: Context, strings: Context, theme: WidgetThemePair, stamps: List<WidgetSourcePolicy.Stamp>, width: Int, notice: String?): RemoteViews {
         val zone = DisplayTimeZones.resolve(DashboardPreferences.get(context).readTimeZoneId())
-        val latest = stamps.mapNotNull { it.first }.maxOrNull()
-        val clock = AssistantPresentation.updatedClock(latest, zone) ?: "—"
+        val state = WidgetSourcePolicy.footer(stamps)
+        val clock = AssistantPresentation.updatedClock(state.stamp, zone) ?: "—"
+        // 其他来源刚更新时仍写“更新”，只把停在缓存的来源附在后面，例如“更新 16:38 · DeepSeek 14:41 缓存”。
+        val stale = state.stale.takeIf { it.isNotEmpty() }?.let { names ->
+            strings.getString(R.string.widget_footer_stale, names.joinToString(strings.getString(R.string.widget_name_separator)),
+                AssistantPresentation.updatedClock(state.staleStamp, zone) ?: "—")
+        }
         val text = listOfNotNull(notice?.takeIf(String::isNotBlank),
-            strings.getString(if (stamps.any { it.second }) R.string.widget_status_cached_clock else R.string.widget_updated_time, clock)).joinToString(" · ")
+            strings.getString(if (state.cached) R.string.widget_status_cached_clock else R.string.widget_updated_time, clock), stale)
+            .joinToString(" · ")
         return RemoteViews(context.packageName, R.layout.widget_board_text).apply {
             fit(context, this, R.id.widget_board_text, text, width, 9f, truncate = true)
-            setTextColor(R.id.widget_board_text, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(this, R.id.widget_board_text)
             setInt(R.id.widget_board_text, "setMaxLines", 1)
         }
     }
@@ -288,32 +299,40 @@ internal object WidgetBoardRenderer {
     private fun badge(context: Context, service: Service, size: Int) =
         WidgetVisuals.statusBadgeBitmap(context, size, service.color, WidgetCalculations.statusBadgeGlyph(service.indicator))
 
-    private fun summary(context: Context, strings: Context, colors: WidgetThemeColors, views: RemoteViews, services: List<Service>,
+    private fun summary(context: Context, strings: Context, theme: WidgetThemePair, views: RemoteViews, services: List<Service>,
         width: Int, openSource: (String) -> PendingIntent?) {
         val worst = worst(services)
         val hero = RemoteViews(context.packageName, R.layout.widget_board_status_hero)
         hero.setImageViewBitmap(R.id.widget_board_status_badge, badge(context, worst, 30))
         fit(context, hero, R.id.widget_board_status_title, headline(strings, services), width - 44, 17f)
-        hero.setTextColor(R.id.widget_board_status_title, if (worst.ok) colors.onSurface else worst.color)
+        if (worst.ok) {
+            theme.applyOnSurface(hero, R.id.widget_board_status_title)
+        } else {
+            theme.applyTextColor(hero, R.id.widget_board_status_title, worst.color, worst.color)
+        }
         val sub = if (worst.ok) listOf(strings.resources.getQuantityString(R.plurals.widget_board_source_count, services.size, services.size),
             services.sumOf { it.total }.let { strings.resources.getQuantityString(R.plurals.widget_board_tile_ok, it, it) }).joinToString(" · ")
             else issueLine(strings, worst)
         fit(context, hero, R.id.widget_board_status_sub, sub, width - 44, 11f, truncate = true)
-        hero.setTextColor(R.id.widget_board_status_sub, colors.onSurfaceVariant)
+        theme.applyOnSurfaceVariant(hero, R.id.widget_board_status_sub)
         hero.setOnClickPendingIntent(R.id.widget_board_status_hero, openSource(worst.source.id))
         views.addView(R.id.widget_source_rows, hero)
-        views.addView(R.id.widget_source_rows, divider(context, colors))
+        views.addView(R.id.widget_source_rows, divider(context, theme))
         services.forEach { service ->
             val row = RemoteViews(context.packageName, R.layout.widget_board_status_row)
             row.setImageViewBitmap(R.id.widget_board_status_dot, WidgetVisuals.dotBitmap(context, 8, service.color))
             fit(context, row, R.id.widget_board_status_name, service.source.title, width / 2, 13f)
-            row.setTextColor(R.id.widget_board_status_name, colors.onSurface)
+            theme.applyOnSurface(row, R.id.widget_board_status_name)
             if (service.total > 0) {
                 fit(context, row, R.id.widget_board_status_count, strings.getString(R.string.widget_board_components, service.up, service.total), 64, 10f)
-                row.setTextColor(R.id.widget_board_status_count, colors.onSurfaceVariant)
+                theme.applyOnSurfaceVariant(row, R.id.widget_board_status_count)
             } else row.setViewVisibility(R.id.widget_board_status_count, View.GONE)
             fit(context, row, R.id.widget_board_status_word, service.word, 72, 12f)
-            row.setTextColor(R.id.widget_board_status_word, if (service.ok) colors.onSurfaceVariant else service.color)
+            if (service.ok) {
+                theme.applyOnSurfaceVariant(row, R.id.widget_board_status_word)
+            } else {
+                theme.applyTextColor(row, R.id.widget_board_status_word, service.color, service.color)
+            }
             row.setContentDescription(R.id.widget_board_status_row, "${service.source.title} · ${service.word}" +
                 if (service.ok) "" else " · ${issueLine(strings, service)}")
             row.setOnClickPendingIntent(R.id.widget_board_status_row, openSource(service.source.id))
@@ -323,10 +342,7 @@ internal object WidgetBoardRenderer {
         views.addView(R.id.widget_source_rows, RemoteViews(context.packageName, R.layout.widget_source_gap))
     }
 
-    private fun tileTint(colors: WidgetThemeColors, service: Service) = if (service.ok)
-        WidgetAppearance.blend(colors.surface, colors.onSurface, 0.05f) else WidgetAppearance.blend(colors.surface, service.color, 0.16f)
-
-    private fun signals(context: Context, strings: Context, colors: WidgetThemeColors, views: RemoteViews, services: List<Service>,
+    private fun signals(context: Context, strings: Context, theme: WidgetThemePair, views: RemoteViews, services: List<Service>,
         width: Int, openSource: (String) -> PendingIntent?) {
         val ordered = services.sortedByDescending { severity.indexOf(it.indicator) }
         val grid = when (ordered.size) {
@@ -339,18 +355,22 @@ internal object WidgetBoardRenderer {
             val tileWidth = width / cells.size - 26
             cells.forEach { service ->
                 val tile = RemoteViews(context.packageName, R.layout.widget_board_tile)
-                tile.setInt(R.id.widget_board_tile_bg, "setColorFilter", tileTint(colors, service))
+                theme.applyTileTint(tile, R.id.widget_board_tile_bg, service.ok, service.color)
                 tile.setImageViewBitmap(R.id.widget_board_tile_badge, badge(context, service, 20))
                 fit(context, tile, R.id.widget_board_tile_name, service.source.title, tileWidth - 26, 13f)
-                tile.setTextColor(R.id.widget_board_tile_name, colors.onSurface)
+                theme.applyOnSurface(tile, R.id.widget_board_tile_name)
                 fit(context, tile, R.id.widget_board_tile_word, service.word, tileWidth, 15f)
-                tile.setTextColor(R.id.widget_board_tile_word, if (service.ok) colors.onSurface else service.color)
+                if (service.ok) {
+                    theme.applyOnSurface(tile, R.id.widget_board_tile_word)
+                } else {
+                    theme.applyTextColor(tile, R.id.widget_board_tile_word, service.color, service.color)
+                }
                 val detail = if (!service.ok) issueLine(strings, service)
                     else if (service.total > 0) strings.resources.getQuantityString(R.plurals.widget_board_tile_ok, service.total, service.total)
                     else service.source.statusLine
                 tile.setTextViewText(R.id.widget_board_tile_detail, detail)
                 tile.setTextViewTextSize(R.id.widget_board_tile_detail, TypedValue.COMPLEX_UNIT_SP, 10f)
-                tile.setTextColor(R.id.widget_board_tile_detail, colors.onSurfaceVariant)
+                theme.applyOnSurfaceVariant(tile, R.id.widget_board_tile_detail)
                 tile.setContentDescription(R.id.widget_board_tile, "${service.source.title} · ${service.word} · $detail")
                 tile.setOnClickPendingIntent(R.id.widget_board_tile, openSource(service.source.id))
                 row.addView(R.id.widget_board_tile_row, tile)
@@ -359,7 +379,7 @@ internal object WidgetBoardRenderer {
         }
     }
 
-    private fun alerts(context: Context, strings: Context, colors: WidgetThemeColors, views: RemoteViews, services: List<Service>,
+    private fun alerts(context: Context, strings: Context, theme: WidgetThemePair, views: RemoteViews, services: List<Service>,
         width: Int, height: Int, openSource: (String) -> PendingIntent?) {
         val healthy = WidgetCalculations.indicatorColor(StatusIndicator.None)
         val issues = services.filterNot { it.ok }.sortedByDescending { severity.indexOf(it.indicator) }
@@ -368,9 +388,9 @@ internal object WidgetBoardRenderer {
             val center = RemoteViews(context.packageName, R.layout.widget_board_center)
             center.setImageViewBitmap(R.id.widget_board_center_badge, badge(context, services.first(), 44))
             fit(context, center, R.id.widget_board_center_title, strings.getString(R.string.widget_board_all_ok), width, 18f)
-            center.setTextColor(R.id.widget_board_center_title, colors.onSurface)
+            theme.applyOnSurface(center, R.id.widget_board_center_title)
             center.setTextViewText(R.id.widget_board_center_names, dotted(good.map { it.source.title }, healthy))
-            center.setTextColor(R.id.widget_board_center_names, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(center, R.id.widget_board_center_names)
             center.setContentDescription(R.id.widget_board_center, strings.getString(R.string.widget_board_all_ok) + " · " +
                 good.joinToString(" · ") { it.source.title })
             views.addView(R.id.widget_source_rows, center)
@@ -382,22 +402,22 @@ internal object WidgetBoardRenderer {
         val shown = issues.take(room)
         shown.forEach { service ->
             val card = RemoteViews(context.packageName, R.layout.widget_board_issue)
-            card.setInt(R.id.widget_board_issue_bg, "setColorFilter", tileTint(colors, service))
+            theme.applyTileTint(card, R.id.widget_board_issue_bg, service.ok, service.color)
             card.setImageViewBitmap(R.id.widget_board_issue_badge, badge(context, service, 18))
             fit(context, card, R.id.widget_board_issue_name, service.source.title, width / 3, 14f)
-            card.setTextColor(R.id.widget_board_issue_name, colors.onSurface)
+            theme.applyOnSurface(card, R.id.widget_board_issue_name)
             fit(context, card, R.id.widget_board_issue_word, service.word, width / 4, 12f)
-            card.setTextColor(R.id.widget_board_issue_word, service.color)
+            theme.applyTextColor(card, R.id.widget_board_issue_word, service.color, service.color)
             val lasting = service.lasting?.let { strings.getString(R.string.widget_board_lasting, it) }.orEmpty()
             fit(context, card, R.id.widget_board_issue_lasting, lasting, width / 3, 10f, truncate = true)
-            card.setTextColor(R.id.widget_board_issue_lasting, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(card, R.id.widget_board_issue_lasting)
             card.setTextViewText(R.id.widget_board_issue_title, issueLine(strings, service))
-            card.setTextColor(R.id.widget_board_issue_title, colors.onSurface)
+            theme.applyOnSurface(card, R.id.widget_board_issue_title)
             val parts = service.broken.take(3).joinToString(" · ").takeIf { service.incident != null }.orEmpty()
             if (parts.isEmpty()) card.setViewVisibility(R.id.widget_board_issue_parts, View.GONE)
             else {
                 fit(context, card, R.id.widget_board_issue_parts, parts, width - 20, 10f, truncate = true)
-                card.setTextColor(R.id.widget_board_issue_parts, colors.onSurfaceVariant)
+                theme.applyOnSurfaceVariant(card, R.id.widget_board_issue_parts)
             }
             card.setContentDescription(R.id.widget_board_issue, listOf(service.source.title, service.word, issueLine(strings, service), lasting, parts)
                 .filter(String::isNotBlank).joinToString(" · "))
@@ -417,7 +437,7 @@ internal object WidgetBoardRenderer {
             line.setTextViewText(R.id.widget_board_text, rest)
             line.setTextViewTextSize(R.id.widget_board_text, TypedValue.COMPLEX_UNIT_SP,
                 minOf(11f, 11f * (width - 6) / textWidthDp(context, rest.toString(), 11f).coerceAtLeast(1)))
-            line.setTextColor(R.id.widget_board_text, colors.onSurfaceVariant)
+            theme.applyOnSurfaceVariant(line, R.id.widget_board_text)
             line.setInt(R.id.widget_board_text, "setMaxLines", 1)
             line.setContentDescription(R.id.widget_board_text, rest.toString())
             val inset = (8 * context.resources.displayMetrics.density).toInt()

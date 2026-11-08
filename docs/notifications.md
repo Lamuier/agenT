@@ -51,7 +51,7 @@
 
 ## 刷新与验证
 
-前台通常每五分钟同步，后台通知约十五分钟，即使没有放小组件也能运行；小组件有自己的刷新调度。Codex 临近重置安排额外检查，关闭「自动更新 Codex 用量」会跳过自动 Codex 用量请求。系统节电或网络限制会延迟检查，后台提醒不保证精确到秒。
+前台通常每五分钟同步，后台通知约十五分钟，即使没有放小组件也能运行；小组件有自己的刷新调度。后台检查里 Cursor 用量、任务、Codex 用量与两家服务状态各自请求，一项出错（包括加入的共享请求被别处取消）只算它自己失败，其余照常更新后统一从缓存重绘通知；只有这一轮本身被取消时才整轮停下。Codex 临近重置安排额外检查，关闭「自动更新 Codex 用量」会跳过自动 Codex 用量请求。系统节电或网络限制会延迟检查，后台提醒不保证精确到秒。
 
 实现分层：[AgenTNotificationCoordinator](../app/src/main/java/com/lamuier/agenT/notification/AgenTNotificationCoordinator.kt) 组装缓存与通知；`TaskActivityModel` 负责任务观察；`QuotaNoticeModel` / `CodexResetNoticeModel` 负责单次去重；窗口重置提醒直接比较前后新鲜观察快照，临时生成提醒标识，不写入重置页历史；`NotificationRefreshScheduler` 负责后台检查。
 

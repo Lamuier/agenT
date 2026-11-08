@@ -237,6 +237,54 @@ class WidgetSourcesTest {
         assertNoClipping(laidOut(context, usage.take(2), TallCursorWidgetProvider::class.java, 250, 200, "board-usage-2-small"))
     }
 
+    @Test fun usageBoardFooterSaysUpdatedWhenOnlyASourceWithoutDataIsCached() {
+        // 实机场景：Codex 需要更新连接（没有数据），Cursor 与 DeepSeek 是刚写入、这一轮从缓存读出的数据。
+        // 此前任何一个来源带缓存标记都让整块页脚显示“缓存”，刷新成功也像没刷新。
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val strings = com.lamuier.agenT.util.AppLocale.wrap(context)
+        val now = StatusJsonParser.nowStamp()
+        val clock = com.lamuier.agenT.util.AssistantPresentation.updatedClock(now,
+            com.lamuier.agenT.util.DisplayTimeZones.resolve(com.lamuier.agenT.data.DashboardPreferences.get(context).readTimeZoneId()))!!
+        val sources = listOf(
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("自有", "28.9%", 28.9), WidgetMetric("三方", "1.3%", 1.3)), fetchedAt = now),
+            WidgetSource("codex", "Codex", attention = "需更新连接"),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "7.57"), WidgetMetric("赠送", "0"), WidgetMetric("充值", "7.57")),
+                fetchedAt = now, split = listOf(0.0, 7.57)),
+        )
+        val text = visibleText(laidOut(context, sources, TallCursorWidgetProvider::class.java, 334, 252, "board-usage-footer-fresh"))
+        assertTrue(text.contains(strings.getString(com.lamuier.agenT.R.string.widget_updated_time, clock)))
+        assertFalse(text.contains(strings.getString(com.lamuier.agenT.R.string.widget_status_cached_clock, clock)))
+    }
+
+    @Test fun boardFootersKeepTheLatestUpdateWhenOneSourceIsStuckOnOldCache() {
+        // 平板实机：DeepSeek 状态 14:41 之后一直握手失败，Cursor 与 Codex 刚更新，页脚却整块显示“14:41 缓存”，像是全都没刷新。
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val strings = com.lamuier.agenT.util.AppLocale.wrap(context)
+        val zone = com.lamuier.agenT.util.DisplayTimeZones.resolve(com.lamuier.agenT.data.DashboardPreferences.get(context).readTimeZoneId())
+        val now = StatusJsonParser.nowStamp()
+        val old = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            .format(java.time.Instant.now().minusSeconds(7200).atZone(java.time.ZoneId.systemDefault()))
+        val clock = com.lamuier.agenT.util.AssistantPresentation.updatedClock(now, zone)!!
+        val oldClock = com.lamuier.agenT.util.AssistantPresentation.updatedClock(old, zone)!!
+        val expected = strings.getString(com.lamuier.agenT.R.string.widget_updated_time, clock) + " · " +
+            strings.getString(com.lamuier.agenT.R.string.widget_footer_stale, "DeepSeek", oldClock)
+        val usage = listOf(
+            WidgetSource("cursor", "Cursor", listOf(WidgetMetric("自有", "28.9%", 28.9), WidgetMetric("三方", "1.3%", 1.3)),
+                fetchedAt = now, cached = false),
+            WidgetSource("deepseek", "DeepSeek", listOf(WidgetMetric("CNY", "7.57")), fetchedAt = old),
+        )
+        val usageText = visibleText(laidOut(context, usage, TallCursorWidgetProvider::class.java, 334, 252, "board-usage-footer-partial"))
+        assertTrue(usageText.toString(), usageText.contains(expected))
+
+        // 时间戳统一取自上面的 now / old，免得测试跨过整分钟时期望的时刻对不上。
+        fun at(id: String, title: String, stamp: String, cached: Boolean) = live(id, title, StatusIndicator.None).let {
+            it.copy(status = it.status!!.copy(fetchedAt = stamp, fromCache = cached), fetchedAt = stamp, cached = cached)
+        }
+        val status = listOf(at("cursor", "Cursor", now, false), at("codex", "Codex", now, false), at("deepseek", "DeepSeek", old, true))
+        val statusText = visibleText(laidOut(context, status, TallCursorStatusWidgetProvider::class.java, 334, 252, "board-status-footer-partial"))
+        assertTrue(statusText.toString(), statusText.contains(expected))
+    }
+
     @Test fun statusBoardsRenderEveryStyleAndFallBackWhenCramped() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val strings = com.lamuier.agenT.util.AppLocale.wrap(context)

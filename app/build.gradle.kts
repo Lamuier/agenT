@@ -26,8 +26,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.7.0"
+        versionCode = 11
+        versionName = "1.7.1"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -106,6 +106,8 @@ kotlin {
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     inputs.property("uiReviewSmoke", providers.environmentVariable("AGENT_UI_REVIEW_SMOKE").orElse(""))
     inputs.property("uiReviewScenes", providers.environmentVariable("AGENT_UI_REVIEW_SCENES").orElse(""))
+    // Recording rewrites the widget picker previews under src/main/res; standard builds always verify them.
+    inputs.property("recordWidgetPreviews", providers.environmentVariable("AGENT_RECORD_WIDGET_PREVIEWS").orElse(""))
     val liveUsageRequested = providers.environmentVariable("AGENT_LIVE_USAGE_CREDENTIAL_FILE")
         .map { it.isNotBlank() }.orElse(false)
     inputs.property("liveUsageRequested", liveUsageRequested)
