@@ -8,10 +8,17 @@ object TokenUtils {
     private val expPattern = Regex("\"exp\"\\s*:\\s*(\\d+)")
     private val subPattern = Regex("\"sub\"\\s*:\\s*\"([^\"]+)\"")
     private val accessTokenPattern = Regex("[A-Za-z0-9._~=-]+")
+    private const val SEALED_STORAGE_PREFIX = "cursor-safe-storage:"
     private val userIdPattern = Regex("[A-Za-z0-9._@-]{1,256}")
 
     fun requireValidAccessToken(token: String, resources: Resources? = null): String {
         val value = token.trim()
+        if (value.startsWith(SEALED_STORAGE_PREFIX)) {
+            throw IllegalArgumentException(
+                resources?.getString(R.string.error_token_sealed)
+                    ?: "这是 Cursor 加密后的本地存储，不是 Access Token",
+            )
+        }
         require(value.length in 32..8192) {
             resources?.getString(R.string.error_token_length) ?: "Access Token 长度不正确"
         }

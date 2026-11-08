@@ -428,18 +428,18 @@
 
     <string name="token_help_got_it">Got it</string>
     <string name="token_help_title">How to get an Access Token</string>
-    <string name="token_help_intro">These steps only work on a Windows PC that is already signed in to Cursor.</string>
+    <string name="token_help_intro">Run these steps on the Windows PC signed in to Cursor, using that same Windows user.</string>
     <string name="token_help_close">Close help</string>
     <string name="token_help_step1_title">Confirm Cursor is signed in</string>
     <string name="token_help_step1_body">Open Cursor for Windows and confirm the account in the top-right is signed in. You do not need to sign out before reading the database.</string>
     <string name="token_help_step2_title">Find the local database</string>
     <string name="token_help_step2_body" formatted="false">Database path: %APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb</string>
-    <string name="token_help_step3_title">Read the key</string>
-    <string name="token_help_step3_body">The Token key is cursorAuth/accessToken. Copy it to the clipboard; do not redirect output to a file.</string>
+    <string name="token_help_step3_title">Decrypt and copy the token</string>
+    <string name="token_help_step3_body">The key is still cursorAuth/accessToken. Since Cursor 3.27 this value is stored as cursor-safe-storage:v1: and only the current Windows user can open it. The command reads the database, decrypts it, and puts the JWT on the clipboard without writing a file. A value that is already a JWT is copied unchanged.</string>
     <string name="token_help_powershell_title">PowerShell (sqlite3 installed)</string>
-    <string name="token_help_powershell_body">Read-only query copied straight to the Windows clipboard:</string>
+    <string name="token_help_powershell_body">Requires sqlite3. Reads the database read-only, decrypts with the current Windows user, and copies the token to the clipboard:</string>
     <string name="token_help_python_title">Python (run in PowerShell)</string>
-    <string name="token_help_python_body">No sqlite3 CLI needed. Python stdlib reads the database read-only and copies via clip.exe:</string>
+    <string name="token_help_python_body">No sqlite3 CLI and no extra packages. Paste this into PowerShell. The script reads the database read-only and copies the decrypted token with clip.exe:</string>
     <string name="token_help_protect_title">Protect your Token</string>
     <string name="token_help_protect_body">The Token is a login credential. Do not send it in chat, tickets, email, or a git repo. After pasting it into this app, clear the clipboard on both computer and phone.</string>
     <string name="token_help_clear_clipboard">Clear clipboard in PowerShell: Set-Clipboard -Value \"\"</string>
@@ -473,6 +473,7 @@
     <string name="error_migrate_corrupt">Local account migration state is corrupt. Clear app data and try again</string>
     <string name="error_token_length">Access Token length is invalid</string>
     <string name="error_token_unsafe">Access Token contains unsafe characters</string>
+    <string name="error_token_sealed">This is encrypted Cursor local storage. On the Windows PC signed in to Cursor, run the command in the help sheet and paste the decrypted JWT.</string>
     <string name="error_api_status_changed">Cursor status API changed. Please update the app</string>
     <string name="error_api_status_rate">Too many status page requests. Try again later</string>
     <string name="error_api_status_unavailable">Cursor status page unavailable (HTTP %d)</string>

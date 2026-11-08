@@ -431,18 +431,18 @@
 
     <string name="token_help_got_it">我知道了</string>
     <string name="token_help_title">如何获取 Access Token</string>
-    <string name="token_help_intro">以下步骤只在已登录 Cursor 的 Windows 电脑上执行。</string>
+    <string name="token_help_intro">以下步骤只在已登录 Cursor 的那台 Windows 电脑上、用同一个 Windows 用户执行。</string>
     <string name="token_help_close">关闭帮助</string>
     <string name="token_help_step1_title">确认 Cursor 已登录</string>
     <string name="token_help_step1_body">打开 Windows 版 Cursor，确认右上角账号已登录。读取数据库前不需要退出账号。</string>
     <string name="token_help_step2_title">找到本地数据库</string>
     <string name="token_help_step2_body" formatted="false">数据库路径：%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb</string>
-    <string name="token_help_step3_title">读取指定键值</string>
-    <string name="token_help_step3_body">Token 对应的 key 是 cursorAuth/accessToken。建议直接复制到剪贴板，不要重定向到文件。</string>
+    <string name="token_help_step3_title">解开并复制 Token</string>
+    <string name="token_help_step3_body">键名仍是 cursorAuth/accessToken。Cursor 3.27 起，这个值以 cursor-safe-storage:v1: 加密保存在本机，只能由当前 Windows 用户解开。下面的命令只读数据库，解开后把 JWT 放进剪贴板，不写入文件。值本身已是 JWT 时会原样复制。</string>
     <string name="token_help_powershell_title">PowerShell（已安装 sqlite3）</string>
-    <string name="token_help_powershell_body">以只读方式查询并直接复制到 Windows 剪贴板：</string>
+    <string name="token_help_powershell_body">需要 sqlite3。以只读方式读取，用当前 Windows 用户解密后复制到剪贴板：</string>
     <string name="token_help_python_title">Python（在 PowerShell 运行）</string>
-    <string name="token_help_python_body">无需 sqlite3 命令行；Python 标准库只读数据库，并通过 clip.exe 直接复制：</string>
+    <string name="token_help_python_body">不需要 sqlite3 命令行，也不需要额外安装包。在 PowerShell 中粘贴运行；脚本只读数据库，解密后通过 clip.exe 复制：</string>
     <string name="token_help_protect_title">保护你的 Token</string>
     <string name="token_help_protect_body">Token 等同于登录凭据。不要发送到聊天、工单、邮件或代码仓库；粘贴到本应用后，及时清空电脑和手机剪贴板。</string>
     <string name="token_help_clear_clipboard">PowerShell 清空剪贴板：Set-Clipboard -Value \"\"</string>
@@ -476,6 +476,7 @@
     <string name="error_migrate_corrupt">本地账号迁移状态损坏，请清除应用数据后重试</string>
     <string name="error_token_length">Access Token 长度不正确</string>
     <string name="error_token_unsafe">Access Token 包含不安全字符</string>
+    <string name="error_token_sealed">这是 Cursor 加密后的本地存储。请在已登录的 Windows 电脑上运行帮助中的命令，再粘贴解开后的 JWT。</string>
     <string name="error_api_status_changed">Cursor 状态接口已发生变化，请升级应用</string>
     <string name="error_api_status_rate">Cursor 状态页请求过于频繁，请稍后重试</string>
     <string name="error_api_status_unavailable">Cursor 状态页暂时不可用（HTTP %d）</string>

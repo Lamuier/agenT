@@ -35,6 +35,23 @@ class TokenUtilsTest {
         TokenUtils.requireValidAccessToken("a".repeat(40) + "\r\nInjected: value")
     }
 
+    @Test
+    fun rejectsSealedCursorStorage() {
+        try {
+            TokenUtils.requireValidAccessToken("cursor-safe-storage:v1:" + "a".repeat(40))
+            throw AssertionError("sealed storage was accepted")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message!!.contains("加密"))
+        }
+    }
+
+    @Test
+    fun acceptsPlainJwt() {
+        val value = token("""{"sub":"auth0|user-123","exp":2000}""")
+        assertTrue(value.length >= 32)
+        assertEquals(value, TokenUtils.requireValidAccessToken("  $value  "))
+    }
+
     private fun token(payload: String): String {
         val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
         return "header.$encoded.signature"

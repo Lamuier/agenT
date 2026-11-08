@@ -6,6 +6,12 @@ The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
 ## Unarchived
 
+## 1.7.2 — 2026-11-08
+
+> Version decision: 1.7.1 → 1.7.2, with `versionCode` increased to 12. Since Cursor 3.27 the access token is stored encrypted, and the Windows extraction commands now decrypt it with the current user before copying the JWT. Pasting the ciphertext asks for that step. This is a compatible fix without a new business capability: the app still accepts the same JWT, so this is a patch (Z) release. The package ID, original signing key, permissions and data format are unchanged, so existing installs upgrade in place.
+
+- The Windows commands that read a Cursor access token now open the `cursor-safe-storage:v1:` value stored since Cursor 3.27. They use the current Windows user's system key and copy only the JWT to the clipboard, without writing it to a file. A plaintext JWT already in the database is copied unchanged. Pasting the encrypted value into the app asks for that decryption step.
+
 ## 1.7.1 — 2026-11-08
 
 > Version decision: 1.7.0 → 1.7.1, with `versionCode` increased to 11. This release fixes the ANR caused by the widget refresh button, stalled automatic refresh, one failing source discarding the whole pass, and footers wrongly marked cached, and improves widget picker previews and light / dark / dynamic color repaint. These are compatible fixes and styling improvements without new business capabilities, so this is a patch (Z) release. The package ID, original signing key, permissions and data format are unchanged, so existing installs upgrade in place.

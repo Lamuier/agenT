@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -122,13 +123,13 @@ internal fun TokenHelpContent(onDismiss: () -> Unit, actionLabel: String) {
         HelpCommand(
             title = stringResource(R.string.token_help_powershell_title),
             description = stringResource(R.string.token_help_powershell_body),
-            command = POWERSHELL_COMMAND,
+            command = cursorTokenPowerShellCommand,
         )
 
         HelpCommand(
             title = stringResource(R.string.token_help_python_title),
             description = stringResource(R.string.token_help_python_body),
-            command = PYTHON_COMMAND,
+            command = cursorTokenPythonCommand,
         )
 
         Surface(
@@ -232,6 +233,8 @@ private fun HelpCommand(title: String, description: String, command: String) {
     val resources = LocalResources.current
     val feedback = LocalAppFeedback.current
     var copied by remember(command) { mutableStateOf(false) }
+    val codeVertical = rememberScrollState()
+    val codeHorizontal = rememberScrollState()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -274,7 +277,9 @@ private fun HelpCommand(title: String, description: String, command: String) {
                     Text(
                         command,
                         modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(codeVertical)
+                            .horizontalScroll(codeHorizontal)
                             .padding(12.dp),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
@@ -285,11 +290,3 @@ private fun HelpCommand(title: String, description: String, command: String) {
         }
     }
 }
-
-private val POWERSHELL_COMMAND = """
-sqlite3 -readonly "${'$'}env:APPDATA\Cursor\User\globalStorage\state.vscdb" "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken';" | Set-Clipboard
-""".trimIndent()
-
-private val PYTHON_COMMAND = """
-python -c 'import os,sqlite3,subprocess,json; from pathlib import Path; p=Path(os.environ["APPDATA"])/"Cursor"/"User"/"globalStorage"/"state.vscdb"; c=sqlite3.connect(p.as_uri()+"?mode=ro",uri=True); v=c.execute("SELECT value FROM ItemTable WHERE key = ?",("cursorAuth/accessToken",)).fetchone()[0]; c.close(); v=json.loads(v) if v.startswith("\"") else v; subprocess.run(["clip.exe"],input=v,text=True,check=True)'
-""".trimIndent()
