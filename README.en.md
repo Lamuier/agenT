@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-Project version: **1.7.3** (`versionCode` 13). This README describes the current source; see the [1.7.3 release notes](CHANGELOG.en.md#173--2026-11-14). Package ID: `com.lamuier.agenT`.
+Project version: **1.7.4** (`versionCode` 14). This README describes the current source; see the [1.7.4 release notes](CHANGELOG.en.md#174--2026-11-15). Package ID: `com.lamuier.agenT`.
 
 There is no app account system, self-hosted backend, advertising, or analytics SDK. Credentials and personal caches stay on the device; queries go directly to provider endpoints, while public reset announcements use an anonymous third-party source.
 

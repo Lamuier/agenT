@@ -4,6 +4,12 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 1.7.4 — 2026-11-15
+
+> Version decision: 1.7.3 → 1.7.4 (`Z` patch, `versionCode` 13 → 14: this release is a compatibility fix with synced documentation and tests, introducing no new user-visible business capabilities while preserving full compatibility for package ID, original signing key, and persisted data).
+
+- Adapt DeepSeek public status requests (`status.deepseek.com`) on the app side by fragmenting the initial unfragmented TLS `ClientHello` into two standard TLS handshake records (with a single fallback to unmodified TLS on pre-response non-timeout handshake failures), resolving premature handshake resets for compact single-record `ClientHello` packets without affecting other endpoints, connection pooling, or system certificate verification.
+
 ## 1.7.3 — 2026-11-14
 
 > Version decision: 1.7.2 → 1.7.3 (`Z` patch, `versionCode` 12 → 13: this batch consists solely of bug fixes, accessibility/tablet/foldable layout fixes, state synchronization, dead-code cleanup, and build/verification alignment with no new user-visible capabilities and full backward compatibility for package ID, original signing key, and persisted data).

@@ -22,7 +22,7 @@ Kimi Code 与 Kimi 开放平台分开，普通开放平台密钥不能代替编�
 
 状态请求匿名发出，与 API Key、余额不足、认证错误独立；失败保留原缓存和原更新时间。
 
-- DeepSeek：读取 `status.deepseek.com/api/status-page/6410630422455/summary/active`，并通过 `change/list?start_at_seconds=…&end_at_seconds=…` 获取最近 90 天事件，筛选 API 组件后最多展示 12 条近期记录。验证页面 ID、公开类型、域名和短名；仅 API 组件及明确关联事件参与健康判断，不包含聊天、搜索、文件上传。当前 Flashduty 结构先转换成通用状态模型；接口或结构失效时显示缓存 / 不可用，不抓取 HTML 兜底。
+- DeepSeek：读取 `status.deepseek.com/api/status-page/6410630422455/summary/active`，并通过 `change/list?start_at_seconds=…&end_at_seconds=…` 获取最近 90 天事件，筛选 API 组件后最多展示 12 条近期记录。验证页面 ID、公开类型、域名和短名；仅 API 组件及明确关联事件参与健康判断，不包含聊天、搜索、文件上传。当前 Flashduty 结构先转换成通用状态模型；接口或结构失效时显示缓存 / 不可用，不抓取 HTML 兜底。为兼容部分网络链路对单记录紧凑 TLS `ClientHello` SNI 的误拦截，仅针对 `status.deepseek.com` 将首条 `ClientHello` 拆分为两条标准 TLS 握手记录，并在未收到响应前遇到非超时类握手异常时回退一次标准 TLS。
 - Kimi Code：读取 `status.moonshot.cn/api/v2/summary.json`、`components.json`、`incidents.json`。先定位精确名称 `Kimi Code` 分组，通过该分组和动态子组件 ID 筛选组件、活动事件与历史，再交给通用解析器。不硬编码模型名，不混入 Kimi 网页、SaaS 或开放平台故障。组件列表获取不完整时状态保持未知。
 
 来源：[DeepSeek 官方状态](https://status.deepseek.com)、[Kimi 官方状态](https://status.moonshot.cn)。实现时已匿名验证两家 JSON 可用，具体状态随官方数据变化。

@@ -5,9 +5,19 @@ import com.lamuier.agenT.BuildConfig
 import com.lamuier.agenT.R
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLPeerUnverifiedException
+import javax.net.ssl.SSLSocketFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -49,7 +59,19 @@ internal fun cursorLegacyStatusUrl(resource: StatusResource): String = when (res
 }
 
 /** Public official status requests never receive account credentials or cookies. */
-class OfficialStatusApiClient(context: Context, private val provider: OfficialStatusProvider) {
+class OfficialStatusApiClient internal constructor(
+    context: Context,
+    private val provider: OfficialStatusProvider,
+    private val deepSeekSslSocketFactoryProvider: () -> SSLSocketFactory,
+    private val connectionOpener: (String) -> HttpURLConnection,
+) {
+    constructor(context: Context, provider: OfficialStatusProvider) : this(
+        context = context,
+        provider = provider,
+        deepSeekSslSocketFactoryProvider = { ClientHelloFragmentingSslSocketFactory.forDefault() },
+        connectionOpener = { URL(it).openConnection() as HttpURLConnection },
+    )
+
     private val appContext = context.applicationContext
 
     suspend fun fetch(resource: StatusResource): JSONObject = get(officialStatusRequestUrl(provider, resource))
@@ -60,10 +82,31 @@ class OfficialStatusApiClient(context: Context, private val provider: OfficialSt
         return get(cursorLegacyStatusUrl(resource))
     }
 
-    private suspend fun get(url: String): JSONObject = withContext(Dispatchers.IO) {
-        val connection = URL(url)
-            .openConnection() as HttpURLConnection
+    private suspend fun get(url: String): JSONObject {
+        if (provider != OfficialStatusProvider.DeepSeek) {
+            return checkNotNull(executeGet(url, sslSocketFactory = null, allowTlsFallback = false))
+        }
+        executeGet(
+            url = url,
+            sslSocketFactory = deepSeekSslSocketFactoryProvider(),
+            allowTlsFallback = true,
+        )?.let { return it }
+        currentCoroutineContext().ensureActive()
+        // Fallback once to standard TLS if a network or proxy rejects fragmented ClientHello records.
+        return checkNotNull(executeGet(url, sslSocketFactory = null, allowTlsFallback = false))
+    }
+
+    private suspend fun executeGet(
+        url: String,
+        sslSocketFactory: SSLSocketFactory?,
+        allowTlsFallback: Boolean,
+    ): JSONObject? = withContext(Dispatchers.IO) {
+        val connection = connectionOpener(url)
+        var responseReached = false
         try {
+            if (sslSocketFactory != null && connection is HttpsURLConnection) {
+                connection.sslSocketFactory = sslSocketFactory
+            }
             connection.requestMethod = "GET"
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
@@ -72,6 +115,7 @@ class OfficialStatusApiClient(context: Context, private val provider: OfficialSt
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("User-Agent", "agenTAndroid/${BuildConfig.VERSION_NAME}")
             val code = connection.responseCode
+            responseReached = true
             if (code !in 200..299) throw IOException(appContext.getString(R.string.status_error_http, code))
             if (connection.contentLengthLong > MAX_BYTES) {
                 throw IOException(appContext.getString(R.string.status_error_response_too_large))
@@ -90,10 +134,24 @@ class OfficialStatusApiClient(context: Context, private val provider: OfficialSt
                 output.toString(Charsets.UTF_8.name())
             }
             JSONObject(raw)
+        } catch (error: IOException) {
+            if (allowTlsFallback && !responseReached && shouldRetryWithStandardTls(error)) {
+                null
+            } else {
+                throw error
+            }
         } finally {
             connection.disconnect()
         }
     }
+
+    private fun shouldRetryWithStandardTls(error: IOException): Boolean =
+        error !is SSLPeerUnverifiedException &&
+            error !is SocketTimeoutException &&
+            error !is InterruptedIOException &&
+            error !is UnknownHostException &&
+            error !is ConnectException &&
+            error !is NoRouteToHostException
 
     private companion object { const val MAX_BYTES = 1024 * 1024 }
 }

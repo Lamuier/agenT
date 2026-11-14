@@ -26,8 +26,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 37
-        versionCode = 13
-        versionName = "1.7.3"
+        versionCode = 14
+        versionName = "1.7.4"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
