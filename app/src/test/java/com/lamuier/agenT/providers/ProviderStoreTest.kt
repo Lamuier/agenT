@@ -45,4 +45,19 @@ class ProviderStoreTest {
         store.cache(connection.info.revision, JSONObject("{\"is_available\":false,\"balance_infos\":[]}"), "2026-10-16 01:02:03")
         assertEquals("2026-10-16 01:02:03", ProviderStore(context, UsageProvider.DeepSeek, cipher).read()!!.fetchedAt)
     }
+
+    @Test fun retiredProviderCleanupDeletesLegacyFilesAndMarksDone() {
+        val retired = context.getSharedPreferences("official_usage_antigravity_v1", Context.MODE_PRIVATE)
+        val usage = context.getSharedPreferences("usage-page-v1", Context.MODE_PRIVATE)
+        val pages = context.getSharedPreferences("widget-source-pages-v1", Context.MODE_PRIVATE)
+        retired.edit().putString("token", "legacy").commit()
+        usage.edit().putString("provider", "antigravity").remove("retired_antigravity_purged_v1").commit()
+        pages.edit().putString("1", "antigravity").putString("2", "cursor").commit()
+        RetiredProviderCleanup.purge(context)
+        assertTrue(retired.all.isEmpty())
+        assertNull(usage.getString("provider", null))
+        assertTrue(usage.getBoolean("retired_antigravity_purged_v1", false))
+        assertNull(pages.getString("1", null))
+        assertEquals("cursor", pages.getString("2", null))
+    }
 }

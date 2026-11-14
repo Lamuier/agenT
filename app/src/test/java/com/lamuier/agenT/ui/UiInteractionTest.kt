@@ -119,7 +119,7 @@ class UiInteractionTest {
             AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
                 if (appearance) {
                     SettingsSheet(ThemeSettings(), NotificationSettings(), {}, {}, {}, "system", {}, AppLanguage.Chinese, {}, {}, {},
-                        PercentDisplayMode.Used, {}, DashboardTab.DEFAULT_ORDER, {}, {}, {},
+                        DashboardTab.DEFAULT_ORDER, {}, {}, {},
                         fixture.cursor.accounts.first(), fixture.codex, sectionId = SettingsSection.Appearance.name,
                         onSectionChange = {})
                 } else {
@@ -143,7 +143,7 @@ class UiInteractionTest {
             CompositionLocalProvider(LocalAppFeedback provides spy) {
                 AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
                     SettingsSheet(ThemeSettings(), NotificationSettings(), {}, {}, {}, "system", {}, AppLanguage.Chinese, {}, {}, {},
-                        PercentDisplayMode.Used, {}, DashboardTab.DEFAULT_ORDER, {}, {}, {},
+                        DashboardTab.DEFAULT_ORDER, {}, {}, {},
                         fixture.cursor.accounts.first(), fixture.codex, sectionId = SettingsSection.General.name,
                         onSectionChange = {}, hapticFeedbackEnabled = enabled, onHapticFeedbackChange = { enabled = it })
                 }

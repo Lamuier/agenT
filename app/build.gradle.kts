@@ -26,8 +26,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 37
-        versionCode = 12
-        versionName = "1.7.2"
+        versionCode = 13
+        versionName = "1.7.3"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -134,19 +134,19 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
-    implementation("androidx.compose.material3:material3-adaptive-navigation-suite")
-    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
-    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.3.0")
+    implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.layout)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.browser)
-    testImplementation("org.robolectric:robolectric:4.17")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
-    testImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -41,14 +41,18 @@ internal object ProviderUsageParser {
                 val item = limits.optJSONObject(i) ?: continue
                 val w = item.optJSONObject("window")
                 val duration = w?.decimal("duration")?.takeIf { it > BigDecimal.ZERO }
-                val factor = when (w?.optString("timeUnit")) {
-                    "TIME_UNIT_MINUTE" -> BigDecimal.ONE
-                    "TIME_UNIT_HOUR" -> BigDecimal(60)
-                    "TIME_UNIT_DAY" -> BigDecimal(1440)
-                    "TIME_UNIT_SECOND" -> BigDecimal.ONE.divide(BigDecimal(60), java.math.MathContext.DECIMAL128)
-                    else -> null
-                }
-                val minutes = if (duration != null && factor != null) runCatching { duration.multiply(factor).longValueExact() }.getOrNull() else null
+                val minutes = if (duration != null) {
+                    when (w.optString("timeUnit")) {
+                        "TIME_UNIT_MINUTE" -> runCatching { duration.longValueExact() }.getOrNull()
+                        "TIME_UNIT_HOUR" -> runCatching { duration.multiply(BigDecimal(60)).longValueExact() }.getOrNull()
+                        "TIME_UNIT_DAY" -> runCatching { duration.multiply(BigDecimal(1440)).longValueExact() }.getOrNull()
+                        "TIME_UNIT_SECOND" -> runCatching {
+                            val qr = duration.divideAndRemainder(BigDecimal(60))
+                            if (qr[1].compareTo(BigDecimal.ZERO) == 0) qr[0].longValueExact() else null
+                        }.getOrNull()
+                        else -> null
+                    }
+                } else null
                 item.optJSONObject("detail")?.let { legacy += legacyWindow("legacy_$i", it, minutes) }
             }
         }

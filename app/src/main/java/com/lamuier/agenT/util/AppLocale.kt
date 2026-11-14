@@ -69,7 +69,9 @@ object AppLocale {
     /**
      * 只覆盖语言。复制整份 Configuration 会把当时的夜间模式、字号和方向一起钉死，
      * 之后系统切换深浅色时，小组件仍按进程启动时的模式上色。
+     * 本应用以独立签名 APK 分发，不依赖 Play Dynamic Delivery 按语言拆分资源。
      */
+    @android.annotation.SuppressLint("AppBundleLocaleChanges")
     fun wrap(context: Context): Context {
         val locale = localeFor(stored(context))
         val config = Configuration()

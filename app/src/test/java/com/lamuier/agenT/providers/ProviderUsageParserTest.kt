@@ -40,6 +40,17 @@ class ProviderUsageParserTest {
         assertEquals(4320L, parsed.windows[2].durationMinutes)
         assertEquals(0, BigDecimal("0.25").compareTo(parsed.windows[1].usedRatio))
     }
+    @Test fun secondAndHourLegacyWindowsResolveExactMinutes() {
+        val parsed = kimi("""{"limits":[
+            {"window":{"duration":18000,"timeUnit":"TIME_UNIT_SECOND"},"detail":{"limit":"50","used":"10","remaining":"40"}},
+            {"window":{"duration":2,"timeUnit":"TIME_UNIT_HOUR"},"detail":{"limit":"100","used":"25","remaining":"75"}},
+            {"window":{"duration":45,"timeUnit":"TIME_UNIT_SECOND"},"detail":{"limit":"20","used":"5","remaining":"15"}}]}""")
+        assertEquals(3, parsed.windows.size)
+        assertEquals(300L, parsed.windows[0].durationMinutes)
+        assertEquals(0, BigDecimal("0.2").compareTo(parsed.windows[0].usedRatio))
+        assertEquals(120L, parsed.windows[1].durationMinutes)
+        assertNull(parsed.windows[2].durationMinutes)
+    }
     @Test fun conflictingSameResetIsUnknownRatherThanFullQuota() {
         val parsed = kimi("""{"usages":{"limit_7d":{"used_ratio":0,"reset_time":"same"}},
             "usage":{"limit":"100","used":"100","remaining":"0","resetTime":"same"}}""")

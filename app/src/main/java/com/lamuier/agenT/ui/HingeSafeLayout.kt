@@ -143,6 +143,7 @@ internal fun AdaptiveServiceContent(
         secondary = { AdaptiveTabContent(scrollState = secondScroll) { second(this, it) } })
 }
 
+@Suppress("ModifierParameter")
 @Composable
 internal fun AdaptiveLazyServiceContent(
     primary: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit,

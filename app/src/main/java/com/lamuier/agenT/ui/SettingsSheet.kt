@@ -56,7 +56,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -88,7 +87,6 @@ import com.lamuier.agenT.model.CursorAccount
 import com.lamuier.agenT.data.NotificationSettings
 import com.lamuier.agenT.notification.IslandMonitorState
 import com.lamuier.agenT.notification.NotificationCopy
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.DashboardTab
 import com.lamuier.agenT.ui.theme.ColorPalette
@@ -120,8 +118,6 @@ internal fun SettingsSheet(
     onLanguageChange: (AppLanguage) -> Unit,
     onLiveUpdatesToggle: (Boolean) -> Unit,
     onThresholdRemindersToggle: (Boolean) -> Unit,
-    percentDisplayMode: PercentDisplayMode,
-    onPercentDisplayModeChange: (PercentDisplayMode) -> Unit,
     tabOrder: List<DashboardTab>,
     onTabOrderChange: (List<DashboardTab>) -> Unit,
     onTabOrderReset: () -> Unit,
@@ -554,81 +550,6 @@ private fun SettingNavRow(
 }
 
 @Composable
-private fun PercentDisplayModeSelector(
-    selected: PercentDisplayMode,
-    onSelected: (PercentDisplayMode) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        PercentDisplayMode.entries.forEach { mode ->
-            val label = when (mode) {
-                PercentDisplayMode.Used -> stringResource(R.string.notification_display_mode_used)
-                PercentDisplayMode.Remaining ->
-                    stringResource(R.string.notification_display_mode_remaining)
-            }
-            PercentModeOption(
-                modifier = Modifier.weight(1f),
-                label = label,
-                selected = selected == mode,
-                onClick = { onSelected(mode) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun PercentModeOption(
-    modifier: Modifier = Modifier,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val feedback = LocalAppFeedback.current
-    val border = if (selected) {
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    }
-    Surface(
-        modifier = modifier
-            .semantics {
-                role = Role.RadioButton
-                this.selected = selected
-                contentDescription = label
-            }
-            .clip(MaterialTheme.shapes.medium)
-            .clickable { if (!selected) { feedback.selection(); onClick() } },
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-        border = border,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-        }
-    }
-}
-
-@Composable
 internal fun SettingToggleRow(
     label: String,
     description: String,
@@ -820,7 +741,7 @@ private fun TimeZoneOption(
             }
             if (selected) {
                 Text(
-                    stringResource(R.string.selected),
+                    stringResource(R.string.label_selected),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
@@ -883,7 +804,7 @@ private fun LanguageOption(
             )
             if (selected) {
                 Text(
-                    stringResource(R.string.selected),
+                    stringResource(R.string.label_selected),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
@@ -1034,7 +955,7 @@ private fun PaletteOption(
             }
             if (selected) {
                 Text(
-                    stringResource(R.string.selected),
+                    stringResource(R.string.label_selected),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,

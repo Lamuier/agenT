@@ -24,13 +24,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -249,41 +246,33 @@ private fun OverviewPanel(title: String, action: String, onOpen: () -> Unit, mod
     tag: String = "", content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier.fillMaxWidth().then(if (tag.isEmpty()) Modifier else Modifier.testTag(tag)),
         shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (!constraints.hasBoundedHeight) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    content()
-                    TextButton(onClick = onOpen) { Text(action) }
-                }
-            } else Column(Modifier.fillMaxHeight().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
-                TextButton(onClick = onOpen) { Text(action) }
+                content()
             }
+            TextButton(onClick = onOpen, modifier = Modifier.padding(top = 12.dp)) { Text(action) }
         }
     }
 }
 
 @Composable
 private fun EqualHeightCardGrid(columns: Int, cards: List<@Composable (Modifier) -> Unit>) {
-    var rowHeights by remember { mutableStateOf<IntArray?>(null) }
-    SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
+    Layout(
+        content = { cards.forEach { card -> card(Modifier.fillMaxWidth()) } },
+        modifier = Modifier.fillMaxWidth(),
+    ) { measurables, constraints ->
         val gap = 16.dp.roundToPx()
         val count = columns.coerceAtLeast(1)
         val available = if (constraints.hasBoundedWidth) constraints.maxWidth else 0
         val cellWidth = ((available - gap * (count - 1)) / count).coerceAtLeast(0)
-        val known = rowHeights
-        val placeables = cards.mapIndexed { index, card ->
-            val forced = known?.getOrNull(index / count)
-            subcompose(index) {
-                card(if (forced == null) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
-            }.first().measure(if (forced == null) Constraints(minWidth = cellWidth, maxWidth = cellWidth)
-                else Constraints.fixed(cellWidth, forced))
+        val heights = measurables.map { it.maxIntrinsicHeight(cellWidth) }
+            .chunked(count)
+            .map { row -> row.maxOf { it } }
+            .toIntArray()
+        val placeables = measurables.mapIndexed { index, measurable ->
+            measurable.measure(Constraints(minWidth = cellWidth, maxWidth = cellWidth, minHeight = heights[index / count]))
         }
-        val measured = placeables.chunked(count).map { row -> row.maxOf { it.height } }.toIntArray()
-        if (known == null || !known.contentEquals(measured)) rowHeights = measured
-        val heights = known ?: measured
         val totalHeight = heights.sum() + gap * (heights.size - 1).coerceAtLeast(0)
         layout(available, totalHeight) {
             placeables.forEachIndexed { index, placeable ->

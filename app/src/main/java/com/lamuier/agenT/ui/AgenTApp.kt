@@ -36,7 +36,6 @@ import com.lamuier.agenT.model.TokenProvider
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaViewModel
 import com.lamuier.agenT.data.NotificationSettings
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.AppStage
 import com.lamuier.agenT.model.CursorAccount
@@ -77,8 +76,6 @@ fun AgenTApp(
     onLanguageChange: (AppLanguage) -> Unit,
     onLiveUpdatesToggle: (Boolean) -> Unit,
     onThresholdRemindersToggle: (Boolean) -> Unit,
-    percentDisplayMode: PercentDisplayMode,
-    onPercentDisplayModeChange: (PercentDisplayMode) -> Unit,
     tabOrder: List<DashboardTab>,
     onTabOrderChange: (List<DashboardTab>) -> Unit,
     onTabOrderReset: () -> Unit,
@@ -136,11 +133,19 @@ fun AgenTApp(
         providers.sources.mapValues { (_, v) -> listOf(v.credential, v.usage, v.serviceStatus, v.error, v.statusError) }
     }
     LaunchedEffect(firstFrameDrawn, providerCacheSnap, codexState.credential, codexState.usage, codexState.serviceStatus, codexState.statusError,
-        state.serviceStatus, state.statusError) {
+        state.accounts, state.selectedAccountId, state.usage, state.tasks, state.serviceStatus, state.statusError) {
         if (!firstFrameDrawn) return@LaunchedEffect
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.lamuier.agenT.widget.AgenTWidgetUpdater.pushFromCache(appContext)
             com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshFromCache()
+        }
+    }
+    LaunchedEffect(pendingOpenTab) {
+        if (pendingOpenTab != null) {
+            showSettings = false
+            manageTokens = false
+            showTokenHelp = false
+            returnToSettings = false
         }
     }
     fun openTokenManagement(fromSettings: Boolean = false, preferred: com.lamuier.agenT.model.TokenProvider? = null) {
@@ -166,7 +171,12 @@ fun AgenTApp(
         deleteProvider = null
         showCodexDeleteDialog = false
         when (action) {
-            ShortcutAction.Overview, ShortcutAction.Tasks -> Unit // Consumed as a tab destination by MainActivity.
+            ShortcutAction.Overview, ShortcutAction.Tasks -> {
+                showSettings = false
+                manageTokens = false
+                showTokenHelp = false
+                returnToSettings = false
+            }
             ShortcutAction.ManageTokens -> openTokenManagement()
             ShortcutAction.Settings -> {
                 manageTokens = false
@@ -421,8 +431,6 @@ fun AgenTApp(
             onLanguageChange = onLanguageChange,
             onLiveUpdatesToggle = onLiveUpdatesToggle,
             onThresholdRemindersToggle = onThresholdRemindersToggle,
-            percentDisplayMode = percentDisplayMode,
-            onPercentDisplayModeChange = onPercentDisplayModeChange,
             tabOrder = tabOrder,
             onTabOrderChange = onTabOrderChange,
             onTabOrderReset = onTabOrderReset,

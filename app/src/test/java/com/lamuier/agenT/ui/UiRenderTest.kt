@@ -22,7 +22,6 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.lamuier.agenT.data.NotificationSettings
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemeSettings
 import com.lamuier.agenT.model.DashboardTab
 import com.lamuier.agenT.model.TokenProvider
@@ -89,7 +88,6 @@ class UiRenderTest(private val profile: String, private val scene: String) {
                                 notificationSettings = NotificationSettings(), onDismiss = {}, onThemeModeChange = {}, onPaletteChange = {},
                                 timeZoneId = "system", onTimeZoneChange = {}, language = if(spec.language == "en") AppLanguage.English else AppLanguage.Chinese,
                                 onLanguageChange = {}, onLiveUpdatesToggle = {}, onThresholdRemindersToggle = {},
-                                percentDisplayMode = PercentDisplayMode.Used, onPercentDisplayModeChange = {},
                                 tabOrder = DashboardTab.DEFAULT_ORDER, onTabOrderChange = {}, onTabOrderReset = {},
                                 onManageTokens = {},
                                 cursorAccount = fixture.cursor.accounts.first(), codexState = fixture.codex,

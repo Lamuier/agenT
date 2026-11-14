@@ -317,12 +317,6 @@ internal fun DashboardScreen(
                 }
             },
         ) { padding ->
-            if (state.loadingAccounts && selectedTab != DashboardTab.Tasks) {
-                Box(Modifier.fillMaxSize().padding(padding)) {
-                    DashboardState(icon = null, title = stringResource(R.string.dashboard_loading_accounts_title),
-                        description = stringResource(R.string.dashboard_loading_accounts_body), loading = true)
-                }
-            } else {
                 PullToRefreshBox(isRefreshing = refreshSource == DashboardRefreshSource.Pull,
                     onRefresh = { startRefresh(DashboardRefreshSource.Pull) },
                     modifier = Modifier.fillMaxSize().padding(padding).nestedScroll(scrollBehavior.nestedScrollConnection)) {
@@ -359,10 +353,12 @@ internal fun DashboardScreen(
                                             error = state.tasksError,
                                             onRetry = { startRefresh(DashboardRefreshSource.Button) },
                                             onOpenFailed = { message -> uiScope.launch { snackbarHostState.showSnackbar(message) } },
+                                            active = allowPageWork && selectedTab == DashboardTab.Tasks,
                                         )
                                     }
                                     DashboardTab.Resets -> CodexResetTab(codexState, onSubscriptionDay, onRefreshPublicResets,
-                                        active = allowPageWork && selectedTab == DashboardTab.Resets)
+                                        active = allowPageWork && selectedTab == DashboardTab.Resets,
+                                        onOpenFailed = { message -> uiScope.launch { snackbarHostState.showSnackbar(message) } })
                                     DashboardTab.Status -> StatusTab(
                                         active = selectedTab == DashboardTab.Status,
                                         status = state.serviceStatus,
@@ -384,7 +380,6 @@ internal fun DashboardScreen(
                         }
                     }
                 }
-            }
         }
     }
 }
@@ -494,9 +489,6 @@ private fun AccountOnlyTab(
     val account = state.accounts.firstOrNull { it.id == state.selectedAccountId }
         ?: state.accounts.firstOrNull()
     when {
-        state.loadingAccounts -> DashboardState(icon = null,
-            title = stringResource(R.string.dashboard_loading_accounts_title),
-            description = stringResource(R.string.dashboard_loading_accounts_body), loading = true)
         account == null -> DashboardState(
             icon = Icons.Outlined.PersonAdd,
             title = stringResource(R.string.dashboard_add_account_title),
@@ -516,48 +508,6 @@ private fun AccountOnlyTab(
             onSecondaryAction = onShowTokenHelp,
         )
         else -> content()
-    }
-}
-
-@Composable
-private fun AccountStatusRow(account: CursorAccount?, loading: Boolean) {
-    when {
-        loading -> Text(
-            stringResource(R.string.dashboard_account_loading),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        account == null -> Text(
-            stringResource(R.string.dashboard_account_empty),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        account.tokenExpired -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                account.alias,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            StatusChip(label = stringResource(R.string.dashboard_token_expired_chip), error = true)
-        }
-        else -> Text(
-            account.alias,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -831,16 +781,17 @@ internal fun AdaptiveTabContent(scrollState: androidx.compose.foundation.ScrollS
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale
         val compact = maxHeight < 620.dp || maxWidth < 360.dp || fontScale > 1.15f
-        var entered by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { entered = true }
+        val animationsEnabled = rememberAnimationsEnabled()
+        var entered by rememberSaveable { mutableStateOf(!animationsEnabled) }
+        LaunchedEffect(animationsEnabled) { entered = true }
         val enterAlpha by animateFloatAsState(
-            targetValue = if (entered) 1f else 0f,
-            animationSpec = tween(320, easing = FastOutSlowInEasing),
+            targetValue = if (entered || !animationsEnabled) 1f else 0f,
+            animationSpec = tween(if (animationsEnabled) 320 else 0, easing = FastOutSlowInEasing),
             label = "tab enter alpha",
         )
         val enterOffset by animateFloatAsState(
-            targetValue = if (entered) 0f else 18f,
-            animationSpec = tween(360, easing = FastOutSlowInEasing),
+            targetValue = if (entered || !animationsEnabled) 0f else 18f,
+            animationSpec = tween(if (animationsEnabled) 360 else 0, easing = FastOutSlowInEasing),
             label = "tab enter offset",
         )
         Column(
@@ -866,9 +817,11 @@ internal fun AdaptiveTabContent(scrollState: androidx.compose.foundation.ScrollS
 }
 
 @Composable
-internal fun AdaptiveLazyTabContent(state: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+internal fun AdaptiveLazyTabContent(
     modifier: Modifier = Modifier,
-    content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit) {
+    state: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+    content: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit,
+) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 360.dp || maxHeight < 620.dp || LocalDensity.current.fontScale > 1.15f
         androidx.compose.foundation.lazy.LazyColumn(
@@ -884,8 +837,8 @@ internal fun AdaptiveLazyTabContent(state: androidx.compose.foundation.lazy.Lazy
 internal fun SectionHeading(
     icon: ImageVector,
     title: String,
-    supporting: String? = null,
     modifier: Modifier = Modifier,
+    supporting: String? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
@@ -1456,7 +1409,7 @@ private fun rememberNowMillis(): Long {
 
 @Composable
 private fun formatRemainingLabel(millis: Long, compact: Boolean = false): String =
-    UsageCalculations.formatRemaining(millis, compact, LocalContext.current.resources)
+    UsageCalculations.formatRemaining(millis, compact, androidx.compose.ui.platform.LocalResources.current)
 
 @Composable
 private fun UsageLevel.label(): String = stringResource(

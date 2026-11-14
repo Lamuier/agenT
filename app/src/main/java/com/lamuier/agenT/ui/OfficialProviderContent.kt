@@ -51,8 +51,9 @@ internal fun OfficialProviderOverview(provider: UsageProvider, state: ProviderSt
 }
 
 @Composable
-internal fun OfficialProviderDetails(provider: UsageProvider, state: ProviderState, onManage: () -> Unit, onRefresh: () -> Unit) {
-    val context = LocalContext.current
+internal fun OfficialProviderDetails(provider: UsageProvider, state: ProviderState, onManage: () -> Unit, onRefresh: () -> Unit,
+    onOpenFailed: (String) -> Unit = {}) {
+    val openUrl = rememberOpenCursorUrl(onOpenFailed)
     Surface(Modifier.fillMaxWidth().testTag("usage-provider-detail-${provider.id}"), shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -77,7 +78,7 @@ internal fun OfficialProviderDetails(provider: UsageProvider, state: ProviderSta
             OutlinedButton(onClick = onRefresh, enabled = state.credential != null && !state.loading && !state.saving) {
                 Text(stringResource(R.string.action_reload))
             }
-            TextButton(onClick = { CursorCustomTabs.open(context, provider.consoleUrl) }) { Text(stringResource(R.string.provider_official_console)) }
+            TextButton(onClick = { openUrl(provider.consoleUrl) }) { Text(stringResource(R.string.provider_official_console)) }
         }
     }
 }
@@ -131,17 +132,57 @@ private fun DeepSeekOverviewMetrics(usage: ProviderUsage) {
         if (usage.balances.isEmpty()) {
             Text("—", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
         } else {
-            val fontScale = LocalDensity.current.fontScale
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val sideBySide = usage.balances.size > 1 && maxWidth >= 280.dp && fontScale <= 1.3f
-                if (sideBySide) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
-                        usage.balances.forEach { DeepSeekBalance(it, Modifier.weight(1f)) }
+            val sideBySideAllowed = usage.balances.size > 1 && LocalDensity.current.fontScale <= 1.3f
+            androidx.compose.ui.layout.Layout(
+                content = { usage.balances.forEach { DeepSeekBalance(it, Modifier.fillMaxWidth()) } },
+                modifier = Modifier.fillMaxWidth(),
+                measurePolicy = object : androidx.compose.ui.layout.MeasurePolicy {
+                    override fun androidx.compose.ui.layout.MeasureScope.measure(
+                        measurables: List<androidx.compose.ui.layout.Measurable>,
+                        constraints: androidx.compose.ui.unit.Constraints,
+                    ): androidx.compose.ui.layout.MeasureResult {
+                        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else 0
+                        val sideBySide = sideBySideAllowed && width >= 280.dp.roundToPx()
+                        return if (sideBySide) {
+                            val gap = 16.dp.roundToPx()
+                            val itemWidth = ((width - gap * (measurables.size - 1)) / measurables.size).coerceAtLeast(0)
+                            val placeables = measurables.map { it.measure(androidx.compose.ui.unit.Constraints.fixedWidth(itemWidth)) }
+                            val height = placeables.maxOfOrNull { it.height } ?: 0
+                            layout(width, height) {
+                                placeables.forEachIndexed { index, placeable ->
+                                    placeable.placeRelative(index * (itemWidth + gap), 0)
+                                }
+                            }
+                        } else {
+                            val gap = 14.dp.roundToPx()
+                            val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0)) }
+                            val height = placeables.sumOf { it.height } + gap * (placeables.size - 1).coerceAtLeast(0)
+                            layout(width, height) {
+                                var y = 0
+                                placeables.forEach { placeable ->
+                                    placeable.placeRelative(0, y)
+                                    y += placeable.height + gap
+                                }
+                            }
+                        }
                     }
-                } else Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    usage.balances.forEach { DeepSeekBalance(it, Modifier.fillMaxWidth()) }
-                }
-            }
+
+                    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicHeight(
+                        measurables: List<androidx.compose.ui.layout.IntrinsicMeasurable>,
+                        width: Int,
+                    ): Int {
+                        val sideBySide = sideBySideAllowed && width >= 280.dp.roundToPx()
+                        return if (sideBySide) {
+                            val gap = 16.dp.roundToPx()
+                            val itemWidth = ((width - gap * (measurables.size - 1)) / measurables.size).coerceAtLeast(0)
+                            measurables.maxOfOrNull { it.maxIntrinsicHeight(itemWidth) } ?: 0
+                        } else {
+                            val gap = 14.dp.roundToPx()
+                            measurables.sumOf { it.maxIntrinsicHeight(width) } + gap * (measurables.size - 1).coerceAtLeast(0)
+                        }
+                    }
+                },
+            )
         }
         val statusColor = when (usage.available) {
             true -> LocalPulseChartColors.current.healthy

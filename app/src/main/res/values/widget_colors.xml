@@ -6,13 +6,7 @@
     <color name="widget_on_surface">#11151A</color>
     <color name="widget_on_surface_variant">#5C6775</color>
     <color name="widget_primary">#2563EB</color>
-    <color name="widget_secondary">#475569</color>
-    <color name="widget_progress_track">#D9DFEA</color>
     <color name="widget_outline">#C5CDD8</color>
-    <color name="widget_primary_container">#DCEBFF</color>
-    <color name="widget_on_primary_container">#0A2A5C</color>
-    <color name="widget_tertiary">#0E7490</color>
     <color name="widget_board_divider">#1F11151A</color>
     <color name="widget_board_tile_bg">#EEF1F5</color>
-    <color name="widget_surface_tint">#FFFFFF</color>
 </resources>

@@ -59,8 +59,8 @@ internal class WidgetSourcesRenderingTest(private val profile: String, private v
                 if (view.id in listOf(R.id.widget_source_name, R.id.widget_board_row_name, R.id.widget_board_status_name)) sourceNames += view.text.toString()
                 val text = view.layout
                 if (text == null || view.height <= 0 || text.height > view.height - view.compoundPaddingTop - view.compoundPaddingBottom + 1 ||
-                    top + view.compoundPaddingTop + (text?.height ?: 0) > clipBottom + 1 ||
-                    text != null && (0 until text.lineCount).any { text.getLineWidth(it) > view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1 || text.getEllipsisCount(it) > 0 }) {
+                    top + view.compoundPaddingTop + text.height > clipBottom + 1 ||
+                    (0 until text.lineCount).any { text.getLineWidth(it) > view.width - view.compoundPaddingLeft - view.compoundPaddingRight + 1 || text.getEllipsisCount(it) > 0 }) {
                     failures += "${view.text}: ${view.width}x${view.height}, text=${text?.height}, y=$top..$clipBottom"
                 }
             }

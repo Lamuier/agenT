@@ -25,7 +25,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lamuier.agenT.codex.CodexQuotaViewModel
 import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.data.NotificationPreferences
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.data.ThemePreferences
 import com.lamuier.agenT.data.InteractionPreferences
 import com.lamuier.agenT.ui.FeedbackProvider
@@ -188,11 +187,6 @@ class MainActivity : FragmentActivity() {
                             runCatching { AgenTNotificationCoordinator.get(applicationContext).refreshCopyFromCache() }
                         }
                     },
-                    percentDisplayMode = notificationSettings.percentDisplayMode,
-                    onPercentDisplayModeChange = { mode ->
-                        notificationPreferences.setPercentDisplayMode(mode)
-                        requestNotificationCacheRefresh()
-                    },
                     tabOrder = tabOrder,
                     onTabOrderChange = dashboardPreferences::setOrder,
                     onTabOrderReset = dashboardPreferences::resetOrder,
@@ -286,7 +280,6 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun preferWideColorGamut() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         // Wide color (Display P3) improves accent/chart fidelity on capable panels.
         // Full HDR window mode is intentionally skipped: this UI is SDR charts/text.
         window.colorMode = ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
@@ -318,18 +311,14 @@ class MainActivity : FragmentActivity() {
             ?: return
         window.attributes = window.attributes.apply {
             preferredDisplayModeId = preferredMode.modeId
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                preferredRefreshRate = preferredMode.refreshRate
-            }
+            preferredRefreshRate = preferredMode.refreshRate
         }
     }
 
     private fun clearRefreshRatePreference() {
         window.attributes = window.attributes.apply {
             preferredDisplayModeId = 0
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                preferredRefreshRate = 0f
-            }
+            preferredRefreshRate = 0f
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             window.decorView.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE)

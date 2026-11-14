@@ -78,9 +78,11 @@ internal fun SystemEntriesContent() {
                 Text(stringResource(entry.title), style = MaterialTheme.typography.titleSmall)
                 Text("${entry.columns} × ${entry.rows}", style = MaterialTheme.typography.bodySmall)
                 val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+                val renderKey = if (entry.provider == TallCursorStatusWidgetProvider::class.java) statusStyle else Unit
                 AndroidView(modifier = Modifier.fillMaxWidth().height((entry.rows * 84 * fontScale).dp),
                     factory = { FrameLayout(it) }, update = { frame ->
-                        frame.tag = statusStyle
+                        if (frame.tag == renderKey && frame.childCount > 0) return@AndroidView
+                        frame.tag = renderKey
                         frame.removeAllViews()
                         val preview = WidgetPreviews.preview(frame.context, entry).apply(frame.context, frame)
                         fun inert(view: View) {

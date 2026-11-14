@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.lamuier.agenT.data.ThemeSettings
+import com.lamuier.agenT.ui.hostActivity
 import java.time.ZoneId
 
 val LocalDisplayZone = staticCompositionLocalOf { ZoneId.systemDefault() }
@@ -73,7 +74,7 @@ fun AgenTTheme(
 
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            val window = view.context.hostActivity()?.window ?: return@SideEffect
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme
                 isAppearanceLightNavigationBars = !darkTheme

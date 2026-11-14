@@ -57,4 +57,22 @@ class IslandArtworkTest {
         assertEquals(IslandMonitorState.entries.size, badges.size)
         assertEquals(IslandMonitorState.entries.size, badgePaths.size)
     }
+
+    @Test fun bitmapCacheIsBoundedAt64EntriesWithLruEviction() {
+        val field = IslandArtwork::class.java.getDeclaredField("bitmapCache").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val cache = field.get(IslandArtwork) as MutableMap<String, Any?>
+        synchronized(cache) {
+            cache.clear()
+            for (i in 1..80) {
+                cache["key-$i"] = null
+            }
+            assertEquals(64, cache.size)
+            assertFalse(cache.containsKey("key-1"))
+            assertFalse(cache.containsKey("key-16"))
+            assertTrue(cache.containsKey("key-17"))
+            assertTrue(cache.containsKey("key-80"))
+            cache.clear()
+        }
+    }
 }

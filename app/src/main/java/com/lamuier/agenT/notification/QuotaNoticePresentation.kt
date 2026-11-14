@@ -1,9 +1,10 @@
 package com.lamuier.agenT.notification
 
 import com.lamuier.agenT.R
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.util.AssistantPresentation
 import kotlin.math.roundToInt
+
+internal enum class PercentDisplayMode { Used, Remaining }
 
 /** Shared display rules for ordinary notifications, native metrics, and the island capsule. */
 internal object QuotaNoticePresentation {

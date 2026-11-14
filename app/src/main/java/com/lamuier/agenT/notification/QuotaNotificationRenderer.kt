@@ -12,7 +12,6 @@ import androidx.annotation.RequiresApi
 import com.lamuier.agenT.R
 import com.lamuier.agenT.codex.CodexQuotaOverview
 import com.lamuier.agenT.codex.CodexQuotaWindow
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.model.AgenTOverview
 import com.lamuier.agenT.model.AgenTasks
 import com.lamuier.agenT.model.AgentTaskStatus
@@ -50,7 +49,7 @@ internal class QuotaNotificationRenderer(context: Context, private val catLangua
     }
 
     fun live(cursor: AgenTOverview?, codex: CodexQuotaOverview?, revision: Long,
-        mode: PercentDisplayMode, zone: ZoneId, contentIntent: PendingIntent, channel: String,
+        zone: ZoneId, contentIntent: PendingIntent, channel: String,
         cursorStatus: ServiceStatus? = null, codexStatus: ServiceStatus? = null, tasks: AgenTasks? = null,
         tasksIntent: PendingIntent = contentIntent, confirmTasksIntent: PendingIntent? = null,
         nowMillis: Long = System.currentTimeMillis()): Notification? {

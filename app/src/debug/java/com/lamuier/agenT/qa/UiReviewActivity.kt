@@ -37,7 +37,6 @@ import com.lamuier.agenT.ui.DashboardScreen
 import com.lamuier.agenT.ui.TokenManagementContent
 import com.lamuier.agenT.ui.SettingsSheet
 import com.lamuier.agenT.data.NotificationSettings
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.ui.theme.AgenTTheme
 import com.lamuier.agenT.ui.theme.LocalDisplayZone
 import com.lamuier.agenT.ui.theme.ThemeMode
@@ -148,7 +147,6 @@ class UiReviewActivity : FragmentActivity() {
                         settings = theme, notificationSettings = NotificationSettings(), onDismiss = { settingsOpen = false },
                         onThemeModeChange = {}, onPaletteChange = {}, timeZoneId = zone.id, onTimeZoneChange = {},
                         language = language, onLanguageChange = {}, onLiveUpdatesToggle = {}, onThresholdRemindersToggle = {},
-                        percentDisplayMode = PercentDisplayMode.Used, onPercentDisplayModeChange = {},
                         tabOrder = DashboardTab.DEFAULT_ORDER, onTabOrderChange = {}, onTabOrderReset = {},
                         onManageTokens = { settingsOpen = false; tokensOpen = true },
                         cursorAccount = fixture.cursor.accounts.first(), codexState = fixture.codex,
@@ -276,12 +274,11 @@ class UiReviewActivity : FragmentActivity() {
             if (intent.getBooleanExtra("cached", false)) it.copy(fromCache = true) else it
         }
         val quota = codex.takeUnless { provider == "cursor" }
-        val mode = if (intent.getBooleanExtra("remaining", false)) PercentDisplayMode.Remaining else PercentDisplayMode.Used
         val pending = android.app.PendingIntent.getActivity(this, 9001,
             android.content.Intent(this, UiReviewActivity::class.java).putExtra("mode", "notifications"),
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
         val renderer = QuotaNotificationRenderer(this, intent.getBooleanExtra("catLanguage", false))
-        val live = requireNotNull(renderer.live(cursor, quota, 1, mode, zone, pending, channel))
+        val live = requireNotNull(renderer.live(cursor, quota, 1, zone, pending, channel))
         check(live.contentView == null && live.bigContentView == null)
         check(live.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
         check(!live.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("%"))

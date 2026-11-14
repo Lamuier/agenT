@@ -2,6 +2,8 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_mini_description"
     android:previewImage="@drawable/widget_preview_usage_mini"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:targetApi="31"
     android:targetCellWidth="2" android:targetCellHeight="1"
     android:initialLayout="@layout/widget_sources_mini"
     android:minHeight="@dimen/widget_2x1_min_height"

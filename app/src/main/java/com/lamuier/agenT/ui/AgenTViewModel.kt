@@ -138,7 +138,6 @@ class AgenTViewModel(
         val accountId = snapshot.selectedAccountId ?: return
         if (key.isBlank() || endMs < startMs) return
         if (snapshot.extraHistory.containsKey(key)) return
-        if (yearMonth != null && snapshot.usage?.history?.calendarMonth?.yearMonth == yearMonth) return
         val revision = runCatching { repository.accountRevision(accountId) }.getOrNull() ?: return
         val request = Triple(accountId, revision, key)
         if (!activeHistoryRequests.add(request)) return
@@ -229,6 +228,8 @@ class AgenTViewModel(
                             tasksError = null,
                         )
                     }
+                    syncWidgetsFromCache()
+                    runCatching { com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshCopyFromCache() }
                 }
                 result = if (_state.value.selectedAccountId == accountId) RefreshResult.fromData(tasks.fromCache) else RefreshResult.Failed
             } catch (error: CancellationException) {
@@ -552,6 +553,8 @@ class AgenTViewModel(
                 runCatching(onSuccess)
                 if (selectionChanged && result.selectedAccountId != null) {
                     refreshSelected(force = false, silent = cached != null && cachedTasks != null)
+                } else if (selectionChanged && result.selectedAccountId == null) {
+                    runCatching { com.lamuier.agenT.notification.AgenTNotificationCoordinator.get(appContext).refreshFromCache() }
                 }
                 syncWidgetsFromCache()
             } catch (error: CancellationException) {

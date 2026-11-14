@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,14 +58,35 @@ internal fun ResetHeatmapCard(data: ResetHeatmapData, selectedDate: LocalDate?, 
             }
             override fun isSelectableYear(year: Int) = year in data.from.year..data.to.year
         }) }
-    if (choosingDate) DatePickerDialog(onDismissRequest = { choosingDate = false },
-        confirmButton = { TextButton(enabled = datePicker.selectedDateMillis != null, onClick = {
-            val date = java.time.Instant.ofEpochMilli(datePicker.selectedDateMillis!!).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-            if (data.days.any { it.date == date }) { onSelect(date); choosingDate = false }
-        }) { Text(stringResource(R.string.action_save)) } },
-        dismissButton = { TextButton(onClick = { choosingDate = false }) { Text(stringResource(R.string.action_cancel)) } }) {
-            DatePicker(state = datePicker)
+    if (choosingDate) {
+        val confirmButton: @Composable () -> Unit = {
+            TextButton(enabled = datePicker.selectedDateMillis != null, onClick = {
+                val date = java.time.Instant.ofEpochMilli(datePicker.selectedDateMillis!!).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                if (data.days.any { it.date == date }) { onSelect(date); choosingDate = false }
+            }) { Text(stringResource(R.string.action_save)) }
         }
+        val dismissButton: @Composable () -> Unit = {
+            TextButton(onClick = { choosingDate = false }) { Text(stringResource(R.string.action_cancel)) }
+        }
+        if (LocalWindowFolds.current.isEmpty()) {
+            DatePickerDialog(onDismissRequest = { choosingDate = false },
+                confirmButton = confirmButton, dismissButton = dismissButton) {
+                DatePicker(state = datePicker)
+            }
+        } else {
+            FoldSafeModal(onDismissRequest = { choosingDate = false }) {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    DatePicker(state = datePicker)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.End) {
+                        dismissButton()
+                        Spacer(Modifier.width(8.dp))
+                        confirmButton()
+                    }
+                }
+            }
+        }
+    }
     val palette = resetChartColors()
     val colors = mapOf(ResetHeatmapKind.Regular to palette.regular, ResetHeatmapKind.Banked to palette.banked)
     val empty = palette.empty

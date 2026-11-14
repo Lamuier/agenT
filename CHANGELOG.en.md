@@ -4,7 +4,18 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
-## Unarchived
+## 1.7.3 — 2026-11-14
+
+> Version decision: 1.7.2 → 1.7.3 (`Z` patch, `versionCode` 12 → 13: this batch consists solely of bug fixes, accessibility/tablet/foldable layout fixes, state synchronization, dead-code cleanup, and build/verification alignment with no new user-visible capabilities and full backward compatibility for package ID, original signing key, and persisted data).
+
+- Fix Kimi Code legacy `TIME_UNIT_SECOND` window duration parsing failing with `ArithmeticException` due to repeating decimal truncation; convert exact multiples of 60 seconds to minutes.
+- Cap quota-threshold reminder deduplication keys (`reminded_thresholds_*`) to the latest 500 cycles, matching reset reminder deduplication and updating privacy documentation.
+- Fix tablet overview equal-height card grid locking historical row heights across content changes, font scaling, or column switches by computing intrinsic row heights per layout pass.
+- Fix TalkBack reading the per-million token cost description instead of the actual price in Usage at a glance, allow dismissing `FoldSafeModal` by tapping outside the card when dismissible, and pin the Codex reset explanation dialog's link-failure message outside the scroll container so it remains visible.
+- Rename `@string/selected` to `@string/label_selected` to avoid overriding Compose UI's private accessibility resource, and remove retired `PercentDisplayMode` dead code and unused resources.
+- Complete `AppPreferencesDataStore` preference mirroring, exclude `datastore` in `data_extraction_rules.xml`, and fix cold-start DataStore preference fallback being skipped when `system_locale_migrated` exists; set `AgenTWidgetJobService` to `exported="false"` and isolate `UiReviewPreferenceHold` to the Debug source set.
+- Sync ongoing notifications and widgets when deleting the last Cursor account or refreshing tasks, and reschedule `RESET_JOB_ID` when a new Codex reset deadline is observed.
+- Add a one-time completion marker for `RetiredProviderCleanup` on cold start, avoid redundant `RemoteViews` inflation in system entry previews, add failure backoff to `WidgetPreviews`, and align `build.ps1` with `-Doctor`, pre-build keytool verification, ELF 16 KiB `PT_LOAD` segment checks, and build report fields.
 
 ## 1.7.2 — 2026-11-08
 

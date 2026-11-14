@@ -75,9 +75,7 @@ object NotificationRefreshScheduler {
             .setPeriodic(PERIOD_MS)
 
         // 周期任务遇到低电/充电策略没必要中断，保持默认即可；仅作显式标注便于阅读。
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder.setRequiresBatteryNotLow(false)
-        }
+        builder.setRequiresBatteryNotLow(false)
         runCatching { scheduler.schedule(builder.build()) }
     }
 

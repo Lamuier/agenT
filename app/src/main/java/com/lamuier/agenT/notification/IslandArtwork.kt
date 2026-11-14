@@ -10,6 +10,12 @@ import com.lamuier.agenT.R
 
 /** App-branded, style-aware artwork; glyphs and colors distinguish monitoring and task states. */
 internal object IslandArtwork {
+    private const val MAX_BITMAP_CACHE = 64
+    private val bitmapCache = object : LinkedHashMap<String, Bitmap>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean =
+            size > MAX_BITMAP_CACHE
+    }
+
     fun pictureReference(state: IslandMonitorState, catLanguageEnabled: Boolean, additionalCount: Int = 0): String {
         val style = if (catLanguageEnabled) "cat" else "formal"
         val key = when (state) {
@@ -30,7 +36,10 @@ internal object IslandArtwork {
     fun createIcon(context: Context, state: IslandMonitorState, catLanguageEnabled: Boolean, additionalCount: Int): Icon {
         val resource = iconResource(state, catLanguageEnabled)
         if (additionalCount <= 0) return Icon.createWithResource(context, resource)
-        val drawable = requireNotNull(context.getDrawable(resource))
+        val cacheKey = pictureReference(state, catLanguageEnabled, additionalCount)
+        val cached = synchronized(bitmapCache) { bitmapCache[cacheKey]?.takeUnless { it.isRecycled } }
+        if (cached != null) return Icon.createWithBitmap(cached)
+        val drawable = requireNotNull(androidx.core.content.ContextCompat.getDrawable(context, resource))
         val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val width = drawable.intrinsicWidth.coerceAtLeast(1)
@@ -50,6 +59,7 @@ internal object IslandArtwork {
         paint.strokeCap = Paint.Cap.ROUND
         canvas.drawLine(17f, 26f, 35f, 26f, paint)
         canvas.drawLine(26f, 17f, 26f, 35f, paint)
+        synchronized(bitmapCache) { bitmapCache[cacheKey] = bitmap }
         return Icon.createWithBitmap(bitmap)
     }
 

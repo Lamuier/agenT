@@ -23,15 +23,25 @@ class NotificationPreferencesTest {
 
         private fun editor(): SharedPreferences.Editor {
             val updates = mutableMapOf<String, Any?>()
+            val removals = mutableSetOf<String>()
             lateinit var editor: SharedPreferences.Editor
             editor = Proxy.newProxyInstance(SharedPreferences.Editor::class.java.classLoader,
                 arrayOf(SharedPreferences.Editor::class.java)) { _, method, args ->
                 when (method.name) {
                     "putBoolean", "putString", "putStringSet" -> {
-                        updates[args!![0] as String] = args[1]
+                        val key = args!![0] as String
+                        removals.remove(key)
+                        updates[key] = args[1]
+                        editor
+                    }
+                    "remove" -> {
+                        val key = args!![0] as String
+                        updates.remove(key)
+                        removals.add(key)
                         editor
                     }
                     "apply", "commit" -> {
+                        removals.forEach(values::remove)
                         values.putAll(updates)
                         if (method.name == "commit") true else null
                     }
@@ -55,11 +65,12 @@ class NotificationPreferencesTest {
 
     @Test fun stylePersistsAcrossInstancesAndPreservesExistingPreferencesAndDedupe() {
         val storage = MemoryPreferences()
+        storage.values["percent_display_mode"] = "remaining"
         val prefs = NotificationPreferences(storage.preferences)
+        assertFalse(storage.values.containsKey("percent_display_mode"))
         prefs.setLiveUpdatesEnabled(true)
         prefs.setThresholdRemindersEnabled(true)
         prefs.setCodexResetRemindersEnabled(true)
-        prefs.setPercentDisplayMode(PercentDisplayMode.Remaining)
         prefs.markThresholdReminded("existing-cycle", 80)
         prefs.markResetNotified("existing-reset")
         val original = prefs.read()
@@ -73,5 +84,26 @@ class NotificationPreferencesTest {
         assertEquals(original, reopened.read())
         assertEquals(setOf(80), reopened.remindedThresholds("existing-cycle"))
         assertTrue(reopened.resetAlreadyNotified("existing-reset"))
+    }
+
+    @Test fun markThresholdRemindedEvictsCyclesBeyond500InOrder() {
+        val storage = MemoryPreferences()
+        val prefs = NotificationPreferences(storage.preferences)
+        for (i in 1..520) {
+            prefs.markThresholdReminded("cycle-$i", 80)
+        }
+        prefs.markThresholdReminded("cycle-21", 90)
+        prefs.markThresholdReminded("cycle-521", 50)
+        for (i in 1..20) {
+            assertTrue(prefs.remindedThresholds("cycle-$i").isEmpty())
+            assertFalse(storage.values.containsKey("reminded_thresholds_cycle-$i"))
+        }
+        assertTrue(prefs.remindedThresholds("cycle-22").isEmpty())
+        assertFalse(storage.values.containsKey("reminded_thresholds_cycle-22"))
+        assertEquals(setOf(80, 90), prefs.remindedThresholds("cycle-21"))
+        assertEquals(setOf(50), prefs.remindedThresholds("cycle-521"))
+        for (i in 23..520) {
+            assertEquals(setOf(80), prefs.remindedThresholds("cycle-$i"))
+        }
     }
 }

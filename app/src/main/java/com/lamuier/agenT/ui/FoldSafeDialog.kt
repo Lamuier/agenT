@@ -1,12 +1,16 @@
 package com.lamuier.agenT.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -20,10 +24,29 @@ internal fun FoldSafeModal(onDismissRequest: () -> Unit, secure: Boolean = false
         dismissOnClickOutside = dismissible, usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
         securePolicy = if (secure) SecureFlagPolicy.SecureOn else SecureFlagPolicy.Inherit)) {
         HingeSafeLayout {
-                Box(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), contentAlignment = Alignment.Center) {
-                    Surface(Modifier.widthIn(max = 640.dp).fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh) { content() }
-                }
+            val scrimInteraction = remember { MutableInteractionSource() }
+            val cardInteraction = remember { MutableInteractionSource() }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .testTag("fold-safe-scrim")
+                    .then(
+                        if (dismissible) Modifier.clickable(indication = null, interactionSource = scrimInteraction, onClick = onDismissRequest)
+                        else Modifier
+                    )
+                    .safeDrawingPadding()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    Modifier
+                        .widthIn(max = 640.dp)
+                        .fillMaxWidth()
+                        .clickable(indication = null, interactionSource = cardInteraction, onClick = {}),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) { content() }
+            }
         }
     }
 }

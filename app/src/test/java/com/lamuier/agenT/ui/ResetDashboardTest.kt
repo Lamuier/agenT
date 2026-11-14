@@ -88,4 +88,34 @@ class ResetDashboardTest {
         compose.onNodeWithTag("reset-refresh").performClick()
         compose.runOnIdle { assertEquals(1, refreshes) }
     }
+
+    @Test fun failedExternalLinkNotifiesCallbackAndShowsInlineError() {
+        val shadowApp = org.robolectric.Shadows.shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+        shadowApp.checkActivities(true)
+        try {
+            val failures = mutableListOf<String>()
+            compose.setContent {
+                CompositionLocalProvider(LocalResetNow provides now, LocalDisplayZone provides ZoneOffset.UTC) {
+                    AgenTTheme(ThemeSettings()) {
+                        CodexResetTab(fixture.codex, {}, onOpenFailed = { failures += it })
+                    }
+                }
+            }
+            compose.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToKey("summary")
+            compose.onNodeWithTag("reset-explanation").performClick()
+            compose.onNodeWithText(context.getString(R.string.reset_public_credit)).performScrollTo().performClick()
+            val expectedError = context.getString(R.string.reset_public_link_error)
+            compose.onNodeWithText(expectedError).assertIsDisplayed()
+            compose.runOnIdle { assertEquals(listOf(expectedError), failures) }
+            compose.onNodeWithText(context.getString(R.string.action_close)).performClick()
+
+            val event = fixture.codex.publicResets!!.events.first()
+            compose.onAllNodes(hasScrollToIndexAction()).onLast().performScrollToKey("records-heading")
+            compose.onNodeWithTag("reset-record-" + event.id).performScrollTo().performClick()
+            compose.onNodeWithText(context.getString(R.string.reset_public_credit)).performScrollTo().performClick()
+            compose.runOnIdle { assertEquals(listOf(expectedError, expectedError), failures) }
+        } finally {
+            shadowApp.checkActivities(false)
+        }
+    }
 }

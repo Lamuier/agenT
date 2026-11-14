@@ -1,7 +1,6 @@
 package com.lamuier.agenT.notification
 
 import com.lamuier.agenT.R
-import com.lamuier.agenT.data.PercentDisplayMode
 import org.junit.Assert.*
 import org.junit.Test
 

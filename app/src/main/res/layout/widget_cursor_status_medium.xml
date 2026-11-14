@@ -36,7 +36,7 @@
                 android:includeFontPadding="false"
                 android:letterSpacing="0.02"
                 android:maxLines="1"
-                android:paddingEnd="8dp"
+                android:paddingStart="0dp" android:paddingEnd="8dp"
                 android:text="@string/widget_status_brand"
                 android:textColor="@color/widget_on_surface_variant"
                 android:textSize="11sp" />
@@ -86,7 +86,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:paddingEnd="10dp">
+                android:paddingStart="0dp" android:paddingEnd="10dp">
 
                 <TextView
                     android:id="@+id/widget_value"

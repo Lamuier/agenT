@@ -126,7 +126,7 @@ internal fun UsageScreen(
         else if (selected == "codex") codexDetails(codex, now, onManageCodex, onRefreshCodex)
         else UsageProvider.entries.firstOrNull { it.id == selected }?.let { source ->
             item("official-provider-${source.id}") { OfficialProviderDetails(source, providers[source],
-                { onManageProvider(source) }, { onRefreshProvider(source) }) }
+                { onManageProvider(source) }, { onRefreshProvider(source) }, onOpenFailed) }
         }
     }
     AdaptivePaneLayout(allowPair = visibleSources.isNotEmpty(), minPaneWidthDp = SummaryPaneWidthDp,
@@ -457,10 +457,11 @@ private fun ModelRanking(tokens: TokenUsageBreakdown, filters: UsagePageFilters)
                 Metric(model.modelIntent, value?.let { if (filters.sortTokens) usageMagnitude(it) else money(it) } ?: "—")
                 UsageBar(value, maximum, Modifier.semantics { contentDescription = exactDescription })
                 val perMillion = usageCostPerMillion(model)
+                val perMillionText = stringResource(R.string.u_per_million, perMillion?.let(::formatCostPerMillion) ?: "—")
                 val perMillionDescription = stringResource(R.string.u_per_million_description)
-                Text(stringResource(R.string.u_per_million, perMillion?.let(::formatCostPerMillion) ?: "—"),
+                Text(perMillionText,
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.semantics { contentDescription = perMillionDescription })
+                    modifier = Modifier.semantics { contentDescription = "$perMillionText. $perMillionDescription" })
                 TextButton({ filters.expandedModels = if (expanded) filters.expandedModels - modelKey else filters.expandedModels + modelKey }) {
                     Text(stringResource(if (expanded) R.string.u_collapse else R.string.u_exact_details))
                 }

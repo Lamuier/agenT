@@ -130,14 +130,13 @@ internal fun StatusTab(
         else if (provider in listOf("deepseek", "kimi_code")) {
             val source = UsageProvider.entries.first { it.id == provider }
             val current = providers[source]
-            StatusProviderPane(false, current.serviceStatus, current.loadingStatus, current.loadingStatus,
+            StatusProviderPane(false, current.serviceStatus, current.loadingStatus,
                 current.statusError, compact, onRetry, openUrl, source.title,
                 stringResource(if (source == UsageProvider.DeepSeek) R.string.provider_status_deepseek else R.string.provider_status_kimi))
         } else {
             val codex = provider == "codex"
             StatusProviderPane(codex, if (codex) codexState.serviceStatus else status,
-                if (codex) codexState.loadingStatus else loading,
-                if (codex) codexState.refreshingStatus else refreshing,
+                if (codex) (codexState.loadingStatus || codexState.refreshingStatus) else (loading || refreshing),
                 if (codex) codexState.statusError else error, compact, onRetry, openUrl)
         }
     }
@@ -151,7 +150,7 @@ internal fun StatusTab(
 
 @Composable
 private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, selectedLoading: Boolean,
-    selectedRefreshing: Boolean, selectedError: String?, compact: Boolean,
+    selectedError: String?, compact: Boolean,
     onRetry: () -> Unit, openUrl: (String) -> Unit, title: String? = null, supporting: String? = null) {
         SectionHeading(
             icon = Icons.Outlined.Code,
@@ -159,7 +158,7 @@ private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, s
             supporting = supporting ?: stringResource(if (codex) R.string.codex_official_status_description else R.string.cursor_status_section_supporting),
         )
         when {
-            selectedStatus == null && (selectedLoading || selectedRefreshing) -> ProviderStateCard(
+            selectedStatus == null && selectedLoading -> ProviderStateCard(
                 icon = Icons.Outlined.CloudOff,
                 title = stringResource(R.string.status_loading_title),
                 description = stringResource(R.string.status_loading_body),
@@ -182,10 +181,11 @@ private fun StatusProviderPane(codex: Boolean, selectedStatus: ServiceStatus?, s
 
 @Composable
 private fun StatusOverviewTile(name: String, status: ServiceStatus?, loading: Boolean, modifier: Modifier) {
+    val resources = LocalResources.current
     Surface(modifier, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(status?.let { StatusPresentation.compactIndicatorLabel(it.indicator, LocalContext.current.resources) }
+            Text(status?.let { StatusPresentation.compactIndicatorLabel(it.indicator, resources) }
                 ?: stringResource(if (loading) R.string.status_loading_title else R.string.status_unavailable_title),
                 color = status?.let { indicatorColor(it.indicator) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
@@ -396,7 +396,7 @@ private fun OverallStatusHero(
 @Composable
 private fun ComponentRow(name: String, status: ComponentStatus) {
     val color = componentColor(status)
-    val label = StatusPresentation.componentLabel(status, LocalContext.current.resources)
+    val label = StatusPresentation.componentLabel(status, LocalResources.current)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -483,9 +483,10 @@ private fun IncidentCard(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                StatusChip(label = StatusPresentation.incidentStatusLabel(incident.status, LocalContext.current.resources))
+                val resources = LocalResources.current
+                StatusChip(label = StatusPresentation.incidentStatusLabel(incident.status, resources))
                 if (incident.impact.isNotBlank() && incident.impact != "none") {
-                    StatusChip(label = StatusPresentation.impactLabel(incident.impact, LocalContext.current.resources))
+                    StatusChip(label = StatusPresentation.impactLabel(incident.impact, resources))
                 }
                 StatusPresentation.formatInstant(
                     incident.updatedAt ?: incident.resolvedAt ?: incident.createdAt,

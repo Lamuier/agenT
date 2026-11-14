@@ -18,9 +18,12 @@ class ThemePreferences(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = appContext
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    @Volatile private var mutatedLocally = false
+    private val hadThemeMode = preferences.contains(KEY_THEME_MODE)
+    private val hadColorPalette = preferences.contains(KEY_COLOR_PALETTE)
 
     init {
-        if (!preferences.contains(KEY_COLOR_PALETTE)) {
+        if (!hadColorPalette) {
             val freshInstall = runCatching {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
                 packageInfo.firstInstallTime == packageInfo.lastUpdateTime
@@ -33,24 +36,47 @@ class ThemePreferences(context: Context) {
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<ThemeSettings> = _settings.asStateFlow()
 
+    init {
+        (appContext as? com.lamuier.agenT.AgenTApplication)?.applicationScope?.launch {
+            runCatching {
+                val snap = AppDataStoreKeys.snapshot(appContext)
+                if (!mutatedLocally) {
+                    val modeRaw = snap[AppDataStoreKeys.THEME_MODE]?.takeIf { !hadThemeMode }
+                    val paletteRaw = snap[AppDataStoreKeys.COLOR_PALETTE]?.takeIf { !hadColorPalette }
+                    if (modeRaw != null || paletteRaw != null) {
+                        val editor = preferences.edit()
+                        modeRaw?.let { editor.putString(KEY_THEME_MODE, ThemeMode.fromStorage(it).storageKey) }
+                        paletteRaw?.let { editor.putString(KEY_COLOR_PALETTE, ColorPalette.fromStorage(it).storageKey) }
+                        editor.apply()
+                        _settings.value = read()
+                    }
+                    syncToDataStore()
+                }
+            }
+        }
+    }
+
     fun read(): ThemeSettings = ThemeSettings(
         themeMode = ThemeMode.fromStorage(preferences.getString(KEY_THEME_MODE, null)),
         colorPalette = ColorPalette.fromStorage(preferences.getString(KEY_COLOR_PALETTE, null)),
     )
 
     fun setThemeMode(mode: ThemeMode) {
+        mutatedLocally = true
         preferences.edit().putString(KEY_THEME_MODE, mode.storageKey).apply()
         _settings.value = _settings.value.copy(themeMode = mode)
         syncToDataStore()
     }
 
     fun setColorPalette(palette: ColorPalette) {
+        mutatedLocally = true
         preferences.edit().putString(KEY_COLOR_PALETTE, palette.storageKey).apply()
         _settings.value = _settings.value.copy(colorPalette = palette)
         syncToDataStore()
     }
 
     fun update(settings: ThemeSettings) {
+        mutatedLocally = true
         preferences.edit()
             .putString(KEY_THEME_MODE, settings.themeMode.storageKey)
             .putString(KEY_COLOR_PALETTE, settings.colorPalette.storageKey)
@@ -60,11 +86,11 @@ class ThemePreferences(context: Context) {
     }
 
     private fun syncToDataStore() {
-        val current = _settings.value
         (appContext as? com.lamuier.agenT.AgenTApplication)?.applicationScope?.let { scope ->
             scope.launch {
                 runCatching {
                     appContext.appPreferencesDataStore.edit { prefs ->
+                        val current = _settings.value
                         prefs[AppDataStoreKeys.THEME_MODE] = current.themeMode.storageKey
                         prefs[AppDataStoreKeys.COLOR_PALETTE] = current.colorPalette.storageKey
                     }

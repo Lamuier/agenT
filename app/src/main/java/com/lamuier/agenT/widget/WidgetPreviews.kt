@@ -23,8 +23,11 @@ internal object WidgetPreviews {
         Entry(MediumCursorStatusWidgetProvider::class.java, R.string.widget_status_medium_name, 4, 2),
         Entry(TallCursorStatusWidgetProvider::class.java, R.string.widget_status_tall_name, 4, 3),
     )
+    private const val FAILURE_BACKOFF_MS = 6 * 3_600_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var running = false
+    private var lastFailedKey: String? = null
+    private var lastFailedAtMs: Long = 0L
     fun canPin(context: Context) = context.getSystemService(AppWidgetManager::class.java).isRequestPinAppWidgetSupported
     fun preview(context: Context, entry: Entry): RemoteViews = AgenTWidgetUpdater.samplePreview(AppLocale.wrap(context), entry.provider)
     fun pin(context: Context, entry: Entry): Boolean = runCatching {
@@ -38,6 +41,10 @@ internal object WidgetPreviews {
         val preferences = app.getSharedPreferences("agentt_widget_previews_v1", Context.MODE_PRIVATE)
         val key = "6:${DashboardPreferences.get(app).readStatusWidgetStyle().storageKey}:${AppLocale.stored(app)}:${WidgetThemeColors.resolve(app)}:${ThemePreferences.get(app).read()}:${app.resources.configuration.uiMode}:${app.resources.configuration.fontScale}"
         if (preferences.getString("rendered", null) == key) return
+        val nowMs = System.currentTimeMillis()
+        val failedKey = lastFailedKey ?: preferences.getString("failed_key", null)
+        val failedAtMs = if (lastFailedAtMs > 0L) lastFailedAtMs else preferences.getLong("failed_at_ms", 0L)
+        if (failedKey == key && nowMs - failedAtMs in 0 until FAILURE_BACKOFF_MS) return
         running = true
         scope.launch {
             try {
@@ -47,7 +54,20 @@ internal object WidgetPreviews {
                     allAccepted = runCatching { manager.setWidgetPreview(ComponentName(app, entry.provider),
                         android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN, preview(app, entry)) }.getOrDefault(false) && allAccepted
                 }
-                if (allAccepted) preferences.edit().putString("rendered", key).apply()
+                if (allAccepted) {
+                    synchronized(this@WidgetPreviews) {
+                        lastFailedKey = null
+                        lastFailedAtMs = 0L
+                    }
+                    preferences.edit().putString("rendered", key).remove("failed_key").remove("failed_at_ms").apply()
+                } else {
+                    val failTime = System.currentTimeMillis()
+                    synchronized(this@WidgetPreviews) {
+                        lastFailedKey = key
+                        lastFailedAtMs = failTime
+                    }
+                    preferences.edit().putString("failed_key", key).putLong("failed_at_ms", failTime).apply()
+                }
             } finally { synchronized(this@WidgetPreviews) { running = false } }
         }
     }

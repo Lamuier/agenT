@@ -83,6 +83,7 @@ data class WidgetThemeColors(
         fun resolve(context: Context, settings: ThemeSettings = ThemePreferences.get(context).read()): WidgetThemeColors =
             resolvePair(context, settings).current
 
+        @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
         private fun systemDynamic(context: Context, dark: Boolean): WidgetThemeColors {
             val res = context.resources
             return if (dark) {
@@ -413,11 +414,14 @@ data class WidgetThemePair(
     }
 
     fun applySections(views: RemoteViews, compact: Boolean = false) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !compact) {
-            val lightCursor = WidgetAppearance.blend(light.surface, light.primary, 0.09f)
-            val darkCursor = WidgetAppearance.blend(dark.surface, dark.primary, 0.09f)
-            val lightCodex = WidgetAppearance.blend(light.surface, light.tertiary, 0.09f)
-            val darkCodex = WidgetAppearance.blend(dark.surface, dark.tertiary, 0.09f)
+        if (compact) return
+        val lightCursor = WidgetAppearance.blend(light.surface, light.primary, 0.09f)
+        val darkCursor = WidgetAppearance.blend(dark.surface, dark.primary, 0.09f)
+        val lightCodex = WidgetAppearance.blend(light.surface, light.tertiary, 0.09f)
+        val darkCodex = WidgetAppearance.blend(dark.surface, dark.tertiary, 0.09f)
+        views.setInt(R.id.widget_cursor_section, "setBackgroundResource", R.drawable.widget_panel_background)
+        views.setInt(R.id.widget_codex_section, "setBackgroundResource", R.drawable.widget_panel_background)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             views.setColorStateList(
                 R.id.widget_cursor_section,
                 "setBackgroundTintList",

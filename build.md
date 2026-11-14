@@ -185,7 +185,7 @@ chmod 600 ../release-password.txt
 | `--java-home <目录>` / `--sdk <目录>` | Windows 脚本内 JBR / SDK 配置 | 指定本机工具路径 |
 | `--official-release`（须与 `--release` 同用） | `-OfficialRelease`（须与 `-Release` 同用） | 正式发版命名：App 名称-版本号，不带编译日期时间 |
 | `--artifact-suffix <标识>` | `-ArtifactSuffix <标识>` | 普通包时间戳之后追加标识，正式包禁用 |
-| `--doctor` | 无对应参数 | Unix 环境自检 |
+| `--doctor` | `-Doctor` | 环境自检（加 `--release` / `-Release` 同时校验原签名与私钥） |
 | `--generate-baseline-profile`（须与 `--release` 同用） | `-GenerateBaselineProfile`（须与 `-Release` 同用） | 显式在任务模拟器生成编译配置 |
 | `--performance-review`（须与 `--release` 同用） | `-PerformanceReview`（须与 `-Release` 同用） | 显式在任务模拟器采集冷启动和滚动性能 |
 

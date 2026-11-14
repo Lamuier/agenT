@@ -8,7 +8,7 @@ agenT 的业务代码集中在单一 `app` 模块，使用 Kotlin、Jetpack Comp
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.7.2`，`versionCode=12`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.7.3`，`versionCode=13`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -44,7 +44,7 @@ Kotlin 根包是 `app/src/main/java/com/lamuier/agenT`：
 | `widget/` | 七个 provider、RemoteViews、主题与位图预算、预览，以及共用 JobService 刷新 |
 | `system/` | 概览快捷设置磁贴；它打开应用，不在磁贴服务中查询账号 |
 | `util/` | 语言与时区、用量和任务显示、允许的外链、设备解锁及敏感内容保护 |
-| `qa/` | Debug 验收临时偏好的恢复工具；实际验收 Activity 和 `ReviewFixture` 位于 Debug 源集 |
+| `qa/`（Debug 源集） | Debug 验收临时偏好的恢复工具 `UiReviewPreferenceHold`、验收 Activity 和 `ReviewFixture`（Release 源集仅保留空实现） |
 
 资源按 Android 限定符分层：默认中文与 `values-en` 英文；`values-night*` 夜间配色；`*-v31` 小组件系统配色 / 预览；`xml-v37` 网络配置。`mipmap-anydpi-v26` 保留自适应图标所需的 API 限定符，不能因 minSdk=26 就视作重复文件。Manifest、widget provider 名称和已保存偏好 ID 属于兼容契约。
 

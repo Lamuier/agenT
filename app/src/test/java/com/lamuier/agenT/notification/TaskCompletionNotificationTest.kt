@@ -9,7 +9,6 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.lamuier.agenT.MainActivity
 import com.lamuier.agenT.R
-import com.lamuier.agenT.data.PercentDisplayMode
 import com.lamuier.agenT.model.AgenTasks
 import com.lamuier.agenT.model.AgentTask
 import com.lamuier.agenT.model.AgentTaskStatus
@@ -42,7 +41,7 @@ class TaskCompletionNotificationTest {
     private val normalStatus = ServiceStatus("", StatusIndicator.None, null, "", emptyList(),
         emptyList(), emptyList(), emptyList(), "", false)
     private fun render(data: AgenTasks, time: Long = now, cat: Boolean = false): Notification =
-        QuotaNotificationRenderer(context, cat).live(null, null, 0, PercentDisplayMode.Used, ZoneOffset.UTC,
+        QuotaNotificationRenderer(context, cat).live(null, null, 0, ZoneOffset.UTC,
             activityIntent(), "test", cursorStatus = normalStatus, codexStatus = normalStatus,
             tasks = data, tasksIntent = activityIntent(),
             confirmTasksIntent = TaskCompletionReceiver.pendingIntent(context, data, 1, time), nowMillis = time)!!
@@ -76,11 +75,19 @@ class TaskCompletionNotificationTest {
     @Test fun buttonIdentitySeparatesNewBatchesRunsAccountsAndCredentialRevisions() {
         val data = tasks()
         val original = TaskCompletionReceiver.pendingIntent(context, data, 1, now)!!
+        val originalIntent = org.robolectric.Shadows.shadowOf(original).savedIntent
         assertEquals(original, TaskCompletionReceiver.pendingIntent(context, data, 1, now + 100))
-        assertNotEquals(original, TaskCompletionReceiver.pendingIntent(context, data.copy(accountId = 2), 1, now))
-        assertNotEquals(original, TaskCompletionReceiver.pendingIntent(context, data, 2, now))
-        assertNotEquals(original, TaskCompletionReceiver.pendingIntent(context,
-            data.copy(completedAtMillis = mapOf("bc-ended" to now + 100)), 1, now + 100))
+        assertNotNull(PendingIntent.getBroadcast(context, 4204, originalIntent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE))
+        val nextAccount = TaskCompletionReceiver.pendingIntent(context, data.copy(accountId = 2), 1, now)!!
+        assertNotEquals(original, nextAccount)
+        assertNull(PendingIntent.getBroadcast(context, 4204, originalIntent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE))
+        assertNotEquals(nextAccount, TaskCompletionReceiver.pendingIntent(context, data, 2, now))
+        val updatedBatch = TaskCompletionReceiver.pendingIntent(context,
+            data.copy(completedAtMillis = mapOf("bc-ended" to now + 100)), 1, now + 100)!!
+        assertNotEquals(original, updatedBatch)
+        val updatedIntent = org.robolectric.Shadows.shadowOf(updatedBatch).savedIntent
+        assertNull(TaskCompletionReceiver.pendingIntent(context, data, 1, now + 900_000))
+        assertNull(PendingIntent.getBroadcast(context, 4204, updatedIntent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE))
     }
 
     @Test fun islandButtonsReferenceTheSameActionsAsNativeNotifications() {
@@ -116,6 +123,20 @@ class TaskCompletionNotificationTest {
         assertNull(scheduler.getPendingJob(NotificationRefreshScheduler.TASK_EXPIRY_JOB_ID))
     }
 
+    @Test fun refreshSchedulerCancelsJobsWhenNoActiveSourceOrReminderIsConfigured() {
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        NotificationRefreshScheduler.schedule(context)
+        assertNotNull(scheduler.getPendingJob(4242))
+        val prefs = com.lamuier.agenT.data.NotificationPreferences.get(context)
+        prefs.setLiveUpdatesEnabled(true)
+        prefs.setThresholdRemindersEnabled(true)
+        prefs.setCodexResetRemindersEnabled(false)
+        AgenTNotificationCoordinator.get(context).refreshFromCache()
+        assertNull(scheduler.getPendingJob(4242))
+        assertNull(scheduler.getPendingJob(NotificationRefreshScheduler.RESET_JOB_ID))
+        assertNull(scheduler.getPendingJob(NotificationRefreshScheduler.TASK_EXPIRY_JOB_ID))
+    }
+
     @Test fun exhaustedCodexFiveHourWindowShowsCountdownAndChronometerUntilResetIsConfirmed() {
         val nowMillis = 10_000_000_000L
         val resetEpochSeconds = nowMillis / 1000 + 2 * 3600 + 15 * 60
@@ -131,7 +152,7 @@ class TaskCompletionNotificationTest {
             )
 
         val formal = QuotaNotificationRenderer(context, false).live(
-            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            null, codexOverview(100.0), 1, ZoneOffset.UTC,
             activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
         )!!
         val formalText = formal.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
@@ -145,14 +166,14 @@ class TaskCompletionNotificationTest {
         assertTrue(formal.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
 
         val cat = QuotaNotificationRenderer(context, true).live(
-            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            null, codexOverview(100.0), 1, ZoneOffset.UTC,
             activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
         )!!
         val catText = cat.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
         assertTrue(catText, catText.contains("2 小时 15 分后重置喵") || catText.contains("Resets in 2 h 15 min, meow"))
 
         val elapsed = QuotaNotificationRenderer(context, false).live(
-            null, codexOverview(100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            null, codexOverview(100.0), 1, ZoneOffset.UTC,
             activityIntent(), "test", codexStatus = normalStatus, nowMillis = resetEpochSeconds * 1000L,
         )!!
         val elapsedText = elapsed.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
@@ -161,7 +182,7 @@ class TaskCompletionNotificationTest {
         assertFalse(elapsed.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
 
         val lowOnly = QuotaNotificationRenderer(context, false).live(
-            null, codexOverview(85.0, weeklyUsed = 100.0), 1, PercentDisplayMode.Used, ZoneOffset.UTC,
+            null, codexOverview(85.0, weeklyUsed = 100.0), 1, ZoneOffset.UTC,
             activityIntent(), "test", codexStatus = normalStatus, nowMillis = nowMillis,
         )!!
         val lowOnlyBig = lowOnly.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()

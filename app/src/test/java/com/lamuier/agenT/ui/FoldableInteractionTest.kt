@@ -95,4 +95,26 @@ class FoldableInteractionTest {
         compose.runOnIdle { width = 1000.dp }
         compose.onNodeWithTag("usage-summary-codex").assertIsSelected()
     }
+
+    @Test fun foldSafeModalDismissesOnOutsideScrimClickOnlyWhenDismissible() {
+        var dismissals = 0
+        var dismissible by mutableStateOf(true)
+        compose.setContent {
+            AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
+                FoldSafeModal(
+                    onDismissRequest = { dismissals++ },
+                    dismissible = dismissible,
+                ) {
+                    androidx.compose.material3.Text("Modal title")
+                }
+            }
+        }
+        compose.onNodeWithText("Modal title").performClick()
+        compose.runOnIdle { assertEquals(0, dismissals) }
+        compose.onNodeWithTag("fold-safe-scrim").performTouchInput { click(androidx.compose.ui.geometry.Offset(4f, 4f)) }
+        compose.runOnIdle { assertEquals(1, dismissals) }
+        compose.runOnIdle { dismissible = false }
+        compose.onNodeWithTag("fold-safe-scrim").performTouchInput { click(androidx.compose.ui.geometry.Offset(4f, 4f)) }
+        compose.runOnIdle { assertEquals(1, dismissals) }
+    }
 }

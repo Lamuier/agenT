@@ -141,6 +141,29 @@ class WidgetThemeColorsTest {
         assertEquals(pair.dark.onSurface, value.currentTextColor)
     }
 
+    @Test fun api30WidgetsApplyThemeColorsAndPreserveRoundedDrawables() {
+        val originalSdk = android.os.Build.VERSION.SDK_INT
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", 30)
+        try {
+            RuntimeEnvironment.setQualifiers("zh-rCN-w360dp-h800dp-night-xhdpi")
+            ThemePreferences.get(app).setThemeMode(ThemeMode.Dark)
+            ThemePreferences.get(app).setColorPalette(ColorPalette.Pulse)
+            val fixture = com.lamuier.agenT.qa.ReviewFixture.create(java.time.ZoneId.of("UTC"), java.time.Instant.parse("2026-10-12T12:14:00Z"))
+            val usageViews = AgenTWidgetUpdater.renderUsagePreview(app, fixture.cursor.usage, fixture.codex.usage, false, 334, 252)
+            val usageRoot = usageViews.apply(app, android.widget.FrameLayout(app))
+            val cursorSection = usageRoot.findViewById<android.view.View>(com.lamuier.agenT.R.id.widget_cursor_section)
+            val cursorPlan = usageRoot.findViewById<android.widget.TextView>(com.lamuier.agenT.R.id.widget_cursor_plan)
+            assertTrue("Expected GradientDrawable on widget_cursor_section on API 30", cursorSection.background is android.graphics.drawable.GradientDrawable)
+            assertTrue("Expected GradientDrawable on widget_cursor_plan on API 30", cursorPlan.background is android.graphics.drawable.GradientDrawable)
+            val statusViews = AgenTWidgetUpdater.renderStatusPreview(app, fixture.cursor.serviceStatus, fixture.codex.serviceStatus, 334, 252)
+            val statusRoot = statusViews.apply(app, android.widget.FrameLayout(app))
+            val statusPanel = statusRoot.findViewById<android.widget.ImageView>(com.lamuier.agenT.R.id.widget_cursor_panel)
+            assertTrue("Expected GradientDrawable on status widget_cursor_panel on API 30", statusPanel.drawable is android.graphics.drawable.GradientDrawable)
+        } finally {
+            org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build.VERSION::class.java, "SDK_INT", originalSdk)
+        }
+    }
+
     private fun contrast(foreground: Int, background: Int): Double {
         val lighter = maxOf(luminance(foreground), luminance(background))
         val darker = minOf(luminance(foreground), luminance(background))

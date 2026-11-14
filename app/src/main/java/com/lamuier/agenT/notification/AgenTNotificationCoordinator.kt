@@ -18,6 +18,7 @@ import com.lamuier.agenT.network.OfficialStatusProvider
 import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.util.DisplayTimeZones
 import com.lamuier.agenT.data.NotificationPreferences
+import com.lamuier.agenT.data.NotificationSettings
 import com.lamuier.agenT.model.AgenTOverview
 import com.lamuier.agenT.model.AgenTasks
 import com.lamuier.agenT.util.AppLocale
@@ -54,6 +55,23 @@ class AgenTNotificationCoordinator(
 
     private fun strings(): Context = AppLocale.wrap(appContext)
 
+    private fun hasActiveMonitoredSource(usage: AgenTOverview? = null, codex: CodexQuotaOverview? = null): Boolean {
+        if (usage != null || codex != null) return true
+        val hasCursor = runCatching { cursorRepository.listAccounts().any { !it.tokenExpired } }.getOrDefault(false)
+        if (hasCursor) return true
+        return runCatching { codexRepository.credentialInfo()?.let { !it.expired && !it.invalid } == true }.getOrDefault(false)
+    }
+
+    private fun shouldSchedulePeriodicRefresh(
+        settings: NotificationSettings,
+        usage: AgenTOverview? = null,
+        codex: CodexQuotaOverview? = null,
+    ): Boolean {
+        if (!canPostNotifications()) return false
+        if (!settings.liveUpdatesEnabled && !settings.thresholdRemindersEnabled && !settings.codexResetRemindersEnabled) return false
+        return settings.codexResetRemindersEnabled || hasActiveMonitoredSource(usage, codex)
+    }
+
     /**
      * 用量、服务状态与 Cursor 任务共用实时活动；没有任何缓存时撤下通知。
      * 每次调用都会按开关状态维护周期刷新任务。
@@ -62,10 +80,10 @@ class AgenTNotificationCoordinator(
         ensureChannels()
         val settings = preferences.read()
         val canPost = canPostNotifications()
-        if (canPost && (settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled)) {
+        val (codex, revision) = cachedCodex()
+        if (shouldSchedulePeriodicRefresh(settings, usage, codex)) {
             NotificationRefreshScheduler.schedule(appContext)
         } else NotificationRefreshScheduler.cancel(appContext)
-        val (codex, revision) = cachedCodex()
         if (codex != null && scheduleWindowRefresh && canPost &&
             (settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled)) {
             NotificationRefreshScheduler.scheduleReset(appContext, codex, revision)
@@ -92,13 +110,17 @@ class AgenTNotificationCoordinator(
         // Stable IDs preserve system-level notification settings and permissions.
         ensureChannels()
         val settings = preferences.read()
-        if ((!settings.liveUpdatesEnabled && !settings.thresholdRemindersEnabled && !settings.codexResetRemindersEnabled) || !canPostNotifications()) {
+        val cursor = cachedCursor()
+        val (codex, _) = cachedCodex()
+        if (!shouldSchedulePeriodicRefresh(settings, cursor, codex)) {
             notificationManager.cancel(LIVE_NOTIFICATION_ID)
             NotificationRefreshScheduler.cancel(appContext)
+            NotificationRefreshScheduler.cancelReset(appContext)
+            NotificationRefreshScheduler.cancelTaskExpiry(appContext)
             return
         }
         NotificationRefreshScheduler.schedule(appContext)
-        refresh(cachedCursor(), scheduleWindowRefresh)
+        refresh(cursor, scheduleWindowRefresh)
     }
 
     /** Cache-only presentation update for style or task changes; never fetch or replay one-shot alerts. */
@@ -174,10 +196,22 @@ class AgenTNotificationCoordinator(
                 val repository = codexRepository
                 val revision = repository.tokenRevision()
                 val credential = repository.credentialInfo()
+                val cached = repository.cachedUsage(revision)
+                val nowSeconds = System.currentTimeMillis() / 1000
                 if (DashboardPreferences.get(appContext).readCodexUsageAutoRefresh() &&
                     credential != null && !credential.expired && !credential.invalid &&
-                    (forceCodex || CodexRefreshPolicy.shouldFetch(repository.cachedUsage(revision), System.currentTimeMillis() / 1000, 15 * 60)))
-                    repository.fetchUsage(revision, scheduleWindowRefresh)
+                    (forceCodex || CodexRefreshPolicy.shouldFetch(cached, nowSeconds, 15 * 60))) {
+                    val previousDeadline = cached?.let { CodexRefreshPolicy.nextReset(it, nowSeconds) }
+                    val updated = repository.fetchUsage(revision, scheduleWindowRefresh)
+                    if (!scheduleWindowRefresh) {
+                        val settings = preferences.read()
+                        val nextDeadline = CodexRefreshPolicy.nextReset(updated, System.currentTimeMillis() / 1000)
+                        if (canPostNotifications() && nextDeadline != null && nextDeadline != previousDeadline &&
+                            (settings.liveUpdatesEnabled || settings.thresholdRemindersEnabled || settings.codexResetRemindersEnabled)) {
+                            NotificationRefreshScheduler.scheduleReset(appContext, updated, revision)
+                        }
+                    }
+                }
             }
         }
         val statuses = listOf(OfficialStatusProvider.Cursor, OfficialStatusProvider.Codex).map { provider -> async {
@@ -246,7 +280,7 @@ class AgenTNotificationCoordinator(
         val (tasks, taskRevision) = cachedTasks()
         val nowMillis = System.currentTimeMillis()
         val notification = renderer().live(cursor, codex, revision,
-            preferences.read().percentDisplayMode, zone, overviewIntent(), CHANNEL_ID,
+            zone, overviewIntent(), CHANNEL_ID,
             cursorStatus = runCatching { ServiceStatusRepository(appContext).cached() }.getOrNull(),
             codexStatus = runCatching { ServiceStatusRepository(appContext, OfficialStatusProvider.Codex).cached() }.getOrNull(),
             tasks = tasks, tasksIntent = tasksIntent(),
@@ -285,7 +319,6 @@ class AgenTNotificationCoordinator(
     }
 
     @Synchronized private fun ensureChannels() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val locale = strings().resources.configuration.locales.toLanguageTags()
         if (channelsLocale == locale) return
         notificationManager.createNotificationChannel(

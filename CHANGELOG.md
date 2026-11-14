@@ -2,7 +2,18 @@
 
 **中文** | [English](CHANGELOG.en.md)
 
-## 未归档
+## 1.7.3 — 2026-11-14
+
+> 版本判定：1.7.2 → 1.7.3（`Z` 修订版，`versionCode` 12 → 13：本批均为缺陷修复、无障碍与大屏/折叠屏交互修正、状态同步与死代码清理及构建校验对齐，未新增用户可见业务能力，包名、原签名与持久化数据向后兼容）。
+
+- 修复 Kimi Code 旧版 `TIME_UNIT_SECOND` 额度窗口时长解析因浮点尾差抛出 `ArithmeticException` 的问题，改为精确整除换算分钟。
+- 为额度阈值提醒去重标识（`reminded_thresholds_*`）增加最近 500 个周期的保留上限，与重置提醒去重上限保持一致并同步隐私说明。
+- 修复平板概览等高卡片网格在内容高度变化、字体缩放或列数切换时行高锁死的问题，按当前布局轮次动态计算同行最大高度。
+- 修复用量一览中“每百万 Token 单价”在 TalkBack 朗读时被口径说明覆盖具体金额的问题，以及折叠屏安全弹窗点击遮罩外部无法关闭的问题；并将 Codex 重置说明弹窗的外链失败提示固定在滚动区外确保可见。
+- 重命名 `@string/selected` 为 `@string/label_selected`，避免覆盖 Compose UI 内部私有无障碍资源；清理已废弃的 `PercentDisplayMode` 死代码与未引用资源。
+- 补全 `AppPreferencesDataStore` 偏好字段镜像与 `data_extraction_rules.xml` 的 `datastore` 备份排除规则，并修复冷启动偏好读取因语言迁移标记（`system_locale_migrated`）存在而跳过逐键默认回填的问题；收敛 `AgenTWidgetJobService` 导出属性并将 `UiReviewPreferenceHold` 迁入 Debug 源集。
+- 补齐删除最后一个 Cursor 账号、单独刷新任务后的常驻通知与小组件缓存同步，以及 Codex 重置提醒 Job 触发后对下一周期重置时间的自动重排。
+- 优化冷启动 `RetiredProviderCleanup` 一次性完成标记、系统入口预览 `RemoteViews` 按需重绘与 `WidgetPreviews` 失败退避；完善 `build.ps1` 的 `-Doctor` 自检、签名预检、ELF 16 KiB `PT_LOAD` 校验及构建报告字段对齐。
 
 ## 1.7.2 — 2026-11-08
 

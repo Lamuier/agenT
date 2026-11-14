@@ -114,4 +114,22 @@ class UsageScreenTest {
         compose.onNodeWithTag("usage-detail-list").performScrollToKey("cursor-plan")
         compose.onAllNodesWithText(label(R.string.u_wait_update)).onFirst().assertExists()
     }
+
+    @Test fun perMillionSemanticsPreservesPriceAndDescription() {
+        val fixture = ReviewFixture.create(ZoneId.of("UTC"), Instant.ofEpochMilli(now))
+        compose.setContent {
+            CompositionLocalProvider(LocalUsageNow provides now, LocalDisplayZone provides ZoneId.of("UTC")) {
+                AgenTTheme(ThemeSettings()) { UsageScreen(fixture.cursor, fixture.codex, { _, _, _, _ -> }, {}, {}, {}, {}) }
+            }
+        }
+        compose.onNodeWithTag("usage-detail-list").performScrollToKey("usage-statistics")
+        val description = label(R.string.u_per_million_description)
+        val nodes = compose.onAllNodes(hasContentDescription(description, substring = true), useUnmergedTree = true).fetchSemanticsNodes()
+        assertTrue("Expected at least one node with per-million description", nodes.isNotEmpty())
+        nodes.forEach { node ->
+            val joined = node.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString(" ")
+            assertTrue("Expected price in contentDescription but got: $joined", joined.contains("$"))
+            assertTrue("Expected description in contentDescription but got: $joined", joined.contains(description))
+        }
+    }
 }

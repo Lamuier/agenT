@@ -58,16 +58,18 @@ class TabletInteractionTest {
         val deepSeek = ProviderUsageParser.parse(UsageProvider.DeepSeek, JSONObject(
             """{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"10.75","granted_balance":"0","topped_up_balance":"10.75"}]}"""),
             "2026-10-17 01:02:03")
-        val providers = ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
+        var providersState by mutableStateOf(ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
             if (source == UsageProvider.DeepSeek) ProviderState(ProviderCredentialInfo("fixture"), deepSeek) else ProviderState()
-        })
+        }))
+        var cursorState by mutableStateOf(fixture.cursor)
+        var codexState by mutableStateOf(fixture.codex)
         compose.mainClock.autoAdvance = false
         compose.setContent {
             AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
-                DashboardScreen(fixture.cursor, fixture.codex, remember { SnackbarHostState() }, DashboardTab.DEFAULT_ORDER,
+                DashboardScreen(cursorState, codexState, remember { SnackbarHostState() }, DashboardTab.DEFAULT_ORDER,
                     onLoadHistoryWindow = { _, _, _, _ -> }, onRefresh = {}, onRefreshCodex = {},
                     onManageCodex = {}, onManageAccount = {}, onShowSettings = {}, onShowTokenHelp = {},
-                    providers = providers)
+                    providers = providersState)
             }
         }
         compose.mainClock.advanceTimeBy(1000)
@@ -82,6 +84,76 @@ class TabletInteractionTest {
         assertEquals(cursor.top, deepSeekCard.top, 2f)
         assertEquals(cursor.width, trailing.width, 2f)
         assertTrue(trailing.top > cursor.bottom)
+
+        compose.runOnIdle {
+            cursorState = fixture.cursor.copy(usage = null, loadingUsage = true)
+            codexState = fixture.codex.copy(usage = null, refreshing = true)
+            providersState = ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
+                if (source == UsageProvider.DeepSeek) ProviderState(ProviderCredentialInfo("fixture"), null, loading = true) else ProviderState()
+            })
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        val shrunkCursor = compose.onNodeWithTag("overview-Cursor").fetchSemanticsNode().boundsInRoot
+        val shrunkCodex = compose.onNodeWithTag("overview-Codex").fetchSemanticsNode().boundsInRoot
+        val shrunkDeepSeek = compose.onNodeWithTag("overview-DeepSeek").fetchSemanticsNode().boundsInRoot
+        assertEquals(shrunkCursor.height, shrunkCodex.height, 2f)
+        assertEquals(shrunkCursor.height, shrunkDeepSeek.height, 2f)
+        assertTrue("Expected row height to shrink when tallest card content shrinks (${shrunkCursor.height} < ${cursor.height})",
+            shrunkCursor.height < cursor.height)
+    }
+
+    @Test fun tabletOverviewEqualHeightGridAdaptsToScopedProviderChangeAndColumnSwitching() {
+        val fixture = ReviewFixture.create(ZoneId.of("UTC"))
+        val kimiTall = ProviderUsageParser.parse(UsageProvider.KimiCode, JSONObject(
+            """{"usage":{"limit":"2000","used":"500","remaining":"1500","resetTime":"2026-10-18T00:00:00Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"200","used":"50","remaining":"150","resetTime":"2026-10-17T06:00:00Z"}},{"window":{"duration":7,"timeUnit":"TIME_UNIT_DAY"},"detail":{"limit":"1000","used":"250","remaining":"750","resetTime":"2026-10-24T00:00:00Z"}}]}"""),
+            "2026-10-17 01:02:03")
+        val cursorShort = fixture.cursor.copy(usage = null, loadingUsage = true)
+        val codexShort = fixture.codex.copy(usage = null, refreshing = true)
+        val providersHolder = mutableStateOf(ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
+            if (source == UsageProvider.KimiCode) ProviderState(ProviderCredentialInfo("fixture"), kimiTall) else ProviderState()
+        }))
+        val fontScaleHolder = mutableFloatStateOf(1.0f)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            val baseDensity = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(baseDensity.density, fontScaleHolder.floatValue)
+            ) {
+                AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
+                    UnifiedOverviewTab(cursorShort, codexShort, onOpenSettings = {}, providers = providersHolder.value)
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        val cursorBefore = compose.onNodeWithTag("overview-Cursor").fetchSemanticsNode().boundsInRoot
+        val kimiBefore = compose.onNodeWithTag("overview-Kimi Code").fetchSemanticsNode().boundsInRoot
+        assertEquals(cursorBefore.height, kimiBefore.height, 2f)
+        assertEquals(cursorBefore.top, kimiBefore.top, 2f)
+
+        compose.runOnIdle {
+            providersHolder.value = ProvidersUiState(false, UsageProvider.entries.associateWith { source ->
+                if (source == UsageProvider.KimiCode) ProviderState(ProviderCredentialInfo("fixture"), null, loading = true) else ProviderState()
+            })
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        val cursorAfterShrink = compose.onNodeWithTag("overview-Cursor").fetchSemanticsNode().boundsInRoot
+        val kimiAfterShrink = compose.onNodeWithTag("overview-Kimi Code").fetchSemanticsNode().boundsInRoot
+        assertEquals(cursorAfterShrink.height, kimiAfterShrink.height, 2f)
+        assertTrue("Expected row height to shrink on provider-only update (${cursorAfterShrink.height} < ${cursorBefore.height})",
+            cursorAfterShrink.height < cursorBefore.height)
+
+        compose.runOnIdle {
+            fontScaleHolder.floatValue = 1.2f
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        val cursorTwoCol = compose.onNodeWithTag("overview-Cursor").fetchSemanticsNode().boundsInRoot
+        val codexTwoCol = compose.onNodeWithTag("overview-Codex").fetchSemanticsNode().boundsInRoot
+        val kimiTwoCol = compose.onNodeWithTag("overview-Kimi Code").fetchSemanticsNode().boundsInRoot
+        assertEquals(cursorTwoCol.top, codexTwoCol.top, 2f)
+        assertTrue("Expected 3rd card to wrap to 2nd row when columns switch 3 -> 2", kimiTwoCol.top > cursorTwoCol.bottom)
     }
 
     @Test fun tabletNavigationRailIsVerticallyCentered() {
@@ -168,7 +240,7 @@ class TabletInteractionTest {
         compose.setContent {
             AgenTTheme(ThemeSettings(colorPalette = ColorPalette.Pulse)) {
                 SettingsSheet(ThemeSettings(), NotificationSettings(), {}, {}, {}, "system", {}, AppLanguage.English, {}, {}, {},
-                    PercentDisplayMode.Used, {}, DashboardTab.DEFAULT_ORDER, {}, {}, {},
+                    DashboardTab.DEFAULT_ORDER, {}, {}, {},
                     fixture.cursor.accounts.first(), fixture.codex)
             }
         }

@@ -26,7 +26,7 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 | Legacy personal Codex reset history, subscription anchor day and latest window observation snapshot | Storage compatibility, subscription-month filters and window reset alerts | Android Keystore AES-GCM encryption, isolated by user / workspace identity digests | Not uploaded |
 | Public Cursor / Codex / DeepSeek / Kimi service status (components, states and incident summaries) | Status, Overview, widgets and notifications | Latest successful result cached in plaintext in app-private storage | Public requests include no token, API key or Account ID |
 | Public reset announcements / observations | Reset statistics, lists and heatmaps | Parsed public fields cached in plaintext in app-private storage | Anonymous requests include no token, Account ID or personal records |
-| UI / notification preferences, widget page preferences and reminder deduplication identifiers | Preserve settings and avoid repeated alerts | App-private SharedPreferences; these settings and deduplication metadata are unencrypted and contain no token | Not uploaded |
+| UI / notification preferences, widget page preferences and reminder deduplication identifiers | Preserve settings and avoid repeated alerts | App-private SharedPreferences and Jetpack DataStore; these settings and deduplication metadata are unencrypted and contain no token | Not uploaded |
 
 ## Local usage observations
 
@@ -42,7 +42,7 @@ Observations reflect cumulative values seen during successful refreshes and cann
 
 Public announcements / observations are read from third-party `https://codex-resets.com/api/v1/resets` at startup and refreshed as needed, with up to 500 cached records. The page, statistics and heatmap separately display API `regular` resets and `banked` credit grants. Legacy caches that may lack grants trigger a full fetch; failures preserve existing cached records. This is a third-party summary: missing dates do not prove no reset occurred, and grant record counts are not credit quantities or balances.
 
-Up to 500 legacy personal Codex reset events remain encrypted for compatibility but are no longer displayed; the subscription anchor day is still used for filtering. Usage sync only overwrites the latest window observation for confirmed window-reset alerts and no longer appends renewal, balance or credit-event history. Reset reminders store up to 500 one-way sent-event identifiers locally for deduplication.
+Up to 500 legacy personal Codex reset events remain encrypted for compatibility but are no longer displayed; the subscription anchor day is still used for filtering. Usage sync only overwrites the latest window observation for confirmed window-reset alerts and no longer appends renewal, balance or credit-event history. Reset reminders and quota-threshold reminders store deduplication identifiers locally, each retaining at most the latest 500 entries.
 
 Current usage, task and public-status caches preserve the latest successful results and update after subsequent successful queries. UI / notification preferences and reminder deduplication metadata remain local. The reset page offers no manual registration and never executes or redeems official reset credits. See [Data controls](#data-controls) and [Uninstall](#uninstall) for deletion rules.
 
@@ -72,7 +72,7 @@ These sources refresh in the foreground, after user actions, and when relevant w
 ## Data security
 
 - Credentials, aliases, private usage / task caches, personal reset history and local usage observations are encrypted with non-exportable keys managed by Android Keystore. Hardware protection depends on the device and is not guaranteed on every device. Public caches, ordinary settings and reminder deduplication metadata are held in app-private storage.
-- The app sets `allowBackup=false` and `fullBackupContent=false`, and excludes SharedPreferences from cloud backup and device transfer through `data_extraction_rules.xml`. Local observations use `noBackupFilesDir`; credentials and private records are not exported through app backup or device transfer.
+- The app sets `allowBackup=false` and `fullBackupContent=false`, and excludes SharedPreferences and Jetpack DataStore (`files/datastore`) from cloud backup and device transfer through `data_extraction_rules.xml`. Local observations use `noBackupFilesDir`; credentials and private records are not exported through app backup or device transfer.
 - Revealing a saved token requires device unlock. While plain-text tokens are shown, `FLAG_SECURE` blocks screenshots, screen recording and Recents thumbnails.
 - Unsaved token drafts stay only in memory to continue editing after configuration changes. Closing the form, changing services, updating credentials or ending the editing session removes them; drafts are not written to saved state, disk or logs.
 - On Android 13+, copied tokens are marked sensitive. The system manages the clipboard; clear it after pasting.

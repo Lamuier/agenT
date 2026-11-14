@@ -4,6 +4,7 @@
 
 .DESCRIPTION
     .\build.ps1                 # Debug 构建
+    .\build.ps1 -Doctor         # 环境自检（加 -Release 校验原签名与私钥）
     .\build.ps1 -Install        # Debug 构建 + adb 安装
     .\build.ps1 -Release        # Release 时间戳包到 dist/
     .\build.ps1 -Release -OfficialRelease  # 正式包，App名称-版本号
@@ -28,6 +29,7 @@
 param(
     [switch]$Install,
     [switch]$Release,
+    [switch]$Doctor,
     [switch]$OfficialRelease,
     [string]$ArtifactSuffix = "",
     [switch]$SetupSigning,
@@ -59,9 +61,37 @@ function Write-Step([string]$Message) {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
+function Invoke-Native([string]$Executable, [string[]]$Arguments) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        return @(& $Executable @Arguments 2>&1)
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Get-JavaMajor([string]$JavaBinary) {
+    $output = (Invoke-Native $JavaBinary @("-version")) -join "`n"
+    if ($LASTEXITCODE -ne 0) { return 0 }
+    $match = [regex]::Match($output, '(?:openjdk|java) version "(\d+)(?:\.(\d+))?')
+    if (-not $match.Success) { return 0 }
+    if ($match.Groups[1].Value -eq "1") { return [int]$match.Groups[2].Value }
+    return [int]$match.Groups[1].Value
+}
+
+function Test-ValidJdkHome([string]$Candidate) {
+    if ([string]::IsNullOrWhiteSpace($Candidate)) { return $false }
+    foreach ($tool in @("java.exe", "javac.exe", "keytool.exe")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Candidate "bin\$tool"))) { return $false }
+    }
+    return (Get-JavaMajor (Join-Path $Candidate "bin\java.exe")) -ge 17
+}
+
 function Resolve-JavaHome {
-    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME) -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
-        return $env:JAVA_HOME
+    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+        if (Test-ValidJdkHome $env:JAVA_HOME) { return $env:JAVA_HOME }
+        throw "JAVA_HOME 无效或不是完整 JDK 17+（须含 java/javac/keytool）: $($env:JAVA_HOME)"
     }
     $candidates = @($JavaHome)
     if (Test-Path -LiteralPath "C:\Program Files\Microsoft") {
@@ -74,14 +104,43 @@ function Resolve-JavaHome {
         $candidates += (Get-ChildItem -Path "C:\Program Files\Eclipse Adoptium" -Filter "jdk-*" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
     }
     foreach ($cand in $candidates) {
-        if (-not [string]::IsNullOrWhiteSpace($cand) -and (Test-Path -LiteralPath (Join-Path $cand "bin\java.exe"))) {
+        if (Test-ValidJdkHome $cand) {
             return $cand
         }
     }
-    throw "找不到 Android Studio JBR: $JavaHome（请安装 Android Studio 或调整 build.ps1 中的路径）"
+    throw "找不到完整 JDK 17+（推荐 21，须含 java/javac/keytool）: $JavaHome"
+}
+
+function Get-AppVersion {
+    $gradleConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $ProjectRoot "app\build.gradle.kts")
+    $appIdMatch = [regex]::Match($gradleConfig, '\bapplicationId\s*=\s*"([^"]+)"')
+    $versionCodeMatch = [regex]::Match($gradleConfig, '\bversionCode\s*=\s*(\d+)\b')
+    $versionNameMatch = [regex]::Match($gradleConfig, '\bversionName\s*=\s*"([^"]+)"')
+    $minSdkMatch = [regex]::Match($gradleConfig, '\bminSdk\s*=\s*(\d+)\b')
+    $targetSdkMatch = [regex]::Match($gradleConfig, '\btargetSdk\s*=\s*(\d+)\b')
+    $compileSdkMatch = [regex]::Match($gradleConfig, '\bcompileSdk\s*=\s*(\d+)\b')
+    $buildToolsMatch = [regex]::Match($gradleConfig, '\bbuildToolsVersion\s*=\s*"([^"]+)"')
+    if (-not $appIdMatch.Success -or -not $versionCodeMatch.Success -or -not $versionNameMatch.Success -or
+        -not $minSdkMatch.Success -or -not $targetSdkMatch.Success -or -not $compileSdkMatch.Success -or -not $buildToolsMatch.Success) {
+        throw "无法从 app\build.gradle.kts 读取完整应用与 SDK 配置"
+    }
+    [xml]$strings = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $ProjectRoot "app\src\main\res\values\strings.xml")
+    $names = @($strings.SelectNodes("/resources/string[@name='app_name']"))
+    if ($names.Count -ne 1) { throw "默认 strings.xml 必须提供唯一的 app_name" }
+    return [pscustomobject]@{
+        AppName = $names[0].InnerText.Trim()
+        ApplicationId = $appIdMatch.Groups[1].Value
+        VersionCode = [int]$versionCodeMatch.Groups[1].Value
+        VersionName = $versionNameMatch.Groups[1].Value
+        MinSdk = [int]$minSdkMatch.Groups[1].Value
+        TargetSdk = [int]$targetSdkMatch.Groups[1].Value
+        CompileSdk = [int]$compileSdkMatch.Groups[1].Value
+        BuildToolsVersion = $buildToolsMatch.Groups[1].Value
+    }
 }
 
 function Resolve-AndroidSdk {
+    $compileSdk = (Get-AppVersion).CompileSdk
     $candidates = @()
     $localProps = Join-Path $ProjectRoot "local.properties"
     if (Test-Path -LiteralPath $localProps) {
@@ -100,39 +159,12 @@ function Resolve-AndroidSdk {
     foreach ($candidate in $candidates) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         # Android 17 起平台目录带次级版本号（android-37.0），兼容旧式 android-37 目录。
-        if ((Test-Path -LiteralPath "$candidate\platforms\android-37.0\android.jar") -or
-            (Test-Path -LiteralPath "$candidate\platforms\android-37\android.jar")) {
+        if ((Test-Path -LiteralPath "$candidate\platforms\android-$compileSdk.0\android.jar") -or
+            (Test-Path -LiteralPath "$candidate\platforms\android-$compileSdk\android.jar")) {
             return $candidate
         }
     }
-    throw "找不到 Android SDK 37。已检查: $($candidates -join '; ')"
-}
-
-function Get-AppVersion {
-    $gradleConfig = Get-Content -Raw -LiteralPath (Join-Path $ProjectRoot "app\build.gradle.kts")
-    $versionCodeMatch = [regex]::Match($gradleConfig, 'versionCode\s*=\s*(\d+)')
-    $versionNameMatch = [regex]::Match($gradleConfig, 'versionName\s*=\s*"([^"]+)"')
-    if (-not $versionCodeMatch.Success -or -not $versionNameMatch.Success) {
-        throw "无法从 app\build.gradle.kts 读取 versionCode / versionName"
-    }
-    [xml]$strings = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $ProjectRoot "app\src\main\res\values\strings.xml")
-    $names = @($strings.SelectNodes("/resources/string[@name='app_name']"))
-    if ($names.Count -ne 1) { throw "默认 strings.xml 必须提供唯一的 app_name" }
-    return [pscustomobject]@{
-        AppName = $names[0].InnerText.Trim()
-        VersionCode = [int]$versionCodeMatch.Groups[1].Value
-        VersionName = $versionNameMatch.Groups[1].Value
-    }
-}
-
-function Invoke-Native([string]$Executable, [string[]]$Arguments) {
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        return @(& $Executable @Arguments 2>&1)
-    } finally {
-        $ErrorActionPreference = $previous
-    }
+    throw "找不到 Android SDK $compileSdk。已检查: $($candidates -join '; ')"
 }
 
 function Invoke-Gradle([string[]]$GradleArgs) {
@@ -213,12 +245,51 @@ function Clear-AppBuildDirectory {
     }
 }
 
-function Get-LatestBuildTools([string]$Sdk) {
-    $dir = Get-ChildItem -LiteralPath (Join-Path $Sdk "build-tools") -Directory |
-        Sort-Object { [version]$_.Name } -Descending |
-        Select-Object -First 1
-    if ($null -eq $dir) { throw "Android build-tools 未找到: $Sdk" }
-    return $dir.FullName
+function Get-BuildTools([string]$Sdk, [string]$RequiredVersion = "") {
+    if (-not $RequiredVersion) { $RequiredVersion = (Get-AppVersion).BuildToolsVersion }
+    $exact = Join-Path $Sdk "build-tools\$RequiredVersion"
+    if (Test-Path -LiteralPath $exact) {
+        foreach ($tool in @("aapt.exe", "apksigner.bat", "zipalign.exe")) {
+            $toolPath = Join-Path $exact $tool
+            if (-not (Test-Path -LiteralPath $toolPath)) {
+                throw "缺少可执行 SDK 工具: $toolPath"
+            }
+        }
+        return $exact
+    }
+    throw "缺少 Android build-tools ${RequiredVersion}: $Sdk"
+}
+
+function Test-ElfLoadSegments16K([byte[]]$Data, [string]$Name) {
+    if ($Data.Length -lt 64 -or $Data[0] -ne 0x7F -or $Data[1] -ne 0x45 -or $Data[2] -ne 0x4C -or $Data[3] -ne 0x46 -or $Data[4] -ne 2 -or $Data[5] -ne 1) {
+        throw "无效的 arm64 ELF: $Name"
+    }
+    $phOff = [BitConverter]::ToUInt64($Data, 32)
+    $phEntSize = [BitConverter]::ToUInt16($Data, 54)
+    $phNum = [BitConverter]::ToUInt16($Data, 56)
+    if ($phEntSize -lt 56 -or ($phOff + [uint64]($phEntSize * $phNum)) -gt [uint64]$Data.Length) {
+        throw "ELF 程序头越界: $Name"
+    }
+    $alignments = @()
+    for ($i = 0; $i -lt $phNum; $i++) {
+        $p = [int]$phOff + ($i * $phEntSize)
+        $pType = [BitConverter]::ToUInt32($Data, $p)
+        if ($pType -eq 1) {
+            $fileOffset = [BitConverter]::ToUInt64($Data, $p + 8)
+            $vAddr = [BitConverter]::ToUInt64($Data, $p + 16)
+            $align = [BitConverter]::ToUInt64($Data, $p + 48)
+            $isPowerOfTwo = ($align -ge 16384) -and (($align -band ($align - 1)) -eq 0)
+            $congruent = (([int64]$vAddr - [int64]$fileOffset) % 16384) -eq 0
+            if (-not $isPowerOfTwo -or -not $congruent) {
+                throw "ELF 不满足 16 KiB 对齐: $Name"
+            }
+            $alignments += [int64]$align
+        }
+    }
+    if ($alignments.Count -eq 0) {
+        throw "ELF 缺少 PT_LOAD 加载段: $Name"
+    }
+    return $alignments
 }
 
 # --- signing ---
@@ -292,26 +363,81 @@ function Invoke-SetupSigning {
 }
 
 function Import-ReleaseSigningEnv([string]$MetadataFile) {
-    $metadata = Get-Content -Raw -LiteralPath $MetadataFile | ConvertFrom-Json
-    foreach ($requiredPath in @($metadata.storeFile, $metadata.credentialFile, $metadata.certificateFile)) {
+    $metadata = Get-Content -Raw -Encoding UTF8 -LiteralPath $MetadataFile | ConvertFrom-Json
+    if ($metadata.schemaVersion -ne 2) {
+        throw "签名元数据须为 schemaVersion=2，见 build.md"
+    }
+    foreach ($requiredPath in @($metadata.storeFile, $metadata.credentialFile)) {
         if (-not (Test-Path -LiteralPath $requiredPath)) {
             throw "签名资产缺失: $requiredPath"
         }
     }
+    if ($metadata.certificateFile -and -not (Test-Path -LiteralPath $metadata.certificateFile)) {
+        throw "签名资产缺失: $($metadata.certificateFile)"
+    }
+    $pinnedFile = Join-Path $SigningRoot "pinned-certificate.sha256"
+    if (-not (Test-Path -LiteralPath $pinnedFile)) {
+        throw "缺少证书指纹 pin: $pinnedFile"
+    }
+    $pinned = (Get-Content -Raw -Encoding UTF8 -LiteralPath $pinnedFile).Trim().Replace(":", "").ToUpperInvariant()
+    $current = ([string]$metadata.certificateSha256).Trim().Replace(":", "").ToUpperInvariant()
+    if (-not $pinned -or $current -ne $pinned) {
+        throw "签名证书与 pinned-certificate.sha256 不一致。请检查统一 release.keystore 与 pin；拒绝自动重绑，见 build.md"
+    }
     if ($metadata.credentialFormat -eq "text") {
-        $plainPassword = (Get-Content -Raw -LiteralPath $metadata.credentialFile).TrimEnd("`r", "`n")
-        if ([string]::IsNullOrEmpty($plainPassword)) { throw "签名密码文件为空" }
+        $credPath = (Resolve-Path -LiteralPath $metadata.credentialFile).Path
+        $plainPassword = [IO.File]::ReadAllText($credPath, [Text.Encoding]::UTF8).TrimEnd("`r", "`n")
+        if ([string]::IsNullOrEmpty($plainPassword) -or $plainPassword -match "[\r\n\0]") {
+            throw "密码文件须包含一行非空 UTF-8 密码: $credPath"
+        }
     } else {
         $credential = Import-Clixml -LiteralPath $metadata.credentialFile
         $plainPassword = $credential.GetNetworkCredential().Password
     }
+    $keyPassword = $plainPassword
+    if ($null -ne $metadata.keyPasswordSameAsStore -and -not [bool]$metadata.keyPasswordSameAsStore) {
+        $keyCredPath = (Resolve-Path -LiteralPath $metadata.keyCredentialFile).Path
+        $keyPassword = [IO.File]::ReadAllText($keyCredPath, [Text.Encoding]::UTF8).TrimEnd("`r", "`n")
+        if ([string]::IsNullOrEmpty($keyPassword) -or $keyPassword -match "[\r\n\0]") {
+            throw "密钥密码文件须包含一行非空 UTF-8 密码: $keyCredPath"
+        }
+    }
     $env:AGENTT_RELEASE_STORE_FILE = (Resolve-Path -LiteralPath $metadata.storeFile).Path
     $env:AGENTT_RELEASE_STORE_PASSWORD = $plainPassword
     $env:AGENTT_RELEASE_KEY_ALIAS = [string]$metadata.keyAlias
-    $env:AGENTT_RELEASE_KEY_PASSWORD = $plainPassword
+    $env:AGENTT_RELEASE_KEY_PASSWORD = $keyPassword
     return [pscustomobject]@{
         Metadata = $metadata
         PlainPassword = $plainPassword
+        CertificateSha256 = $current
+    }
+}
+
+function Test-ReleaseSigningKey([string]$ExpectedCertificateSha256) {
+    $keytool = Join-Path (Resolve-JavaHome) "bin\keytool.exe"
+    $temporaryCertificate = [IO.Path]::GetTempFileName()
+    try {
+        $null = Invoke-Native $keytool @(
+            "-exportcert",
+            "-alias", $env:AGENTT_RELEASE_KEY_ALIAS,
+            "-keystore", $env:AGENTT_RELEASE_STORE_FILE,
+            "-storepass:env", "AGENTT_RELEASE_STORE_PASSWORD",
+            "-file", $temporaryCertificate
+        )
+        if ($LASTEXITCODE -ne 0) { throw "读取密钥库证书失败（退出码 $LASTEXITCODE）" }
+        if ((Get-CertSha256 $temporaryCertificate) -ne $ExpectedCertificateSha256) {
+            throw "密钥库证书与固定指纹不一致；构建已停止"
+        }
+        $null = Invoke-Native $keytool @(
+            "-certreq",
+            "-alias", $env:AGENTT_RELEASE_KEY_ALIAS,
+            "-keystore", $env:AGENTT_RELEASE_STORE_FILE,
+            "-storepass:env", "AGENTT_RELEASE_STORE_PASSWORD",
+            "-keypass:env", "AGENTT_RELEASE_KEY_PASSWORD"
+        )
+        if ($LASTEXITCODE -ne 0) { throw "原私钥解密与签名校验失败（退出码 $LASTEXITCODE）" }
+    } finally {
+        Remove-Item -LiteralPath $temporaryCertificate -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -334,6 +460,38 @@ function Ensure-ReleaseSigningConfigured {
 
 # --- verify ---
 
+function Test-DebugApk {
+    param(
+        [string]$Apk,
+        [pscustomobject]$Config,
+        [string]$Sdk
+    )
+
+    $env:JAVA_HOME = Resolve-JavaHome
+    $env:ANDROID_HOME = $Sdk
+    $apkPath = (Resolve-Path -LiteralPath $Apk).Path
+    $buildTools = Get-BuildTools $Sdk $Config.BuildToolsVersion
+    $apkSigner = Join-Path $buildTools "apksigner.bat"
+    $zipAlign = Join-Path $buildTools "zipalign.exe"
+    $aapt = Join-Path $buildTools "aapt.exe"
+
+    $signatureOutput = Invoke-Native $apkSigner @("verify", "--verbose", "--print-certs", $apkPath)
+    if ($LASTEXITCODE -ne 0) { throw "Debug APK 签名校验失败" }
+    [void](Invoke-Native $zipAlign @("-c", "-P", "16", "-v", "4", $apkPath))
+    if ($LASTEXITCODE -ne 0) { throw "Debug APK zipalign 校验失败" }
+
+    $badging = Invoke-Native $aapt @("dump", "badging", $apkPath)
+    if ($LASTEXITCODE -ne 0) { throw "无法读取 Debug APK badging" }
+    $packageLine = $badging | Where-Object { $_ -like "package:*" } | Select-Object -First 1
+    $expectedVersion = "$($Config.VersionName)-debug"
+    if ($packageLine -notmatch "name='$([regex]::Escape($Config.ApplicationId))'" -or
+        $packageLine -notmatch "versionCode='$($Config.VersionCode)'" -or
+        $packageLine -notmatch "versionName='$([regex]::Escape($expectedVersion))'") {
+        throw "Debug APK 包信息与源码声明不一致: $packageLine"
+    }
+    Write-Host "Debug 构建与 APK 校验通过: $apkPath" -ForegroundColor Green
+}
+
 function Test-ReleaseApk {
     param(
         [string]$Apk,
@@ -343,15 +501,16 @@ function Test-ReleaseApk {
         [string]$Sdk
     )
 
+    $config = Get-AppVersion
     $env:JAVA_HOME = Resolve-JavaHome
     $env:ANDROID_HOME = $Sdk
     $apkPath = (Resolve-Path -LiteralPath $Apk).Path
 
-    $buildTools = Get-LatestBuildTools $Sdk
+    $buildTools = Get-BuildTools $Sdk $config.BuildToolsVersion
     $apkSigner = Join-Path $buildTools "apksigner.bat"
     $zipAlign = Join-Path $buildTools "zipalign.exe"
     $aapt = Join-Path $buildTools "aapt.exe"
-    $metadata = Get-Content -Raw -LiteralPath $MetadataFile | ConvertFrom-Json
+    $metadata = Get-Content -Raw -Encoding UTF8 -LiteralPath $MetadataFile | ConvertFrom-Json
 
     $signatureOutput = Invoke-Native $apkSigner @("verify", "--verbose", "--print-certs", $apkPath)
     $signatureOutput | ForEach-Object { Write-Host $_ }
@@ -371,15 +530,26 @@ function Test-ReleaseApk {
     $badging = Invoke-Native $aapt @("dump", "badging", $apkPath)
     if ($LASTEXITCODE -ne 0) { throw "无法读取 APK badging" }
     $packageLine = $badging | Where-Object { $_ -like "package:*" } | Select-Object -First 1
-    if ($packageLine -notmatch "name='com\.lamuier\.agenT'") { throw "包名不正确: $packageLine" }
+    $escapedAppId = [regex]::Escape($config.ApplicationId)
+    if ($packageLine -notmatch "name='$escapedAppId'") { throw "包名不正确: $packageLine" }
     if ($packageLine -notmatch "versionCode='$ExpectedVersionCode'") { throw "versionCode 不正确: $packageLine" }
     $escapedVersionName = [regex]::Escape($ExpectedVersionName)
     if ($packageLine -notmatch "versionName='$escapedVersionName'") { throw "versionName 不正确: $packageLine" }
-    if (($badging | Where-Object { $_ -like "sdkVersion:*" } | Select-Object -First 1) -notmatch "'26'") {
+    if (($badging | Where-Object { $_ -like "sdkVersion:*" } | Select-Object -First 1) -notmatch "'$($config.MinSdk)'") {
         throw "minSdkVersion 不正确"
     }
-    if (($badging | Where-Object { $_ -like "targetSdkVersion:*" } | Select-Object -First 1) -notmatch "'37'") {
+    if (($badging | Where-Object { $_ -like "targetSdkVersion:*" } | Select-Object -First 1) -notmatch "'$($config.TargetSdk)'") {
         throw "targetSdkVersion 不正确"
+    }
+
+    $outputMetaPath = Join-Path (Split-Path -Parent $apkPath) "output-metadata.json"
+    if (-not (Test-Path -LiteralPath $outputMetaPath)) { throw "缺少 APK 输出元数据: $outputMetaPath" }
+    $outputMeta = Get-Content -Raw -Encoding UTF8 -LiteralPath $outputMetaPath | ConvertFrom-Json
+    if ($outputMeta.applicationId -ne $config.ApplicationId -or @($outputMeta.elements).Count -ne 1 -or
+        $outputMeta.elements[0].versionCode -ne $ExpectedVersionCode -or
+        $outputMeta.elements[0].versionName -ne $ExpectedVersionName -or
+        $outputMeta.elements[0].outputFile -ne (Split-Path -Leaf $apkPath)) {
+        throw "APK 输出元数据与源码不一致"
     }
 
     $permissions = Invoke-Native $aapt @("dump", "permissions", $apkPath)
@@ -404,16 +574,20 @@ function Test-ReleaseApk {
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $elfReport = @()
+    $profileSourceHashes = [ordered]@{}
+    $profileAssetBytes = [ordered]@{}
     $archive = [System.IO.Compression.ZipFile]::OpenRead($apkPath)
     try {
         $profileRoot = Join-Path $ProjectRoot "app\src\release\generated\baselineProfiles"
         foreach ($profileName in @("baseline-prof.txt", "startup-prof.txt")) {
             $profilePath = Join-Path $profileRoot $profileName
             if (-not (Test-Path -LiteralPath $profilePath)) { throw "缺少应用编译配置，请先运行 -GenerateBaselineProfile" }
-            $profileText = Get-Content -Raw -LiteralPath $profilePath
+            $profileText = Get-Content -Raw -Encoding UTF8 -LiteralPath $profilePath
             if (-not $profileText.Contains("Lcom/lamuier/agenT/MainActivity;") -or $profileText.Contains("Lcom/lamuier/agenT/qa/")) {
                 throw "应用编译配置缺少启动路径或混入夹具"
             }
+            $profileSourceHashes[$profileName] = (Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToUpperInvariant()
         }
         foreach ($profileName in @("baseline.prof", "baseline.profm")) {
             $entry = $archive.GetEntry("assets/dexopt/$profileName")
@@ -423,6 +597,7 @@ function Test-ReleaseApk {
                 $magic = [Text.Encoding]::ASCII.GetString($reader.ReadBytes(4))
                 $expectedMagic = if ($profileName -eq "baseline.prof") { "pro`0" } else { "prm`0" }
                 if ($magic -ne $expectedMagic) { throw "Release 编译配置格式错误" }
+                $profileAssetBytes[$profileName] = [int64]$entry.Length
             } finally { $reader.Dispose() }
         }
         foreach ($entry in $archive.Entries | Where-Object { $_.FullName -match '^classes\d*\.dex$' }) {
@@ -434,10 +609,21 @@ function Test-ReleaseApk {
                 }
             } finally { $reader.Dispose() }
         }
-        $nativeAbis = $archive.Entries |
-            Where-Object { $_.FullName -match '^lib/[^/]+/[^/]+\.so$' } |
+        $nativeEntries = @($archive.Entries | Where-Object { $_.FullName -match '^lib/[^/]+/[^/]+\.so$' })
+        $nativeAbis = $nativeEntries |
             ForEach-Object { $_.FullName.Split('/')[1] } |
             Sort-Object -Unique
+        foreach ($soEntry in $nativeEntries) {
+            $reader = [IO.BinaryReader]::new($soEntry.Open())
+            try {
+                $soBytes = $reader.ReadBytes([int]$soEntry.Length)
+                $alignments = Test-ElfLoadSegments16K -Data $soBytes -Name $soEntry.FullName
+                $elfReport += [ordered]@{
+                    library = $soEntry.FullName
+                    loadSegmentAlignments = $alignments
+                }
+            } finally { $reader.Dispose() }
+        }
     } finally {
         $archive.Dispose()
     }
@@ -473,12 +659,43 @@ function Test-ReleaseApk {
     if ($manifest -notmatch "android:allowBackup[^\n]*0x0") { throw "allowBackup 不是 false" }
     if ($manifest -notmatch "android:usesCleartextTraffic[^\n]*0x0") { throw "usesCleartextTraffic 不是 false" }
 
-    Write-Host "校验通过: com.lamuier.agenT $ExpectedVersionName ($ExpectedVersionCode)"
+    Write-Host "校验通过: $($config.ApplicationId) $ExpectedVersionName ($ExpectedVersionCode)"
     Write-Host "  ABIs      : $($nativeAbis -join ', ')"
     Write-Host "  Cert SHA256: $actualFingerprint"
+    return [pscustomobject]@{
+        Elf = $elfReport
+        ApplicationProfiles = [ordered]@{
+            sourceSha256 = $profileSourceHashes
+            assetBytes = $profileAssetBytes
+        }
+    }
 }
 
 # --- build actions ---
+
+function Invoke-Doctor {
+    Clear-ReleaseSigningEnv
+    $version = Get-AppVersion
+    $java = Resolve-JavaHome
+    $javaMajor = Get-JavaMajor (Join-Path $java "bin\java.exe")
+    $sdk = Resolve-AndroidSdk
+    $null = Get-BuildTools $sdk $version.BuildToolsVersion
+    Write-Host "JDK：$java（$javaMajor）"
+    Write-Host "Android SDK：$sdk"
+    if ($Release) {
+        $metadataFile = Ensure-ReleaseSigningConfigured
+        $signing = $null
+        try {
+            $signing = Import-ReleaseSigningEnv -MetadataFile $metadataFile
+            Test-ReleaseSigningKey -ExpectedCertificateSha256 $signing.CertificateSha256
+            Write-Host "Release 原签名证书校验通过"
+        } finally {
+            Clear-ReleaseSigningEnv
+            if ($null -ne $signing) { $signing.PlainPassword = $null }
+        }
+    }
+    Write-Host "环境检查通过；未执行构建或下载依赖" -ForegroundColor Green
+}
 
 function Invoke-Assemble {
     param(
@@ -563,8 +780,14 @@ function Invoke-Assemble {
 
 function Invoke-DebugBuild {
     Clear-ReleaseSigningEnv
+    $version = Get-AppVersion
+    $sdk = Resolve-AndroidSdk
     $useOffline = $Offline.IsPresent
-    Invoke-Assemble -Variant Debug -DoClean:$Clean -DoOffline:$useOffline -DoSkipChecks:$SkipChecks | Out-Null
+    $apkCandidates = @(Invoke-Assemble -Variant Debug -DoClean:$Clean -DoOffline:$useOffline -DoSkipChecks:$SkipChecks |
+        Where-Object { $_ -is [string] -and $_.EndsWith('.apk') })
+    $apk = $apkCandidates[-1]
+    if (-not $apk) { throw "未能取得 Debug APK 路径" }
+    Test-DebugApk -Apk $apk -Config $version -Sdk $sdk
 }
 
 function Invoke-InstallDebug {
@@ -628,23 +851,15 @@ function Invoke-ReleasePackage {
 
     $metadataFile = Ensure-ReleaseSigningConfigured
 
-    $pinnedFile = Join-Path $SigningRoot "pinned-certificate.sha256"
-    if (Test-Path -LiteralPath $pinnedFile) {
-        $pinned = (Get-Content -Raw -LiteralPath $pinnedFile).Trim().Replace(":", "").ToUpperInvariant()
-        $metaProbe = Get-Content -Raw -LiteralPath $metadataFile | ConvertFrom-Json
-        $current = ([string]$metaProbe.certificateSha256).Replace(":", "").ToUpperInvariant()
-        if ($pinned -and $current -ne $pinned) {
-            throw "签名证书与 pinned-certificate.sha256 不一致。请检查统一 release.keystore 与 pin；拒绝自动重绑，见 build.md"
-        }
-    }
-
     $signing = $null
     try {
-        Write-Step "加载 Release 签名"
+        Write-Step "加载并预检 Release 签名"
         $signing = Import-ReleaseSigningEnv -MetadataFile $metadataFile
+        Test-ReleaseSigningKey -ExpectedCertificateSha256 $signing.CertificateSha256
         Write-Host "  keyAlias    : $($signing.Metadata.keyAlias)"
-        Write-Host "  cert SHA256 : $($signing.Metadata.certificateSha256)"
+        Write-Host "  cert SHA256 : $($signing.CertificateSha256)"
         Write-Host "  source      : $($signing.Metadata.source)"
+        Write-Host "  Release 原签名证书校验通过"
 
         # Release 默认离线；-Online 可联网。默认不 clean。
         $useOffline = -not $Online.IsPresent
@@ -658,7 +873,7 @@ function Invoke-ReleasePackage {
         if (-not $apk) { throw "未能取得 Release APK 路径" }
 
         Write-Step "校验 Release APK"
-        Test-ReleaseApk `
+        $verifyResult = Test-ReleaseApk `
             -Apk $apk `
             -MetadataFile $metadataFile `
             -ExpectedVersionCode $version.VersionCode `
@@ -683,19 +898,39 @@ function Invoke-ReleasePackage {
             "$($hash.Hash)  $([IO.Path]::GetFileName($destination))" + [Environment]::NewLine,
             ([System.Text.UTF8Encoding]::new($false)))
 
+        $checksReport = [ordered]@{
+            unitTests = (-not $SkipChecks.IsPresent)
+            lintVitalRelease = (-not $SkipChecks.IsPresent)
+            signature = $true
+            zipalign16KiB = $true
+            crc = $true
+            arm64Only = $true
+            debugFixturesAbsent = $true
+            manifestAndPermissions = $true
+            applicationProfiles = $true
+        }
         [ordered]@{
             appName = $version.AppName
-            packageName = "com.lamuier.agenT"
+            packageName = $version.ApplicationId
             versionCode = $version.VersionCode
             versionName = $version.VersionName
             apk = $destination
             apkSha256 = $hash.Hash
-            certificateSha256 = [string]$signing.Metadata.certificateSha256
+            bytes = (Get-Item -LiteralPath $destination).Length
+            certificateSha256 = $signing.CertificateSha256
             builtAt = ([DateTimeOffset]::UtcNow).ToString("o")
+            variant = "release"
             buildStartedAt = $releaseBuildStartedAt.ToString("o")
             officialRelease = [bool]$OfficialRelease
             artifactTimeZone = "Asia/Shanghai"
-        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-build.json") -Encoding utf8
+            minSdk = $version.MinSdk
+            targetSdk = $version.TargetSdk
+            platform = "Windows"
+            offline = [bool]$useOffline
+            checks = $checksReport
+            elf = $verifyResult.Elf
+            applicationProfiles = $verifyResult.ApplicationProfiles
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $dist "$artifactBaseName-build.json") -Encoding utf8
 
         Write-Host ""
         Write-Host "打包完成" -ForegroundColor Green
@@ -723,12 +958,20 @@ if ($GenerateBaselineProfile -and $PerformanceReview) {
 if (($OfficialRelease -or $ArtifactSuffix) -and -not $Release) {
     throw "-OfficialRelease / -ArtifactSuffix 须同时使用 -Release"
 }
+if ($Offline -and $Online) {
+    throw "-Offline 与 -Online 互斥"
+}
 $modeCount = (@($Install, $Release, $SetupSigning) | Where-Object { $_ }).Count
 if ($modeCount -gt 1) {
     throw "-Install、-Release、-SetupSigning 只能选其一"
 }
+if ($Doctor -and ($Install -or $SetupSigning)) {
+    throw "-Doctor 不能与 -Install 或 -SetupSigning 同时使用"
+}
 
-if ($SetupSigning) {
+if ($Doctor) {
+    Invoke-Doctor
+} elseif ($SetupSigning) {
     Invoke-SetupSigning
 } elseif ($Release) {
     Invoke-ReleasePackage

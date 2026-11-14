@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.lamuier.agenT.R
 import com.lamuier.agenT.data.DashboardPreferences
 import com.lamuier.agenT.model.AgentTask
@@ -80,6 +81,7 @@ internal fun TasksTab(
     error: String?,
     onRetry: () -> Unit,
     onOpenFailed: (String) -> Unit,
+    active: Boolean = true,
 ) {
     val openUrl = rememberOpenCursorUrl(onOpenFailed)
     when {
@@ -100,6 +102,7 @@ internal fun TasksTab(
             tasks = tasks.copy(fromCache = tasks.fromCache || error != null),
             openUrl = openUrl,
             onOpenFailed = onOpenFailed,
+            active = active,
         )
     }
 }
@@ -110,20 +113,33 @@ private fun TasksContent(
     tasks: AgenTasks,
     openUrl: (String) -> Unit,
     onOpenFailed: (String) -> Unit,
+    active: Boolean = true,
 ) {
     val context = LocalContext.current
     val preferences = remember { DashboardPreferences.get(context) }
     val groupMode by preferences.taskGroupMode.collectAsStateWithLifecycle()
     val zone = LocalDisplayZone.current
     val resources = LocalResources.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var nowMs by remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(active, lifecycleOwner) {
+        if (!active) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            nowMs = System.currentTimeMillis()
+            while (true) {
+                kotlinx.coroutines.delay(30_000L)
+                nowMs = System.currentTimeMillis()
+            }
+        }
+    }
     val visibleTasks = remember(tasks.tasks) { AgentTaskGrouping.visibleTasks(tasks.tasks) }
     val hiddenMergedCount = tasks.tasks.size - visibleTasks.size
     val activeCount = visibleTasks.count {
         it.status == AgentTaskStatus.Running || it.status == AgentTaskStatus.Creating
     }
     val grokBotCount = visibleTasks.count { it.source == AgentTaskSource.GrokBot }
-    val groups = remember(visibleTasks, groupMode, zone, resources) {
-        AgentTaskGrouping.groups(visibleTasks, groupMode, zone = zone, resources = resources)
+    val groups = remember(visibleTasks, groupMode, nowMs, zone, resources) {
+        AgentTaskGrouping.groups(visibleTasks, groupMode, nowMs = nowMs, zone = zone, resources = resources)
     }
     val feedback = LocalAppFeedback.current
     var collapsed by rememberSaveable(groupMode, tasks.accountId, stateSaver = listSaver<Set<String>, String>(
@@ -185,7 +201,8 @@ private fun TasksContent(
             if (expanded) items(group.tasks, key = { "task:${it.id}" }) { task ->
                 TaskCard(task, compact, openUrl, onOpenFailed,
                     onSelect = if (paired) ({ selectedId = task.id; feedback.selection() }) else null,
-                    selected = paired && selected?.id == task.id)
+                    selected = paired && selected?.id == task.id,
+                    nowMs = nowMs)
             }
         }
     }
@@ -264,6 +281,7 @@ private fun TaskCard(
     onOpenFailed: (String) -> Unit,
     onSelect: (() -> Unit)? = null,
     selected: Boolean = false,
+    nowMs: Long = System.currentTimeMillis(),
 ) {
     val resources = LocalResources.current
     val displayName = task.name.ifBlank { stringResource(R.string.task_untitled) }
@@ -378,6 +396,7 @@ private fun TaskCard(
             ) {
                 val activity = AgentTaskPresentation.formatRelative(
                     task.latestTimeMs,
+                    nowMs = nowMs,
                     zone = LocalDisplayZone.current,
                     resources = resources,
                 )
@@ -445,31 +464,6 @@ internal fun TaskChip(label: String, color: Color) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun TasksFreshnessRow(tasks: AgenTasks) {
-    val stamp = DisplayTime.formatStoredClock(tasks.fetchedAt, LocalDisplayZone.current)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            if (tasks.fromCache) Icons.Outlined.Cached else Icons.Outlined.CloudDone,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            listOfNotNull(
-                stringResource(if (tasks.fromCache) R.string.freshness_cached else R.string.freshness_updated),
-                stamp,
-                stringResource(R.string.freshness_pull_hint),
-            ).joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

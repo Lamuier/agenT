@@ -35,9 +35,11 @@ internal val LocalResetNow = staticCompositionLocalOf<Instant?> { null }
 
 @Composable
 internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) -> Unit,
-    onRefreshPublicResets: (Boolean) -> Unit = {}, active: Boolean = true) {
+    onRefreshPublicResets: (Boolean) -> Unit = {}, active: Boolean = true,
+    onOpenFailed: (String) -> Unit = {}) {
     val zone = LocalDisplayZone.current
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val fixedNow = LocalResetNow.current
     var period by rememberSaveable { mutableStateOf(CodexResetPeriod.Week) }
     var clock by remember { mutableStateOf(Instant.now()) }
@@ -154,19 +156,38 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
                 stringResource(if (selectedDay == null) R.string.reset_period_empty else R.string.reset_heatmap_empty_day), style = MaterialTheme.typography.labelSmall)
         }
         items(visibleEntries, key = { "public:" + it.public.id }) { entry ->
-            PublicResetCard(entry.public, zone, entry.public.id in expandedIds) {
+            PublicResetCard(entry.public, zone, entry.public.id in expandedIds, onOpenFailed = onOpenFailed) {
                 expandedIds = if (entry.public.id in expandedIds) expandedIds - entry.public.id else expandedIds + entry.public.id
             }
         }
     }, primaryModifier = Modifier.testTag("reset-primary-list"), secondaryModifier = Modifier.testTag("reset-detail-list"))
     if (configuring) ResetAnchorDialog(anchor, onDismiss = { configuring = false }, onSave = { onSubscriptionDay(it); configuring = false })
-    if (explaining) FoldSafeAlertDialog(onDismissRequest = { explaining = false }, title = { Text(stringResource(R.string.u_explanation)) },
-        text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf(R.string.reset_dash_chart_help, R.string.reset_api_count_hint, R.string.reset_public_boundary, R.string.reset_public_truncated,
-                R.string.reset_heatmap_boundary, R.string.reset_data_boundary).forEach { Text(stringResource(it)) }
-            TextButton(onClick = { com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL) }) {
-                Text(stringResource(R.string.reset_public_credit)) }
-        } }, confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(R.string.action_close)) } })
+    if (explaining) {
+        var explainLinkFailed by remember { mutableStateOf(false) }
+        FoldSafeAlertDialog(onDismissRequest = { explaining = false }, title = { Text(stringResource(R.string.u_explanation)) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        listOf(R.string.reset_dash_chart_help, R.string.reset_api_count_hint, R.string.reset_public_boundary, R.string.reset_public_truncated,
+                            R.string.reset_heatmap_boundary, R.string.reset_data_boundary).forEach { Text(stringResource(it)) }
+                        TextButton(onClick = {
+                            val opened = com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL)
+                            explainLinkFailed = !opened
+                            if (!opened) onOpenFailed(resources.getString(R.string.reset_public_link_error))
+                        }) {
+                            Text(stringResource(R.string.reset_public_credit))
+                        }
+                    }
+                    if (explainLinkFailed) {
+                        Text(
+                            stringResource(R.string.reset_public_link_error),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(R.string.action_close)) } })
+    }
 }
 
 @Composable internal fun ResetDashboardCard(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -178,8 +199,9 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
     }
 }
 
-@Composable private fun PublicResetCard(event: CodexPublicReset, zone: ZoneId, expanded: Boolean, onToggle: () -> Unit) {
+@Composable private fun PublicResetCard(event: CodexPublicReset, zone: ZoneId, expanded: Boolean, onOpenFailed: (String) -> Unit = {}, onToggle: () -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val colors = resetChartColors()
     var linkFailed by remember { mutableStateOf(false) }
     val title = stringResource(if (event.type == "banked") R.string.reset_dash_banked else R.string.reset_dash_regular)
@@ -201,8 +223,16 @@ internal fun CodexResetTab(state: CodexQuotaUiState, onSubscriptionDay: (Int) ->
                 Text(stringResource(if (event.sourceType == "observed") R.string.reset_public_observed else R.string.reset_public_announcement),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { linkFailed = !com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL) }) { Text(stringResource(R.string.reset_public_credit)) }
-                    event.url?.let { url -> TextButton(onClick = { linkFailed = !com.lamuier.agenT.util.CursorCustomTabs.open(context, url) }) { Text(stringResource(R.string.reset_public_open_source)) } }
+                    TextButton(onClick = {
+                        val opened = com.lamuier.agenT.util.CursorCustomTabs.open(context, CodexPublicResetLinks.CREDIT_URL)
+                        linkFailed = !opened
+                        if (!opened) onOpenFailed(resources.getString(R.string.reset_public_link_error))
+                    }) { Text(stringResource(R.string.reset_public_credit)) }
+                    event.url?.let { url -> TextButton(onClick = {
+                        val opened = com.lamuier.agenT.util.CursorCustomTabs.open(context, url)
+                        linkFailed = !opened
+                        if (!opened) onOpenFailed(resources.getString(R.string.reset_public_link_error))
+                    }) { Text(stringResource(R.string.reset_public_open_source)) } }
                 }
                 if (linkFailed) Text(stringResource(R.string.reset_public_link_error), style = MaterialTheme.typography.labelSmall)
             }
