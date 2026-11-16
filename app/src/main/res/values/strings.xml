@@ -728,9 +728,10 @@
     <string name="u_output">输出 Token</string>
     <string name="u_cache_read">缓存读取</string>
     <string name="u_cache_write">缓存写入</string>
-    <string name="u_tokens_note">四类 Token 分别展示，不假定互斥；统计费用不等于实际账单。未知字段显示“—”。</string>
+    <string name="u_tokens_note">四类 Token 分别展示，不假定互斥。按所有 Token 为输入、输出、缓存读取与缓存写入之和；未返回缓存写入时按零计入，输入、输出或缓存读取缺失时显示未知。统计费用不等于实际账单。未知字段显示“—”。</string>
     <string name="u_sort_cost">按费用</string>
     <string name="u_sort_tokens">按输入＋输出</string>
+    <string name="u_sort_all_tokens">按所有 Token</string>
     <string name="u_cost_share">占统计费用 %1$s</string>
     <string name="u_per_million">每百万 Token %1$s</string>
     <string name="u_per_million_description">由该模型的统计费用除以输入、输出、缓存读取与缓存写入 Token 合计，再换算为每百万 Token。未返回缓存写入时按零计入。这不是官方单价；费用、输入、输出或缓存读取缺失，或合计为零时显示未知。</string>

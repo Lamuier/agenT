@@ -4,6 +4,12 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 1.8.0 — 2026-11-16
+
+> Version decision: 1.7.4 → 1.8.0, with `versionCode` increased to 15. Token and model analysis can rank by all tokens. This is a compatible user-visible capability, so it is at least a minor (Y) release. The package ID, original signing key, permissions and data format are unchanged, so existing installs upgrade in place.
+
+- Token and model analysis can rank by all tokens. Model bars sort and scale by the sum of input, output, cache read and cache write, the same total as the Tokens column on Included Usage. A model that does not report cache writes counts that category as zero. A missing input, output or cache read stays unknown and sorts after known values. By cost and by input + output stay available.
+
 ## 1.7.4 — 2026-11-15
 
 > Version decision: 1.7.3 → 1.7.4 (`Z` patch, `versionCode` 13 → 14: this release is a compatibility fix with synced documentation and tests, introducing no new user-visible business capabilities while preserving full compatibility for package ID, original signing key, and persisted data).

@@ -178,5 +178,7 @@ class UsageDashboardTest {
         compose.onNode(hasText("—") and hasAnyAncestor(hasTestTag("usage-model-5")), useUnmergedTree = true).assertExists()
         compose.onNodeWithText(context.getString(R.string.u_sort_tokens)).performScrollTo().performClick()
         compose.onNode(hasText("—") and hasAnyAncestor(hasTestTag("usage-model-5")), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.u_sort_all_tokens)).performScrollTo().performClick()
+        compose.onNode(hasText("—") and hasAnyAncestor(hasTestTag("usage-model-5")), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
     }
 }

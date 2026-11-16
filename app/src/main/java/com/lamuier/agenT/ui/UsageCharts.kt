@@ -40,17 +40,22 @@ internal fun usageCombinedTokens(model: ModelTokenUsage): BigInteger? =
         BigInteger.valueOf(model.inputTokens).add(BigInteger.valueOf(model.outputTokens)) else null
 
 /**
- * Reported cost divided by input, output and cache read.
- * Models that do not report cache writes count that category as zero; a reported negative write stays unknown.
+ * Input, output, cache read and cache write.
+ * A model that does not report cache writes counts that category as zero; a missing input, output or cache read stays unknown.
  */
-internal fun usageCostPerMillion(model: ModelTokenUsage): BigDecimal? {
-    if ("cost" !in model.availableMetrics || !model.costDollars.isFinite() || model.costDollars < 0) return null
+internal fun usageAllTokens(model: ModelTokenUsage): BigInteger? {
     val required = listOf("input" to model.inputTokens, "output" to model.outputTokens, "read" to model.cacheReadTokens)
     if (required.any { (metric, value) -> metric !in model.availableMetrics || value < 0 }) return null
     val write = if ("write" in model.availableMetrics) model.cacheWriteTokens else 0L
     if (write < 0) return null
-    val tokens = required.fold(BigInteger.ZERO) { sum, (_, value) -> sum.add(BigInteger.valueOf(value)) }
+    return required.fold(BigInteger.ZERO) { sum, (_, value) -> sum.add(BigInteger.valueOf(value)) }
         .add(BigInteger.valueOf(write))
+}
+
+/** Reported cost divided by [usageAllTokens]. A zero total stays unknown. This is not an official unit price. */
+internal fun usageCostPerMillion(model: ModelTokenUsage): BigDecimal? {
+    if ("cost" !in model.availableMetrics || !model.costDollars.isFinite() || model.costDollars < 0) return null
+    val tokens = usageAllTokens(model) ?: return null
     if (tokens.signum() <= 0) return null
     return BigDecimal.valueOf(model.costDollars).multiply(BigDecimal.valueOf(1_000_000L))
         .divide(BigDecimal(tokens), 6, RoundingMode.HALF_UP)

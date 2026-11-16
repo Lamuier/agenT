@@ -431,20 +431,31 @@ private fun TokenTotals(tokens: TokenUsageBreakdown) {
 
 @Composable
 private fun ModelRanking(tokens: TokenUsageBreakdown, filters: UsagePageFilters) {
-    val sortTokens = filters.sortTokens
+    val modelMetric = filters.modelMetric
     AdaptiveFilterRow {
-        FilterChip(!filters.sortTokens, { filters.sortTokens = false }, label = { Text(stringResource(R.string.u_sort_cost)) })
-        FilterChip(filters.sortTokens, { filters.sortTokens = true }, label = { Text(stringResource(R.string.u_sort_tokens)) })
+        UsageModelMetric.entries.forEach { option ->
+            FilterChip(modelMetric == option, { filters.modelMetric = option }, label = { Text(stringResource(option.labelRes)) })
+        }
     }
-    fun amount(model: ModelTokenUsage): Double? = if (sortTokens)
-        usageCombinedTokens(model)?.toDouble()
-        else model.costDollars.takeIf { "cost" in model.availableMetrics && it.isFinite() && it >= 0 }
-    val models = remember(tokens.models, sortTokens) {
-        val order = if (sortTokens) compareByDescending<ModelTokenUsage> { usageCombinedTokens(it) }
-            else compareByDescending { amount(it) }
+    fun amount(model: ModelTokenUsage): Double? = when (modelMetric) {
+        UsageModelMetric.Cost -> model.costDollars.takeIf { "cost" in model.availableMetrics && it.isFinite() && it >= 0 }
+        UsageModelMetric.InputOutput -> usageCombinedTokens(model)?.toDouble()
+        UsageModelMetric.AllTokens -> usageAllTokens(model)?.toDouble()
+    }
+    fun exactCount(model: ModelTokenUsage): String? = when (modelMetric) {
+        UsageModelMetric.InputOutput -> usageCombinedTokens(model)?.toString()
+        UsageModelMetric.AllTokens -> usageAllTokens(model)?.toString()
+        UsageModelMetric.Cost -> null
+    }
+    val models = remember(tokens.models, modelMetric) {
+        val order = when (modelMetric) {
+            UsageModelMetric.Cost -> compareByDescending<ModelTokenUsage> { amount(it) }
+            UsageModelMetric.InputOutput -> compareByDescending { usageCombinedTokens(it) }
+            UsageModelMetric.AllTokens -> compareByDescending { usageAllTokens(it) }
+        }
         tokens.models.sortedWith(order.thenBy { it.modelIntent }.thenBy { it.tier ?: 0 })
     }
-    val maximum = remember(models, sortTokens) { models.mapNotNull(::amount).maxOrNull() ?: 0.0 }
+    val maximum = remember(models, modelMetric) { models.mapNotNull(::amount).maxOrNull() ?: 0.0 }
     if (!tokens.modelsAvailable) Text(stringResource(R.string.u_partial_short), style = MaterialTheme.typography.labelSmall)
     if (models.isEmpty() && tokens.modelsAvailable) Text(stringResource(R.string.label_token_empty))
     models.take(if (filters.allModels) models.size else 5).forEachIndexed { index, model ->
@@ -452,9 +463,13 @@ private fun ModelRanking(tokens: TokenUsageBreakdown, filters: UsagePageFilters)
             val modelKey = model.modelIntent + ":" + model.tier
             val expanded = modelKey in filters.expandedModels
             val value = amount(model)
-            val exactDescription = model.modelIntent + ": " + (value?.let { if (filters.sortTokens) usageCombinedTokens(model).toString() else money(it) } ?: "—")
+            val shown = when (modelMetric) {
+                UsageModelMetric.Cost -> value?.let(::money) ?: "—"
+                else -> value?.let(::usageMagnitude) ?: "—"
+            }
+            val exactDescription = model.modelIntent + ": " + (exactCount(model) ?: value?.let(::money) ?: "—")
             Column(Modifier.fillMaxWidth().testTag("usage-model-" + index), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Metric(model.modelIntent, value?.let { if (filters.sortTokens) usageMagnitude(it) else money(it) } ?: "—")
+                Metric(model.modelIntent, shown)
                 UsageBar(value, maximum, Modifier.semantics { contentDescription = exactDescription })
                 val perMillion = usageCostPerMillion(model)
                 val perMillionText = stringResource(R.string.u_per_million, perMillion?.let(::formatCostPerMillion) ?: "—")

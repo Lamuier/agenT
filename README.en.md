@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-Project version: **1.7.4** (`versionCode` 14). This README describes the current source; see the [1.7.4 release notes](CHANGELOG.en.md#174--2026-11-15). Package ID: `com.lamuier.agenT`.
+Project version: **1.8.0** (`versionCode` 15). This README describes the current source; see the [1.8.0 release notes](CHANGELOG.en.md#180--2026-11-16). Package ID: `com.lamuier.agenT`.
 
 There is no app account system, self-hosted backend, advertising, or analytics SDK. Credentials and personal caches stay on the device; queries go directly to provider endpoints, while public reset announcements use an anonymous third-party source.
 
@@ -16,7 +16,7 @@ There is no app account system, self-hosted backend, advertising, or analytics S
 | Page | Current functionality |
 | --- | --- |
 | Overview | Cursor / Codex / DeepSeek / Kimi Code cards, balance or quota and reset times; DeepSeek lists each currency’s total, granted and topped-up balance; Cursor quota always shows separate own-model and other-model pools |
-| Usage | Four-source summaries, DeepSeek balances in original currencies and Kimi Code dynamic quota windows / booster wallet; Cursor / Codex quota dials, a four-cell token scorecard, model cost/token bars and cost per million tokens, labeled pace bars, equal-period comparison charts and Cursor’s encrypted local observation trend; explanations stay collapsed |
+| Usage | Four-source summaries, DeepSeek balances in original currencies and Kimi Code dynamic quota windows / booster wallet; Cursor / Codex quota dials, a four-cell token scorecard, model bars ranked by cost, input plus output, or all tokens, with cost per million tokens, labeled pace bars, equal-period comparison charts and Cursor’s encrypted local observation trend; explanations stay collapsed |
 | Tasks | Cursor cloud tasks grouped by repository, status, time or source; includes Grok Bot, API, SDK and Remote Control; hides merged PRs; the top + action opens Cursor Agents to create tasks, and conversations open on the official website |
 | Resets | Compact reset/grant counts, composition ring, daily frequency calendar and heatmap; week/month/subscription filters and expandable records |
 | Status | Official Cursor / Codex / DeepSeek API / Kimi Code components, ongoing incidents and history; top cards and detail summaries show each service's last update time and cache label; anonymous requests with visibility based on saved connections |

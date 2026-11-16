@@ -1,5 +1,6 @@
 package com.lamuier.agenT.ui
 
+import androidx.compose.runtime.saveable.SaverScope
 import com.lamuier.agenT.model.ModelTokenUsage
 import com.lamuier.agenT.usage.UsageObservation
 import java.math.BigDecimal
@@ -28,6 +29,33 @@ class UsageChartMathTest {
         val row = ModelTokenUsage("model", Long.MAX_VALUE, Long.MAX_VALUE, 0, 0, 0.0, null)
         assertEquals(BigInteger("18446744073709551614"), usageCombinedTokens(row))
         assertNull(usageCombinedTokens(row.copy(availableMetrics = setOf("input"))))
+    }
+    @Test fun allTokensAddsCacheAndTreatsAMissingWriteAsZero() {
+        val row = ModelTokenUsage("model", 500_000, 250_000, 250_000, 1_000_000, 2.46, null)
+        assertEquals(BigInteger.valueOf(2_000_000), usageAllTokens(row))
+        val withoutWrite = row.copy(cacheWriteTokens = 99, availableMetrics = setOf("input", "output", "read", "cost"))
+        assertEquals(BigInteger.valueOf(1_750_000), usageAllTokens(withoutWrite))
+        assertNull(usageAllTokens(row.copy(availableMetrics = setOf("input", "output", "write"))))
+        assertNull(usageAllTokens(row.copy(cacheReadTokens = -1)))
+        assertNull(usageAllTokens(row.copy(cacheWriteTokens = -1)))
+        assertEquals(BigInteger.ZERO, usageAllTokens(row.copy(inputTokens = 0, outputTokens = 0, cacheWriteTokens = 0, cacheReadTokens = 0)))
+        val huge = row.copy(inputTokens = Long.MAX_VALUE, outputTokens = Long.MAX_VALUE, cacheWriteTokens = Long.MAX_VALUE, cacheReadTokens = Long.MAX_VALUE)
+        assertEquals(BigInteger("36893488147419103228"), usageAllTokens(huge))
+    }
+    @Test fun modelMetricSaverKeepsAllTokensAndLegacyInputOutputFlag() {
+        val scope = object : SaverScope { override fun canBeSaved(value: Any) = true }
+        val filters = UsagePageFilters().apply { modelMetric = UsageModelMetric.AllTokens; expandedModels = setOf("a") }
+        val saved = with(UsagePageFilters.Saver) { scope.save(filters) } as List<*>
+        val restored = UsagePageFilters.Saver.restore(saved)!!
+        assertEquals(UsageModelMetric.AllTokens, restored.modelMetric)
+        assertEquals(setOf("a"), restored.expandedModels)
+        val legacy = UsagePageFilters.Saver.restore(listOf(1, -2, -3, true, true, true, 30, "output", 5L, "m"))!!
+        assertEquals(1, legacy.rangeMode)
+        assertEquals(UsageModelMetric.InputOutput, legacy.modelMetric)
+        assertEquals(true, legacy.allModels)
+        assertEquals(setOf("m"), legacy.expandedModels)
+        assertEquals(UsageModelMetric.Cost, UsagePageFilters.Saver.restore(listOf(0, 0, -1, false, false, false, 7, "cost", -1L))!!.modelMetric)
+        assertEquals(UsageModelMetric.Cost, UsagePageFilters.Saver.restore(listOf(0, 0, -1, false, 99, false, 7, "cost", -1L))!!.modelMetric)
     }
     @Test fun costPerMillionUsesReportedTokensAndTreatsAMissingCacheWriteAsZero() {
         val row = ModelTokenUsage("model", 500_000, 250_000, 250_000, 1_000_000, 2.46, null)

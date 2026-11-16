@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-当前工程版本：**1.7.4**（`versionCode` 14）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#174--2026-11-15)，安装包 ID 为 `com.lamuier.agenT`。
+当前工程版本：**1.8.0**（`versionCode` 15）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#180--2026-11-16)，安装包 ID 为 `com.lamuier.agenT`。
 
 应用没有账号体系、自建后端、广告或分析 SDK。凭据和个人缓存保存在本机；查询直接发往各服务接口，公共重置公告匿名读取第三方来源。
 
@@ -16,7 +16,7 @@
 | 页面 | 当前功能 |
 | --- | --- |
 | 概览 | Cursor / Codex / DeepSeek / Kimi Code 信息卡、余额或额度与重置时间；DeepSeek 按币种分列总余额、赠送和充值；Cursor 额度固定分别显示自有模型与其他模型两池 |
-| 用量 | 四来源摘要切换、DeepSeek 原币种余额、Kimi Code 动态额度窗口与加量包；Cursor / Codex 额度仪表、Token 四格指标、模型费用 / Token 条形排行及每百万 Token 费用、带图例的消耗节奏、等长对比图与 Cursor 加密本机观察趋势；说明默认收起 |
+| 用量 | 四来源摘要切换、DeepSeek 原币种余额、Kimi Code 动态额度窗口与加量包；Cursor / Codex 额度仪表、Token 四格指标、模型可按费用、输入加输出或全部 Token 排行并显示每百万 Token 费用、带图例的消耗节奏、等长对比图与 Cursor 加密本机观察趋势；说明默认收起 |
 | 任务 | Cursor 云端任务，按仓库 / 状态 / 时间 / 来源分组；包括 Grok Bot、API、SDK、Remote Control 来源，已合并 PR 隐藏；顶部“+”打开 Cursor Agents 新建任务，对话在官方网页打开 |
 | 重置 | 普通重置 / 券发放数字卡、类型占比环、按日频次日历与热力图；按周 / 自然月 / 订阅月筛选，记录点击展开 |
 | 状态 | Cursor、Codex、DeepSeek API 与 Kimi Code 官方组件、进行中的事件与历史；顶部与详情摘要分别显示最后更新时间和缓存标记，状态请求匿名，界面按配置显示 |

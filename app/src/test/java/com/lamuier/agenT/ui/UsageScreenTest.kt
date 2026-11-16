@@ -61,6 +61,7 @@ class UsageScreenTest {
         compose.onNodeWithTag("usage-summary-codex").assertIsDisplayed()
         compose.onNodeWithTag("usage-detail-list").performScrollToKey("usage-statistics")
         compose.onNodeWithText(label(R.string.u_sort_tokens)).performScrollTo().performClick()
+        compose.onNodeWithText(label(R.string.u_sort_all_tokens)).assertExists()
         compose.onAllNodesWithText(label(R.string.u_exact_details)).onFirst().performScrollTo().performClick()
         compose.onNodeWithText("400000").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(label(R.string.u_compare)).performScrollTo().performClick()
@@ -76,6 +77,29 @@ class UsageScreenTest {
         compose.scrollToUsageSummary()
         compose.onNodeWithTag("usage-summary-codex").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("codex", context.getSharedPreferences("usage-page-v1", 0).getString("provider", null)) }
+    }
+    @Test fun allTokensRanksCacheHeavyModelsAheadOfInputPlusOutput() {
+        val fixture = ReviewFixture.create(ZoneId.of("UTC"), Instant.ofEpochMilli(now))
+        val usage = fixture.cursor.usage!!
+        val base = usage.tokenUsage!!.models.first()
+        val tokens = usage.tokenUsage!!.copy(models = listOf(
+            base.copy(modelIntent = "cache-heavy", inputTokens = 1_000, outputTokens = 1_000, cacheWriteTokens = 0, cacheReadTokens = 5_000_000, costDollars = 1.0),
+            base.copy(modelIntent = "fresh", inputTokens = 2_000_000, outputTokens = 2_000_000, cacheWriteTokens = 0, cacheReadTokens = 0, costDollars = 9.0),
+        ))
+        compose.setContent {
+            CompositionLocalProvider(LocalUsageNow provides now, LocalDisplayZone provides ZoneId.of("UTC")) {
+                AgenTTheme(ThemeSettings()) { UsageScreen(fixture.cursor.copy(usage = usage.copy(tokenUsage = tokens)), fixture.codex, { _, _, _, _ -> }, {}, {}, {}, {}) }
+            }
+        }
+        compose.onNodeWithTag("usage-detail-list").performScrollToKey("usage-statistics")
+        compose.onNodeWithText(label(R.string.u_sort_tokens)).performScrollTo().performClick()
+        compose.onNode(hasTestTag("usage-model-0") and hasAnyDescendant(hasText("fresh")), useUnmergedTree = true).assertExists()
+        compose.onNodeWithContentDescription("fresh: 4000000").assertExists()
+        compose.onNodeWithText(label(R.string.u_sort_all_tokens)).performScrollTo().performClick()
+        compose.onNode(hasTestTag("usage-model-0") and hasAnyDescendant(hasText("cache-heavy")), useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("5.00M").assertIsDisplayed()
+        compose.onNodeWithContentDescription("cache-heavy: 5002000").assertExists()
+        compose.onNodeWithText("4.00M").assertIsDisplayed()
     }
     @Config(qualifiers = "en-rUS-w1000dp-h800dp-notnight-xhdpi")
     @Test fun rangeSurvivesPaneChangesAndSavedStateRestoration() {

@@ -725,9 +725,10 @@
     <string name="u_output">Output tokens</string>
     <string name="u_cache_read">Cache read</string>
     <string name="u_cache_write">Cache write</string>
-    <string name="u_tokens_note">Token categories are shown separately and may overlap. Reported cost is not an invoice. Unknown fields show “—”.</string>
+    <string name="u_tokens_note">Token categories are shown separately and may overlap. All tokens add input, output, cache read and cache write. A model that does not report cache writes counts that category as zero, and a missing input, output or cache read stays unknown. Reported cost is not an invoice. Unknown fields show “—”.</string>
     <string name="u_sort_cost">By cost</string>
     <string name="u_sort_tokens">By input + output</string>
+    <string name="u_sort_all_tokens">By all tokens</string>
     <string name="u_cost_share">Share of reported cost: %1$s</string>
     <string name="u_per_million">Per million tokens: %1$s</string>
     <string name="u_per_million_description">Reported cost divided by the sum of input, output, cache read and cache write tokens, then scaled to one million tokens. A model that does not report cache writes counts that category as zero. This is not an official unit price. A missing cost, input, output or cache read, or a zero token total, stays unknown.</string>
