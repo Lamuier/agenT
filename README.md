@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-当前工程版本：**1.8.0**（`versionCode` 15）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#180--2026-11-16)，安装包 ID 为 `com.lamuier.agenT`。
+当前工程版本：**1.8.1**（`versionCode` 16）。本文描述当前源码，本次发布变更见 [CHANGELOG](CHANGELOG.md#181--2026-11-20)，安装包 ID 为 `com.lamuier.agenT`。
 
 应用没有账号体系、自建后端、广告或分析 SDK。凭据和个人缓存保存在本机；查询直接发往各服务接口，公共重置公告匿名读取第三方来源。
 
@@ -41,7 +41,7 @@ DeepSeek API 和 Kimi Code 在「设置 → 服务连接 → Token 管理」使�
 | 服务 | 凭据来源与填写 |
 | --- | --- |
 | Cursor | 应用内 Windows 提取命令读取 `cursorAuth/accessToken`。Cursor 3.27 起该值以 `cursor-safe-storage:v1:` 加密保存在本机，命令用当前 Windows 用户解开后复制 JWT；已经是 JWT 的值会原样复制。数据库位于 `%APPDATA%\Cursor\User\globalStorage\state.vscdb` |
-| Codex | Codex CLI 登录后的 `~/.codex/auth.json`（Windows 为 `%USERPROFILE%\.codex\auth.json`）；填写 `tokens.access_token`，`tokens.account_id` 可选 |
+| Codex | Codex CLI 登录后的 `~/.codex/auth.json`（Windows 为 `%USERPROFILE%\.codex\auth.json`）；填写 `tokens.access_token`。工作区从 Token 中读取，不再单独填写 Account ID |
 | DeepSeek API | 官方 API Key，只用于查询 `api.deepseek.com/user/balance`；不读取控制台登录态 |
 | Kimi Code | 编程套餐 API Key，默认中国区 `api.kimi.com`，可改为国际区 `api.kimi.ai`；不能用 Kimi 开放平台密钥代替 |
 

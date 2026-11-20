@@ -4,6 +4,12 @@
 
 The Chinese [CHANGELOG.md](CHANGELOG.md) is canonical.
 
+## 1.8.1 — 2026-11-20
+
+> Version decision: 1.8.0 → 1.8.1 (`Z` patch, `versionCode` 15 → 16). Token management no longer asks for a Cursor account alias or a ChatGPT Account ID, and this adds no business capability. Saved local names, saved Account IDs, the package ID, original signing key and permissions stay compatible, so existing installs upgrade in place.
+
+- Token management no longer collects a Cursor account alias or a ChatGPT Account ID. A new Cursor account uses a fixed local name, and replacing its token keeps the saved name. When no Account ID is saved, Codex reads the workspace claim from the access token and sends it; a saved Account ID keeps priority until the token is replaced.
+
 ## 1.8.0 — 2026-11-16
 
 > Version decision: 1.7.4 → 1.8.0, with `versionCode` increased to 15. Token and model analysis can rank by all tokens. This is a compatible user-visible capability, so it is at least a minor (Y) release. The package ID, original signing key, permissions and data format are unchanged, so existing installs upgrade in place.

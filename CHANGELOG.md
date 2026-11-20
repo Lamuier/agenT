@@ -2,6 +2,12 @@
 
 **中文** | [English](CHANGELOG.en.md)
 
+## 1.8.1 — 2026-11-20
+
+> 版本判定：1.8.0 → 1.8.1（`Z` 修订版，`versionCode` 15 → 16）。Token 管理去掉 Cursor 账号别名和 ChatGPT Account ID 输入，未新增业务能力。已有本地名称和已保存 Account ID 的数据格式不变，安装包 ID、原签名与权限不变，可直接覆盖升级。
+
+- Token 管理不再收集 Cursor 账号别名和 ChatGPT Account ID。新建 Cursor 账号使用固定本地名称，更换 Token 时保留已有名称。没有已保存 Account ID 时，Codex 从 Access Token 的工作区声明读取并发送；已保存的 Account ID 在下次更换 Token 前继续优先使用。
+
 ## 1.8.0 — 2026-11-16
 
 > 版本判定：1.7.4 → 1.8.0，`versionCode` 递增为 15。Token 与模型分析新增「按所有 Token」，属于向后兼容的用户可见能力，至少升级次版本 Y。安装包 ID、原签名、权限和数据格式不变，可直接覆盖升级。

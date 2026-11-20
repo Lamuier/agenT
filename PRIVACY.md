@@ -2,7 +2,7 @@
 
 > 本文件适用于 agenT Android 应用（包名 `com.lamuier.agenT`）。**中文** | [English](PRIVACY.en.md)
 
-**生效日期：2026-10-21**
+**生效日期：2026-11-20**
 
 agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、Codex、DeepSeek API 与 Kimi Code 的用量、任务、重置和服务状态：不内置任何第三方统计、广告、崩溃收集 SDK，没有账号体系，没有自建服务端。以下是数据处理的完整说明。
 
@@ -15,9 +15,9 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 | 数据 | 用途 | 存储方式 | 应用发送或上传的内容 |
 | --- | --- | --- | --- |
 | Cursor Access Token | 查询 Cursor 账号、用量与云端任务列表 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证凭据发往 Cursor 官方接口 |
-| Codex / ChatGPT OAuth Access Token 与可选 Account ID | 查询 Codex 限流窗口 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅作为认证信息发往 `chatgpt.com/backend-api/wham/usage` |
+| Codex / ChatGPT OAuth Access Token 与工作区 Account ID | 查询 Codex 限流窗口 | Android Keystore AES-GCM 加密，保存在应用私有目录 | Token 仅作为认证信息发往 `chatgpt.com/backend-api/wham/usage`。Account ID 优先使用已保存值；没有已保存值时从 Token 的工作区声明读取，并作为 `ChatGPT-Account-ID` 发送。Token 不含该声明时不发送此头 |
 | DeepSeek API Key、Kimi Code API Key 与区域 | 查询对应服务余额或订阅额度 | Android Keystore AES-GCM 加密，保存在应用私有目录 | 仅发往对应服务固定官方接口（见下文专节） |
-| 账号别名 | 本地标识账号 | Android Keystore AES-GCM 加密 | 不上传 |
+| 账号别名 | 本地标识账号。新建账号写入固定名称，更新 Token 时保留已有名称，界面不再收集 | Android Keystore AES-GCM 加密 | 不上传 |
 | Cursor / Codex 用量摘要（套餐、额度、百分比、窗口与重置时间、Credits、按模型 Token、Grok Bot 周额度等） | 界面、小组件、通知与离线回显 | Android Keystore AES-GCM 加密缓存，只保存解析后的摘要 | 不上传摘要或原始响应 |
 | 本机用量观察（解析后的数字、UTC 时间戳、周期边界与重置时间） | 观察趋势与条件节奏估算 | Android Keystore AES-GCM 加密，保存在禁止备份目录 | 不上传；采集控制与保存期限见[本机用量观察](#本机用量观察) |
 | 云端任务摘要及本机观察 / 确认状态（任务名、状态、来源、分支、PR 链接、增删行数与观察时间等） | 任务页与实时活动、避免重复提示 | 按账号和凭据修订号进行 Android Keystore AES-GCM 加密缓存 | 不上传本机观察或确认记录；不抓取完整任务对话 |
@@ -49,7 +49,7 @@ agenT 是一款本地优先的 AI 服务用量应用，在本机展示 Cursor、
 | 请求 | 域名 / 接口 | 认证信息 |
 | --- | --- | --- |
 | Cursor 账号、用量与任务 | `api2.cursor.sh`、`cursor.com` | Cursor Token |
-| Codex 用量 | `chatgpt.com/backend-api/wham/usage` | Codex Token 与可选 Account ID |
+| Codex 用量 | `chatgpt.com/backend-api/wham/usage` | Codex Token，以及已保存的 Account ID 或从 Token 读取的工作区声明 |
 | Cursor / Codex / DeepSeek / Kimi 官方状态 | `data.x.ai`（Cursor；Cursor 组件尚未发布时回退 `status.cursor.com`）、`status.openai.com`、`status.deepseek.com`、`status.moonshot.cn` | 不携带 Token、API Key 或 Account ID |
 | 第三方公共重置记录 | `codex-resets.com/api/v1/resets` | 不携带 Token、Account ID 或个人记录；仅分页 / 条件缓存参数 |
 

@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)
 
-Project version: **1.8.0** (`versionCode` 15). This README describes the current source; see the [1.8.0 release notes](CHANGELOG.en.md#180--2026-11-16). Package ID: `com.lamuier.agenT`.
+Project version: **1.8.1** (`versionCode` 16). This README describes the current source; see the [1.8.1 release notes](CHANGELOG.en.md#181--2026-11-20). Package ID: `com.lamuier.agenT`.
 
 There is no app account system, self-hosted backend, advertising, or analytics SDK. Credentials and personal caches stay on the device; queries go directly to provider endpoints, while public reset announcements use an anonymous third-party source.
 
@@ -43,7 +43,7 @@ Open Settings → Service connections → Token management, then select the serv
 | Provider | Source and fields |
 | --- | --- |
 | Cursor | In-app Windows commands read `cursorAuth/accessToken`. Since Cursor 3.27 that value is stored as `cursor-safe-storage:v1:`; the command decrypts it with the current Windows user and copies the JWT, or copies a plaintext JWT unchanged. The database is at `%APPDATA%\Cursor\User\globalStorage\state.vscdb` |
-| Codex | `~/.codex/auth.json` after Codex CLI login (`%USERPROFILE%\.codex\auth.json` on Windows); use `tokens.access_token` and optionally `tokens.account_id` |
+| Codex | `~/.codex/auth.json` after Codex CLI login (`%USERPROFILE%\.codex\auth.json` on Windows); use `tokens.access_token`. The workspace is read from the token, so Account ID is not entered separately |
 | DeepSeek API | Official API key, used only for `api.deepseek.com/user/balance`; the app does not read a console session |
 | Kimi Code | Coding-plan API key. China (`api.kimi.com`) is the default, with an explicit international option (`api.kimi.ai`); an Open Platform key does not replace it |
 

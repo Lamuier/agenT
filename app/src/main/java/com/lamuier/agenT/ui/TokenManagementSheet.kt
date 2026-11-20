@@ -95,7 +95,7 @@ internal fun TokenManagementContent(
     val apiKey = provider == TokenProvider.DeepSeek || provider == TokenProvider.KimiCode
     val extra = extraCredentials[provider]
     val revision = if (apiKey) extra?.revision else if (cursor) cursorAccount?.updatedAt else codexCredential?.updatedAt
-    val existingMetadata = if (apiKey) extra?.region?.id else if (cursor) cursorAccount?.alias else codexCredential?.accountId
+    val existingMetadata = if (provider == TokenProvider.KimiCode) extra?.region?.id else null
     val hasCredential = if (apiKey) extra != null else if (cursor) cursorAccount != null else codexCredential != null
     val activity = context.tokenActivity()
     val revealScope = rememberCoroutineScope()
@@ -119,13 +119,10 @@ internal fun TokenManagementContent(
     fun clearFeedback() { localError = null; saved = false; onClearError() }
     fun submit() {
         clearFeedback()
-        val failure = TokenFormRules.validate(provider, existingMetadata, metadata, token)
+        val failure = TokenFormRules.validate(provider, token)
         val resource = when (failure) {
-            TokenFormError.AliasRequired -> R.string.account_alias_required
-            TokenFormError.AliasTooLong -> R.string.account_alias_too_long
             TokenFormError.TokenRequired -> R.string.token_management_token_required
             TokenFormError.TokenTooShort -> R.string.token_management_token_too_short
-            TokenFormError.NoChanges -> R.string.account_no_changes
             null -> null
         }
         if (resource != null) { localError = resources.getString(resource); return }
@@ -207,19 +204,12 @@ internal fun TokenManagementContent(
                     label = { Text(stringResource(if (region == KimiRegion.China) R.string.provider_region_cn else R.string.provider_region_global)) }) }
             }
         }
-        if (!apiKey) OutlinedTextField(
-            value = metadata, onValueChange = { metadata = it; clearFeedback() },
-            label = { Text(stringResource(if (cursor) R.string.account_alias_label else R.string.codex_account_id_label)) },
-            supportingText = { if (!cursor) Text(stringResource(R.string.codex_account_id_optional)) },
-            enabled = !blocked, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        )
         OutlinedTextField(
             value = token, onValueChange = { token = it; clearFeedback() },
             label = { Text(stringResource(if (apiKey) R.string.provider_api_key_label else R.string.token_management_token_label)) },
             supportingText = { Text(stringResource(when {
                 apiKey -> R.string.provider_key_hint
-                cursor && hasCredential -> R.string.token_management_replace_hint
-                !cursor && hasCredential -> R.string.codex_replace_hint
+                hasCredential -> R.string.codex_replace_hint
                 else -> R.string.token_management_paste_hint
             })) },
             singleLine = true, enabled = !blocked, modifier = Modifier.fillMaxWidth(),

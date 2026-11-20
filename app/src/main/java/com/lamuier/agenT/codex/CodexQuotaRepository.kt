@@ -164,7 +164,9 @@ class CodexQuotaRepository internal constructor(
 
         val historyTicket = usageHistoryStore.generation()
         return try {
-            val payload = api.usage(snapshot.accessToken, snapshot.accountId.takeIf(String::isNotBlank))
+            val headerAccount = snapshot.accountId.takeIf(String::isNotBlank)
+                ?: CodexResetIdentity.accountId(snapshot.accessToken)
+            val payload = api.usage(snapshot.accessToken, headerAccount)
             val overview = CodexQuotaParser.parse(payload)
             synchronized(CodexStorageLock.monitor) {
                 val current = tokenStore.snapshot()
@@ -424,7 +426,7 @@ private class CodexTokenStore(context: Context, isolated: Boolean = false) {
 
     fun save(accessToken: String, accountId: String): Snapshot = synchronized(lock) {
         val token = CodexTokenValidator.requireValid(accessToken, resources)
-        val account = accountId.trim()
+        val account = accountId.trim().ifEmpty { CodexResetIdentity.accountId(token).orEmpty() }
         val currentRevision = runCatching {
             JSONObject(preferences.getString(KEY_CREDENTIALS, "{}")!!).optLong("revision")
         }.getOrDefault(0L)

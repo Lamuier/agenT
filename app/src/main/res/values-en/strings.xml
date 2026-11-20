@@ -353,10 +353,7 @@
     <string name="status_item_count">%d items</string>
     <string name="status_degraded_components">%1$d degraded · %2$d operational</string>
 
-    <string name="account_alias_label">Account alias</string>
-    <string name="account_alias_required">Enter an account alias</string>
     <string name="account_alias_too_long">Alias cannot exceed 64 characters</string>
-    <string name="account_no_changes">Nothing to save</string>
     <string name="account_saved_token_title">Saved Access Token</string>
     <string name="account_delete_title">Delete “%1$s”?</string>
     <string name="account_delete_body">The locally saved account and usage cache will be removed. You will need to enter an Access Token again.</string>
@@ -397,7 +394,6 @@
     <string name="error_read_accounts">Could not read account state</string>
     <string name="error_load_usage">Failed to load Cursor usage</string>
     <string name="error_load_history">Failed to load usage history</string>
-    <string name="error_alias_token_required">Enter both an alias and an Access Token</string>
     <string name="error_add_account">Failed to add account</string>
     <string name="error_alias_or_token">Enter an alias or Access Token</string>
     <string name="error_update_account">Failed to update account</string>
@@ -460,8 +456,6 @@
     <string name="codex_usage_auto_refresh_label">Auto-update Codex usage</string>
     <string name="codex_usage_auto_refresh_description">When on, Codex usage is requested on return to the foreground, while the app stays open, about every 15 minutes in the background, and on the usage widget schedule. When off, it updates only from a manual refresh, a widget refresh, or saving the token. The last result stays visible.</string>
     <string name="codex_empty_description">Add a Codex token under Service connections in Settings to view your quota.</string>
-    <string name="codex_account_id_label">ChatGPT Account ID</string>
-    <string name="codex_account_id_optional">Optional; may be needed for Business or multiple workspaces</string>
     <string name="codex_toggle_token_visibility">Show or hide token</string>
     <string name="codex_delete_token_title">Delete Codex token?</string>
     <string name="codex_delete_token_description">The Codex credential, cached usage, and all local Codex reset records will be permanently removed.</string>
@@ -519,7 +513,7 @@
     <string name="widget_current_cycle">This cycle</string>
     <string name="codex_replace_hint">Enter a new token to replace the saved credential</string>
     <string name="codex_token_help_title">How to get a token</string>
-    <string name="codex_token_help_steps">1. Run codex login on your computer and sign in with ChatGPT.\n2. Open the credential file below and copy tokens.access_token.\n3. To select a workspace, also enter tokens.account_id.</string>
+    <string name="codex_token_help_steps">1. Run codex login on your computer and sign in with ChatGPT.\n2. Open the credential file below and copy tokens.access_token.</string>
     <string name="codex_token_help_paths" formatted="false">macOS / Linux: ~/.codex/auth.json\nWindows: %USERPROFILE%\\.codex\\auth.json</string>
     <string name="notification_codex_primary">Codex 5-hour</string>
     <string name="notification_codex_weekly">Codex weekly</string>
@@ -530,7 +524,6 @@
     <string name="token_management_save_success">Saved. You can manage the other service here too.</string>
     <string name="token_management_token_label">Access token</string>
     <string name="token_management_paste_hint">Paste the access token for the selected service</string>
-    <string name="token_management_replace_hint">Leave blank to update the alias only; a new token replaces the saved credential.</string>
     <string name="token_management_token_required">Enter an access token for this service</string>
     <string name="token_management_token_too_short">This token is incomplete. Copy the full credential again.</string>
     <string name="token_management_reveal">Unlock device to view saved token</string>

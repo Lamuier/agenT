@@ -390,9 +390,9 @@ fun AgenTApp(
                 val confirmed = { OperationFeedback.success(); done() }
                 if (provider == com.lamuier.agenT.model.TokenProvider.Cursor) {
                     val current = account
-                    if (current == null) viewModel.addAccount(metadata, token, confirmed)
-                    else viewModel.updateAccount(current.id, metadata.takeIf { it != current.alias }, token.ifBlank { null }, confirmed)
-                } else if (provider == TokenProvider.Codex) codexViewModel.saveCredential(token, metadata, confirmed)
+                    if (current == null) viewModel.addAccount(CURSOR_LOCAL_ACCOUNT_NAME, token, confirmed)
+                    else viewModel.updateAccount(current.id, null, token, confirmed)
+                } else if (provider == TokenProvider.Codex) codexViewModel.saveCredential(token, "", confirmed)
                 else providersViewModel.save(UsageProvider.entries.first { it.tokenProvider == provider }, token,
                     KimiRegion.fromId(metadata), confirmed)
             },
@@ -526,3 +526,5 @@ fun AgenTApp(
 
     }
 }
+
+private const val CURSOR_LOCAL_ACCOUNT_NAME = "Cursor"

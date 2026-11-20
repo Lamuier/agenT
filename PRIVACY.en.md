@@ -2,7 +2,7 @@
 
 > This policy applies to the agenT Android app (package `com.lamuier.agenT`). [中文](PRIVACY.md) | **English**
 
-**Effective date: 2026-10-21**
+**Effective date: 2026-11-20**
 
 agenT is a local-first AI service usage app that displays Cursor, Codex, DeepSeek API and Kimi Code usage, tasks, resets and service status on your device: it does not ship third-party analytics, ads, or crash SDKs, has no account system, and has no self-hosted backend. This is the full description of how data is handled.
 
@@ -17,9 +17,9 @@ The Chinese [PRIVACY.md](PRIVACY.md) is the canonical policy text.
 | Data | Purpose | Storage | What the app sends or uploads |
 | --- | --- | --- | --- |
 | Cursor Access Token | Query Cursor account, usage and cloud task lists | Android Keystore AES-GCM encryption in app-private storage | Sent only as a credential to official Cursor APIs |
-| Codex / ChatGPT OAuth access token and optional Account ID | Query Codex rate-limit windows | Android Keystore AES-GCM encryption in app-private storage | Sent only as authentication information to `chatgpt.com/backend-api/wham/usage` |
+| Codex / ChatGPT OAuth access token and workspace Account ID | Query Codex rate-limit windows | Android Keystore AES-GCM encryption in app-private storage | The token is sent only as authentication to `chatgpt.com/backend-api/wham/usage`. A saved Account ID is preferred; otherwise the workspace claim is read from the token and sent as `ChatGPT-Account-ID`. The header is omitted when the token has no such claim |
 | DeepSeek API key, Kimi Code API key and region | Query balances or subscription quotas | Android Keystore AES-GCM encryption in app-private storage | Sent only to the corresponding fixed official endpoints (see dedicated sections below) |
-| Account alias | Local account label | Android Keystore AES-GCM encryption | Not uploaded |
+| Account alias | Local account label. New accounts store a fixed name, token updates keep the existing name, and the screen no longer collects one | Android Keystore AES-GCM encryption | Not uploaded |
 | Cursor / Codex usage summaries (plan, quota, percentages, windows and reset times, Credits, per-model tokens, Grok Bot weekly quota and similar fields) | UI, widgets, notifications and offline display | Android Keystore AES-GCM encrypted cache of parsed summaries | Summaries and raw responses are not uploaded |
 | Local usage observations (parsed numbers, UTC timestamps, period boundaries and reset times) | Observation trends and conditional pace estimates | Android Keystore AES-GCM encryption in the no-backup directory | Not uploaded; see [Local usage observations](#local-usage-observations) for controls and retention |
 | Cloud task summaries and local observation / acknowledgement state (name, status, source, branch, PR link, line changes and observation times) | Tasks and live activities; avoid repeated notices | Android Keystore AES-GCM encrypted cache isolated by account and credential revision | Local observations and acknowledgements are not uploaded; full task conversations are not fetched |
@@ -51,7 +51,7 @@ Current usage, task and public-status caches preserve the latest successful resu
 | Request | Host / endpoint | Authentication |
 | --- | --- | --- |
 | Cursor account, usage and tasks | `api2.cursor.sh`, `cursor.com` | Cursor token |
-| Codex usage | `chatgpt.com/backend-api/wham/usage` | Codex token and optional Account ID |
+| Codex usage | `chatgpt.com/backend-api/wham/usage` | Codex token, plus a saved Account ID or the workspace claim read from the token |
 | Official Cursor / Codex / DeepSeek / Kimi status | `data.x.ai` (Cursor; falls back to `status.cursor.com` until Cursor components are published), `status.openai.com`, `status.deepseek.com`, `status.moonshot.cn` | No token, API key or Account ID |
 | Third-party public reset records | `codex-resets.com/api/v1/resets` | No token, Account ID or personal records; only pagination / conditional-cache parameters |
 

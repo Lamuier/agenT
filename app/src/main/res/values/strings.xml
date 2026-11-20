@@ -356,10 +356,7 @@
     <string name="status_item_count">%d 项</string>
     <string name="status_degraded_components">%1$d 个组件异常 · %2$d 个正常</string>
 
-    <string name="account_alias_label">账号别名</string>
-    <string name="account_alias_required">请输入账号别名</string>
     <string name="account_alias_too_long">别名不能超过 64 个字符</string>
-    <string name="account_no_changes">没有需要保存的更改</string>
     <string name="account_saved_token_title">已保存的 Access Token</string>
     <string name="account_delete_title">删除「%1$s」？</string>
     <string name="account_delete_body">本机保存的账号和用量缓存将被删除。之后需要重新录入 Access Token。</string>
@@ -400,7 +397,6 @@
     <string name="error_read_accounts">无法读取账号状态</string>
     <string name="error_load_usage">加载 Cursor 用量失败</string>
     <string name="error_load_history">加载历史用量失败</string>
-    <string name="error_alias_token_required">请填写别名和 Access Token</string>
     <string name="error_add_account">添加账号失败</string>
     <string name="error_alias_or_token">别名或 Access Token 至少填写一项</string>
     <string name="error_update_account">更新账号失败</string>
@@ -463,8 +459,6 @@
     <string name="codex_usage_auto_refresh_label">自动更新 Codex 用量</string>
     <string name="codex_usage_auto_refresh_description">开启时，前台返回、前台停留、后台约每 15 分钟，以及用量小组件的周期刷新都会请求 Codex 用量。关闭后只在手动刷新、小组件上手动刷新或保存 Token 时更新，平时继续显示上次结果。</string>
     <string name="codex_empty_description">在设置的「服务连接」中添加 Codex Token，即可查看额度。</string>
-    <string name="codex_account_id_label">ChatGPT Account ID</string>
-    <string name="codex_account_id_optional">可选；Business 等多工作区账号可能需要</string>
     <string name="codex_toggle_token_visibility">显示或隐藏 Token</string>
     <string name="codex_delete_token_title">删除 Codex Token？</string>
     <string name="codex_delete_token_description">本机保存的 Codex 凭据、用量缓存和所有 Codex 重置记录将被清除，无法撤销。</string>
@@ -522,7 +516,7 @@
     <string name="widget_current_cycle">本周期</string>
     <string name="codex_replace_hint">填写新 Token 以替换已保存的凭据</string>
     <string name="codex_token_help_title">如何获取 Token</string>
-    <string name="codex_token_help_steps">1. 在电脑上执行 codex login，完成 ChatGPT 登录。\n2. 打开下面的凭据文件，复制 tokens.access_token。\n3. 如需指定工作区，另填写 tokens.account_id。</string>
+    <string name="codex_token_help_steps">1. 在电脑上执行 codex login，完成 ChatGPT 登录。\n2. 打开下面的凭据文件，复制 tokens.access_token。</string>
     <string name="codex_token_help_paths" formatted="false">macOS / Linux: ~/.codex/auth.json\nWindows: %USERPROFILE%\\.codex\\auth.json</string>
     <string name="notification_codex_primary">Codex 5 小时</string>
     <string name="notification_codex_weekly">Codex 每周</string>
@@ -533,7 +527,6 @@
     <string name="token_management_save_success">已保存，可继续管理另一项服务。</string>
     <string name="token_management_token_label">Access Token</string>
     <string name="token_management_paste_hint">粘贴当前所选服务的 Access Token</string>
-    <string name="token_management_replace_hint">留空仅保存别名；填写新 Token 将替换已保存凭据。</string>
     <string name="token_management_token_required">请输入当前服务的 Access Token</string>
     <string name="token_management_token_too_short">Token 不完整，请重新复制完整凭据。</string>
     <string name="token_management_reveal">验证设备解锁并查看已保存 Token</string>

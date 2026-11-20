@@ -106,6 +106,6 @@ class OfficialProviderUiTest {
         compose.onNodeWithText("DeepSeek").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Kimi Code").performScrollTo().performClick()
         assertEquals(TokenProvider.KimiCode, source)
-        assertNull(com.lamuier.agenT.model.TokenFormRules.validate(TokenProvider.DeepSeek, null, "", "opaque-key"))
+        assertNull(com.lamuier.agenT.model.TokenFormRules.validate(TokenProvider.DeepSeek, "opaque-key"))
     }
 }

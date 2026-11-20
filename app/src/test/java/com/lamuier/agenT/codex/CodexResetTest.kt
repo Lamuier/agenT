@@ -154,6 +154,9 @@ class CodexResetTest {
         val second = "header.$encoded.b"
         assertEquals(CodexResetIdentity.key(first, ""), CodexResetIdentity.key(second, "workspace"))
         assertNotEquals(CodexResetIdentity.key(first, ""), CodexResetIdentity.key(first, "another"))
+        assertEquals("workspace", CodexResetIdentity.accountId(first))
+        assertEquals("another", CodexResetIdentity.accountId(first, " another "))
+        assertNull(CodexResetIdentity.accountId("opaque-token"))
     }
     @Test fun encryptedPayloadCodecRoundTripsAllLocalFields() {
         val old = baseline()

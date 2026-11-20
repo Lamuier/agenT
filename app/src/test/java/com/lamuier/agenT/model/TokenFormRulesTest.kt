@@ -4,26 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TokenFormRulesTest {
-    @Test fun newCursorNeedsAliasAndToken() {
-        assertEquals(TokenFormError.AliasRequired, TokenFormRules.validate(TokenProvider.Cursor, null, " ", "test"))
-        assertEquals(TokenFormError.TokenRequired, TokenFormRules.validate(TokenProvider.Cursor, null, "Personal", " "))
+    @Test fun everyProviderRequiresAToken() {
+        TokenProvider.entries.forEach { provider ->
+            assertEquals(TokenFormError.TokenRequired, TokenFormRules.validate(provider, " "))
+        }
     }
-    @Test fun cursorAliasLengthIsBounded() {
-        assertEquals(TokenFormError.AliasTooLong, TokenFormRules.validate(TokenProvider.Cursor, null, "a".repeat(65), "test"))
-        assertNull(TokenFormRules.validate(TokenProvider.Cursor, null, "a".repeat(64), "test"))
+    @Test fun cursorAcceptsATokenWithoutAnAlias() {
+        assertNull(TokenFormRules.validate(TokenProvider.Cursor, "test"))
     }
-    @Test fun savedCursorCanUpdateAliasWithoutReenteringToken() {
-        assertNull(TokenFormRules.validate(TokenProvider.Cursor, "Old", " New ", " "))
-    }
-    @Test fun unchangedCursorFormDoesNotSaveOrRevealExistingSecret() {
-        assertEquals(TokenFormError.NoChanges, TokenFormRules.validate(TokenProvider.Cursor, "Personal", " Personal ", " "))
-    }
-    @Test fun codexRequiresACompleteReplacementTokenEvenIfAlreadySaved() {
-        assertEquals(TokenFormError.TokenRequired, TokenFormRules.validate(TokenProvider.Codex, "account", "", " "))
-        assertEquals(TokenFormError.TokenTooShort, TokenFormRules.validate(TokenProvider.Codex, null, "", "short"))
-    }
-    @Test fun codexAccountIdStaysOptional() {
-        assertNull(TokenFormRules.validate(TokenProvider.Codex, null, "", "x".repeat(32)))
+    @Test fun codexRequiresACompleteReplacementToken() {
+        assertEquals(TokenFormError.TokenTooShort, TokenFormRules.validate(TokenProvider.Codex, "short"))
+        assertNull(TokenFormRules.validate(TokenProvider.Codex, "x".repeat(32)))
     }
     @Test fun unifiedEntryPrefersAvailableProviderWithoutHidingOtherProvider() {
         assertEquals(TokenProvider.Codex, TokenProvider.initial(false, true))

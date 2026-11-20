@@ -73,21 +73,35 @@ internal object CodexResetPeriods {
 
 /** Stable per user/workspace when JWT identity is known; opaque tokens are isolated, never guessed to be the same account. */
 internal object CodexResetIdentity {
+    private const val AUTH_CLAIM = "https://api.openai.com/auth"
+
+    /** Explicit account wins. A blank value is the workspace claim inside the access token. */
+    fun accountId(token: String, explicit: String = ""): String? {
+        val parsed = claims(token)
+        return safeIdentity(explicit.trim()) ?: workspaceClaim(parsed)
+    }
+
     fun key(token: String, account: String): String {
-        val claims = runCatching {
-            val payload = TokenUtils.jwtPayload(token)
-            if (payload.isEmpty()) return@runCatching null
-            JSONObject(payload)
-        }.getOrNull()
-        fun safeIdentity(value: String?) = value?.takeIf { it.isNotBlank() && it != "null" && it.length <= 256 && it.none(Char::isISOControl) }
-        val subject = safeIdentity(claims?.optString("sub"))
-        val workspace = safeIdentity(account.trim()) ?: safeIdentity(claims?.optJSONObject("https://api.openai.com/auth")?.optString("chatgpt_account_id"))
+        val parsed = claims(token)
+        val subject = safeIdentity(parsed?.optString("sub"))
+        val workspace = safeIdentity(account.trim()) ?: workspaceClaim(parsed)
         val known = subject != null && workspace != null
         return hash(JSONObject().put("type", if (known) "user" else "opaque")
             .put("identity", if (known) subject else token).put("workspace", workspace ?: account).toString())
     }
     fun hash(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
         .joinToString("") { "%02x".format(it.toInt() and 255) }
+
+    private fun claims(token: String): JSONObject? = runCatching {
+        val payload = TokenUtils.jwtPayload(token)
+        if (payload.isEmpty()) null else JSONObject(payload)
+    }.getOrNull()
+
+    private fun workspaceClaim(claims: JSONObject?): String? =
+        safeIdentity(claims?.optJSONObject(AUTH_CLAIM)?.optString("chatgpt_account_id"))
+
+    private fun safeIdentity(value: String?) =
+        value?.takeIf { it.isNotBlank() && it != "null" && it.length <= 256 && it.none(Char::isISOControl) }
 }
 
 /** Keep only the latest fresh quota snapshot for reminders; never append local reset history. */

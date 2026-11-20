@@ -8,7 +8,7 @@ agenT 的业务代码集中在单一 `app` 模块，使用 Kotlin、Jetpack Comp
 | --- | --- | --- |
 | 安装包与 namespace | `com.lamuier.agenT` | [app/build.gradle.kts](../app/build.gradle.kts) |
 | 平台 | `minSdk=26`，`compileSdk=37`，`targetSdk=37`；Build Tools `37.0.0` | [app/build.gradle.kts](../app/build.gradle.kts) |
-| 版本 | `versionName=1.8.0`，`versionCode=15`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
+| 版本 | `versionName=1.8.1`，`versionCode=16`；后续增量记录在未发布条目 | [CHANGELOG](../CHANGELOG.md) |
 | 工具链 | AGP `9.2.1`，内置 Kotlin `2.2.10`，Compose BOM `2026.08.00`，Gradle `9.5.1` | [版本目录](../gradle/libs.versions.toml)、[Wrapper](../gradle/wrapper/gradle-wrapper.properties) |
 | Release | R8、资源压缩、仅 `arm64-v8a`；验证 ZIP 与 ELF 16 KiB 对齐 | [构建配置](../app/build.gradle.kts)、[构建校验](../scripts/build_support.py) |
 
@@ -75,7 +75,7 @@ flowchart LR
 | --- | --- | --- |
 | Cursor 用量、计划、限额、Token 汇总与 Grok Bot 周额度 | `api2.cursor.sh/aiserver.v1.DashboardService/*` | Cursor Bearer |
 | Cursor 账号与任务列表 | `cursor.com/api/auth/stripe`、`cursor.com/api/background-composer/list` | Cursor 会话 |
-| Codex 当前额度窗口 / 重置券字段 | `chatgpt.com/backend-api/wham/usage` | Codex Bearer，可选 Account ID |
+| Codex 当前额度窗口 / 重置券字段 | `chatgpt.com/backend-api/wham/usage` | Codex Bearer；已保存的 Account ID 优先，否则读取 Token 中的工作区声明 |
 | DeepSeek 余额 | `api.deepseek.com/user/balance` | DeepSeek API Key |
 | Kimi Code 额度 | 用户选定的 `api.kimi.com/coding/v1/usages` 或 `api.kimi.ai/coding/v1/usages` | Kimi Code API Key |
 | Cursor / Codex 官方状态 | `data.x.ai/status/{summary,incidents,uptime}.json`（页面 `status.x.ai`；尚未包含 Cursor 组件时回退 `status.cursor.com/api/v2/{summary,incidents}.json`）、`status.openai.com/api/v2/{summary,components,incidents}.json` | 无 |
@@ -84,7 +84,7 @@ flowchart LR
 
 这些是代码中使用的通道，不代表服务方承诺长期稳定的公共 API。Cursor 状态只保留名为 Cursor 的分组，以及 id 为 `cursor` / `cursor-*`、或名称以 Cursor 开头且后面不紧跟字母的组件；`info` 仍视为正常，`disruption` 记为性能下降，`outage` 记为严重中断。新状态页还没有这些组件时继续读取 `status.cursor.com`。Codex 状态仅筛选 Codex Web / API / CLI / 桌面 / 扩展相关组件；缺少完整组件时显示未知，其他 OpenAI 产品的事件不直接归为 Codex 故障。
 
-凭据、账号别名、用量、任务与个人重置历史经 Android Keystore AES-GCM 加密；公开状态和公共重置缓存明文保存。Keystore 的硬件保护取决于设备，应用不保证所有设备使用硬件密钥。默认不允许备份、设备迁移和明文连接；客户端拒绝重定向，响应大小受限。解锁查看、敏感剪贴板与 `FLAG_SECURE` 见 [隐私政策](../PRIVACY.md)。
+凭据、账号别名、用量、任务与个人重置历史经 Android Keystore AES-GCM 加密；公开状态和公共重置缓存明文保存。Token 管理不再收集 Cursor 账号别名或 ChatGPT Account ID：新建 Cursor 账号写入固定本地名称，更新 Token 时保留已有名称。Codex 请求在没有已保存 Account ID 时，从 Access Token 的 `chatgpt_account_id` 读取并作为 `ChatGPT-Account-ID` 发送；Token 不含该声明时不发送此头。已保存的显式 Account ID 在下次更换 Token 前继续优先使用。Keystore 的硬件保护取决于设备，应用不保证所有设备使用硬件密钥。默认不允许备份、设备迁移和明文连接；客户端拒绝重定向，响应大小受限。解锁查看、敏感剪贴板与 `FLAG_SECURE` 见 [隐私政策](../PRIVACY.md)。
 
 应用内外链由 [CursorCustomTabs](../app/src/main/java/com/lamuier/agenT/util/CursorCustomTabs.kt) 调用允许列表校验，再交给系统浏览器；浏览器自己的登录态不等于应用 Token。公共重置链接和官方状态链接有独立校验规则。详细规则应直接维护在相应源码与测试，避免文档复制 URL 正则后失去同步。
 

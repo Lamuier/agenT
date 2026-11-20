@@ -380,8 +380,12 @@ class AgenTViewModel(
 
     fun addAccount(alias: String, accessToken: String, onSuccess: () -> Unit = {}) {
         if (_state.value.submitting) return
-        if (alias.isBlank() || accessToken.isBlank()) {
-            _state.update { it.copy(error = str(R.string.error_alias_token_required)) }
+        if (accessToken.isBlank()) {
+            _state.update { it.copy(error = str(R.string.token_management_token_required)) }
+            return
+        }
+        if (alias.isBlank()) {
+            _state.update { it.copy(error = str(R.string.error_alias_blank)) }
             return
         }
 
@@ -440,8 +444,8 @@ class AgenTViewModel(
         onSuccess: () -> Unit = {},
     ) {
         if (_state.value.submitting) return
-        if (alias.isNullOrBlank() && accessToken.isNullOrBlank()) {
-            _state.update { it.copy(error = str(R.string.error_alias_or_token)) }
+        if (accessToken.isNullOrBlank()) {
+            _state.update { it.copy(error = str(R.string.token_management_token_required)) }
             return
         }
 
